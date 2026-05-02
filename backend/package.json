@@ -1,0 +1,21 @@
+{
+  "name": "wonder-trivia-island",
+  "version": "1.0.0",
+  "description": "A minimal Node.js + Express + SQLite trivia API for elementary school students.",
+  "private": true,
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "node --watch --no-warnings src/server.js",
+    "start": "node --no-warnings src/server.js",
+    "init-db": "node --no-warnings scripts/init-db.js",
+    "export-seed-csv": "node --no-warnings scripts/export-seed-csv.js",
+    "report:knowledge-coverage": "node --no-warnings scripts/report-knowledge-route-coverage.mjs",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^5.2.1",
+    "morgan": "^1.10.1",
+    "openai": "^6.34.0"
+  }
+}

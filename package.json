@@ -1,0 +1,26 @@
+{
+  "name": "wonder-trivia-island",
+  "private": true,
+  "scripts": {
+    "setup": "npm install && npm run backend:install && npm run frontend:install",
+    "dev": "node scripts/dev.js",
+    "start": "npm run backend:start",
+    "audio:generate": "python scripts/generate_audio_assets.py",
+    "audio:study-manifest": "node --experimental-specifier-resolution=node scripts/export_study_narration_manifest.mjs",
+    "audio:study-coverage": "node scripts/check_study_narration_coverage.mjs",
+    "audio:study-import": "node scripts/import_study_narration_assets.mjs",
+    "audio:study-optimize": "python scripts/optimize_study_audio.py",
+    "audio:study-transcode": "node scripts/transcode_study_audio.mjs",
+    "audio:study-tts": "powershell -ExecutionPolicy Bypass -File scripts/generate_study_narration_tts.ps1",
+    "backend:install": "npm --prefix backend install",
+    "backend:dev": "npm --prefix backend run dev",
+    "backend:start": "npm --prefix backend start",
+    "backend:init-db": "npm --prefix backend run init-db",
+    "frontend:install": "npm --prefix frontend install",
+    "frontend:dev": "npm --prefix frontend run dev",
+    "frontend:build": "npm --prefix frontend run build"
+  },
+  "devDependencies": {
+    "ffmpeg-static": "^5.3.0"
+  }
+}

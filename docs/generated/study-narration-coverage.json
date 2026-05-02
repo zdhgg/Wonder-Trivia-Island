@@ -1,0 +1,406 @@
+{
+  "generatedAt": "2026-04-16T07:17:10.788Z",
+  "overall": {
+    "clipCount": 640,
+    "customClipCount": 160,
+    "audioClipCount": 640,
+    "missingClipCount": 0,
+    "audioCoveragePercent": 100,
+    "customNarrationPercent": 25
+  },
+  "byGrade": [
+    {
+      "key": "二年级",
+      "clipCount": 80,
+      "customClipCount": 10,
+      "audioClipCount": 80,
+      "missingClipCount": 0,
+      "audioCoveragePercent": 100,
+      "customNarrationPercent": 12.5
+    },
+    {
+      "key": "六年级",
+      "clipCount": 120,
+      "customClipCount": 45,
+      "audioClipCount": 120,
+      "missingClipCount": 0,
+      "audioCoveragePercent": 100,
+      "customNarrationPercent": 37.5
+    },
+    {
+      "key": "三年级",
+      "clipCount": 120,
+      "customClipCount": 10,
+      "audioClipCount": 120,
+      "missingClipCount": 0,
+      "audioCoveragePercent": 100,
+      "customNarrationPercent": 8.3
+    },
+    {
+      "key": "四年级",
+      "clipCount": 120,
+      "customClipCount": 20,
+      "audioClipCount": 120,
+      "missingClipCount": 0,
+      "audioCoveragePercent": 100,
+      "customNarrationPercent": 16.7
+    },
+    {
+      "key": "五年级",
+      "clipCount": 120,
+      "customClipCount": 35,
+      "audioClipCount": 120,
+      "missingClipCount": 0,
+      "audioCoveragePercent": 100,
+      "customNarrationPercent": 29.2
+    },
+    {
+      "key": "一年级",
+      "clipCount": 80,
+      "customClipCount": 40,
+      "audioClipCount": 80,
+      "missingClipCount": 0,
+      "audioCoveragePercent": 100,
+      "customNarrationPercent": 50
+    }
+  ],
+  "bySubject": [
+    {
+      "key": "数学",
+      "clipCount": 240,
+      "customClipCount": 55,
+      "audioClipCount": 240,
+      "missingClipCount": 0,
+      "audioCoveragePercent": 100,
+      "customNarrationPercent": 22.9
+    },
+    {
+      "key": "英语",
+      "clipCount": 160,
+      "customClipCount": 50,
+      "audioClipCount": 160,
+      "missingClipCount": 0,
+      "audioCoveragePercent": 100,
+      "customNarrationPercent": 31.3
+    },
+    {
+      "key": "语文",
+      "clipCount": 240,
+      "customClipCount": 55,
+      "audioClipCount": 240,
+      "missingClipCount": 0,
+      "audioCoveragePercent": 100,
+      "customNarrationPercent": 22.9
+    }
+  ],
+  "bySemester": [
+    {
+      "key": "上册",
+      "clipCount": 320,
+      "customClipCount": 100,
+      "audioClipCount": 320,
+      "missingClipCount": 0,
+      "audioCoveragePercent": 100,
+      "customNarrationPercent": 31.3
+    },
+    {
+      "key": "下册",
+      "clipCount": 320,
+      "customClipCount": 60,
+      "audioClipCount": 320,
+      "missingClipCount": 0,
+      "audioCoveragePercent": 100,
+      "customNarrationPercent": 18.8
+    }
+  ],
+  "priorityBatches": [
+    {
+      "key": "grade1-batch1",
+      "label": "一年级上册首批讲堂站点",
+      "description": "覆盖一年级上册语文和数学的 8 个主路径系统站点，共 40 条讲堂旁白切片。",
+      "lessonCount": 8,
+      "clipCount": 40,
+      "customClipCount": 40,
+      "audioClipCount": 40,
+      "missingClipCount": 0,
+      "audioCoveragePercent": 100,
+      "customNarrationPercent": 100
+    },
+    {
+      "key": "grade1-batch2",
+      "label": "一年级下册第二批讲堂站点",
+      "description": "覆盖一年级下册语文和数学的 8 个主路径系统站点，共 40 条讲堂旁白切片。",
+      "lessonCount": 8,
+      "clipCount": 40,
+      "customClipCount": 0,
+      "audioClipCount": 40,
+      "missingClipCount": 0,
+      "audioCoveragePercent": 100,
+      "customNarrationPercent": 0
+    },
+    {
+      "key": "grade2-batch1",
+      "label": "二年级上册首批讲堂站点",
+      "description": "覆盖二年级上册语文和数学的 8 个主路径系统站点，共 40 条讲堂旁白切片。",
+      "lessonCount": 8,
+      "clipCount": 40,
+      "customClipCount": 10,
+      "audioClipCount": 40,
+      "missingClipCount": 0,
+      "audioCoveragePercent": 100,
+      "customNarrationPercent": 25
+    },
+    {
+      "key": "grade2-batch2",
+      "label": "二年级下册第二批讲堂站点",
+      "description": "覆盖二年级下册语文和数学的 8 个主路径系统站点，共 40 条讲堂旁白切片。",
+      "lessonCount": 8,
+      "clipCount": 40,
+      "customClipCount": 0,
+      "audioClipCount": 40,
+      "missingClipCount": 0,
+      "audioCoveragePercent": 100,
+      "customNarrationPercent": 0
+    },
+    {
+      "key": "grade3-batch1",
+      "label": "三年级上册首批讲堂站点",
+      "description": "覆盖三年级上册语文和数学的 8 个主路径系统站点，共 40 条讲堂旁白切片。",
+      "lessonCount": 8,
+      "clipCount": 40,
+      "customClipCount": 5,
+      "audioClipCount": 40,
+      "missingClipCount": 0,
+      "audioCoveragePercent": 100,
+      "customNarrationPercent": 12.5
+    },
+    {
+      "key": "grade3-batch2",
+      "label": "三年级下册第二批讲堂站点",
+      "description": "覆盖三年级下册语文和数学的 8 个主路径系统站点，共 40 条讲堂旁白切片。",
+      "lessonCount": 8,
+      "clipCount": 40,
+      "customClipCount": 0,
+      "audioClipCount": 40,
+      "missingClipCount": 0,
+      "audioCoveragePercent": 100,
+      "customNarrationPercent": 0
+    },
+    {
+      "key": "grade3-english-batch1",
+      "label": "三年级上册英语首批讲堂站点",
+      "description": "覆盖三年级上册英语 4 个系统站点，共 20 条讲堂旁白切片。",
+      "lessonCount": 4,
+      "clipCount": 20,
+      "customClipCount": 5,
+      "audioClipCount": 20,
+      "missingClipCount": 0,
+      "audioCoveragePercent": 100,
+      "customNarrationPercent": 25
+    },
+    {
+      "key": "grade3-english-batch2",
+      "label": "三年级下册英语第二批讲堂站点",
+      "description": "覆盖三年级下册英语 4 个系统站点，共 20 条讲堂旁白切片。",
+      "lessonCount": 4,
+      "clipCount": 20,
+      "customClipCount": 0,
+      "audioClipCount": 20,
+      "missingClipCount": 0,
+      "audioCoveragePercent": 100,
+      "customNarrationPercent": 0
+    },
+    {
+      "key": "grade4-batch1",
+      "label": "四年级上册首批讲堂站点",
+      "description": "覆盖四年级上册语文和数学的 8 个主路径系统站点，共 40 条讲堂旁白切片。",
+      "lessonCount": 8,
+      "clipCount": 40,
+      "customClipCount": 0,
+      "audioClipCount": 40,
+      "missingClipCount": 0,
+      "audioCoveragePercent": 100,
+      "customNarrationPercent": 0
+    },
+    {
+      "key": "grade4-english-batch1",
+      "label": "四年级上册英语首批讲堂站点",
+      "description": "覆盖四年级上册英语 4 个系统站点，共 20 条讲堂旁白切片。",
+      "lessonCount": 4,
+      "clipCount": 20,
+      "customClipCount": 5,
+      "audioClipCount": 20,
+      "missingClipCount": 0,
+      "audioCoveragePercent": 100,
+      "customNarrationPercent": 25
+    },
+    {
+      "key": "grade4-lower-english-batch1",
+      "label": "四年级下册英语首批讲堂站点",
+      "description": "覆盖四年级下册英语 4 个系统站点，共 20 条讲堂旁白切片。",
+      "lessonCount": 4,
+      "clipCount": 20,
+      "customClipCount": 10,
+      "audioClipCount": 20,
+      "missingClipCount": 0,
+      "audioCoveragePercent": 100,
+      "customNarrationPercent": 50
+    },
+    {
+      "key": "grade4-batch2",
+      "label": "四年级下册第二批讲堂站点",
+      "description": "覆盖四年级下册语文和数学的 8 个主路径系统站点，共 40 条讲堂旁白切片。",
+      "lessonCount": 8,
+      "clipCount": 40,
+      "customClipCount": 5,
+      "audioClipCount": 40,
+      "missingClipCount": 0,
+      "audioCoveragePercent": 100,
+      "customNarrationPercent": 12.5
+    },
+    {
+      "key": "grade2-4-editorial-batch1",
+      "label": "二到四年级教研旁白首批重点站",
+      "description": "用于替换二到四年级重点站点默认拼装旁白的首批教研版讲堂文案，共 30 条切片。",
+      "lessonCount": 6,
+      "clipCount": 30,
+      "customClipCount": 30,
+      "audioClipCount": 30,
+      "missingClipCount": 0,
+      "audioCoveragePercent": 100,
+      "customNarrationPercent": 100
+    },
+    {
+      "key": "grade5-batch1",
+      "label": "五年级上册首批讲堂站点",
+      "description": "覆盖五年级上册语文和数学的 8 个主路径系统站点，共 40 条讲堂旁白切片。",
+      "lessonCount": 8,
+      "clipCount": 40,
+      "customClipCount": 10,
+      "audioClipCount": 40,
+      "missingClipCount": 0,
+      "audioCoveragePercent": 100,
+      "customNarrationPercent": 25
+    },
+    {
+      "key": "grade5-english-batch1",
+      "label": "五年级上册英语首批讲堂站点",
+      "description": "覆盖五年级上册英语 4 个系统站点，共 20 条讲堂旁白切片。",
+      "lessonCount": 4,
+      "clipCount": 20,
+      "customClipCount": 10,
+      "audioClipCount": 20,
+      "missingClipCount": 0,
+      "audioCoveragePercent": 100,
+      "customNarrationPercent": 50
+    },
+    {
+      "key": "grade5-batch2",
+      "label": "五年级下册第二批讲堂站点",
+      "description": "覆盖五年级下册语文和数学的 8 个主路径系统站点，共 40 条讲堂旁白切片。",
+      "lessonCount": 8,
+      "clipCount": 40,
+      "customClipCount": 10,
+      "audioClipCount": 40,
+      "missingClipCount": 0,
+      "audioCoveragePercent": 100,
+      "customNarrationPercent": 25
+    },
+    {
+      "key": "grade5-english-batch2",
+      "label": "五年级下册英语第二批讲堂站点",
+      "description": "覆盖五年级下册英语 4 个系统站点，共 20 条讲堂旁白切片。",
+      "lessonCount": 4,
+      "clipCount": 20,
+      "customClipCount": 5,
+      "audioClipCount": 20,
+      "missingClipCount": 0,
+      "audioCoveragePercent": 100,
+      "customNarrationPercent": 25
+    },
+    {
+      "key": "grade6-batch1",
+      "label": "六年级上册首批讲堂站点",
+      "description": "覆盖六年级上册语文和数学的 8 个主路径系统站点，共 40 条讲堂旁白切片。",
+      "lessonCount": 8,
+      "clipCount": 40,
+      "customClipCount": 10,
+      "audioClipCount": 40,
+      "missingClipCount": 0,
+      "audioCoveragePercent": 100,
+      "customNarrationPercent": 25
+    },
+    {
+      "key": "grade6-english-batch1",
+      "label": "六年级上册英语首批讲堂站点",
+      "description": "覆盖六年级上册英语 4 个系统站点，共 20 条讲堂旁白切片。",
+      "lessonCount": 4,
+      "clipCount": 20,
+      "customClipCount": 5,
+      "audioClipCount": 20,
+      "missingClipCount": 0,
+      "audioCoveragePercent": 100,
+      "customNarrationPercent": 25
+    },
+    {
+      "key": "grade6-batch2",
+      "label": "六年级下册第二批讲堂站点",
+      "description": "覆盖六年级下册语文和数学的 8 个主路径系统站点，共 40 条讲堂旁白切片。",
+      "lessonCount": 8,
+      "clipCount": 40,
+      "customClipCount": 20,
+      "audioClipCount": 40,
+      "missingClipCount": 0,
+      "audioCoveragePercent": 100,
+      "customNarrationPercent": 50
+    },
+    {
+      "key": "grade6-english-batch2",
+      "label": "六年级下册英语第二批讲堂站点",
+      "description": "覆盖六年级下册英语 4 个系统站点，共 20 条讲堂旁白切片。",
+      "lessonCount": 4,
+      "clipCount": 20,
+      "customClipCount": 10,
+      "audioClipCount": 20,
+      "missingClipCount": 0,
+      "audioCoveragePercent": 100,
+      "customNarrationPercent": 50
+    },
+    {
+      "key": "grade4-5-editorial-batch2",
+      "label": "四到五年级教研旁白第二批重点站",
+      "description": "用于替换四到五年级重点站点默认拼装旁白的第二批教研版讲堂文案，共 30 条切片。",
+      "lessonCount": 6,
+      "clipCount": 30,
+      "customClipCount": 30,
+      "audioClipCount": 30,
+      "missingClipCount": 0,
+      "audioCoveragePercent": 100,
+      "customNarrationPercent": 100
+    },
+    {
+      "key": "grade5-6-editorial-batch3",
+      "label": "五到六年级教研旁白第三批重点站",
+      "description": "用于替换五到六年级重点站点默认拼装旁白的第三批教研版讲堂文案，共 30 条切片。",
+      "lessonCount": 6,
+      "clipCount": 30,
+      "customClipCount": 30,
+      "audioClipCount": 30,
+      "missingClipCount": 0,
+      "audioCoveragePercent": 100,
+      "customNarrationPercent": 100
+    },
+    {
+      "key": "grade6-editorial-batch4",
+      "label": "六年级教研旁白第四批重点站",
+      "description": "用于替换六年级下册重点站点默认拼装旁白的第四批教研版讲堂文案，共 30 条切片。",
+      "lessonCount": 6,
+      "clipCount": 30,
+      "customClipCount": 30,
+      "audioClipCount": 30,
+      "missingClipCount": 0,
+      "audioCoveragePercent": 100,
+      "customNarrationPercent": 100
+    }
+  ]
+}
