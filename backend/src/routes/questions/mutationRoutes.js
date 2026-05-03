@@ -15,6 +15,7 @@ const {
   parseQuestionId,
   parseQuestionIds,
   normalizeKnowledgeTag,
+  normalizeImageUrl,
   serializeQuestionRow,
   findQuestionById,
   findQuestionsByIds
@@ -114,9 +115,13 @@ router.patch("/batch/update", requireImportAccess, (req, res, next) => {
     normalizedChanges.knowledgeTag = normalizeKnowledgeTag(changes.knowledgeTag);
   }
 
+  if (changes.imageUrl !== undefined) {
+    normalizedChanges.imageUrl = normalizeImageUrl(changes.imageUrl);
+  }
+
   if (Object.keys(normalizedChanges).length === 0) {
     res.status(400).json({
-      message: "changes 至少要包含 subject、grade、semester、difficulty、knowledgeTag 中的一项。"
+      message: "changes 至少要包含 subject、grade、semester、difficulty、knowledgeTag、imageUrl 中的一项。"
     });
     return;
   }
@@ -172,6 +177,11 @@ router.patch("/batch/update", requireImportAccess, (req, res, next) => {
     if (normalizedChanges.knowledgeTag !== undefined) {
       setClauses.push("knowledgeTag = ?");
       params.push(normalizedChanges.knowledgeTag);
+    }
+
+    if (normalizedChanges.imageUrl !== undefined) {
+      setClauses.push("imageUrl = ?");
+      params.push(normalizedChanges.imageUrl);
     }
 
     setClauses.push("updatedAt = CURRENT_TIMESTAMP");
@@ -297,6 +307,7 @@ router.patch("/:id", requireImportAccess, (req, res, next) => {
           knowledgeTag = ?,
           type = ?,
           content = ?,
+          imageUrl = ?,
           options = ?,
           answer = ?,
           explanation = ?,
@@ -311,6 +322,7 @@ router.patch("/:id", requireImportAccess, (req, res, next) => {
         validationResult.question.knowledgeTag,
         validationResult.question.type,
         validationResult.question.content,
+        validationResult.question.imageUrl,
         JSON.stringify(validationResult.question.options),
         validationResult.question.answer,
         validationResult.question.explanation,

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#f8fbff"/>
+  <rect x="72" y="92" width="136" height="96" rx="18" fill="#ffd6a5"/><text x="140" y="151" text-anchor="middle" font-size="42" font-family="Arial" font-weight="700" fill="#24324a">A类 36</text>
+  <circle cx="240" cy="140" r="34" fill="#ffffff" stroke="#cfd8ea" stroke-width="4"/>
+  <text x="240" y="152" text-anchor="middle" font-size="42" font-family="Arial" font-weight="700" fill="#5b6984">?</text>
+  <rect x="272" y="92" width="136" height="96" rx="18" fill="#8ecae6"/><text x="340" y="151" text-anchor="middle" font-size="42" font-family="Arial" font-weight="700" fill="#24324a">B类 29</text>
+  <text x="240" y="226" text-anchor="middle" font-size="26" font-family="Arial" fill="#5b6984">哪一类更多？</text>
+</svg>

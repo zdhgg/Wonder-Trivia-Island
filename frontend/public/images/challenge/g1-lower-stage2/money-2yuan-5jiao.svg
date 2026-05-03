@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#eef7ff"/>
+  <circle cx="164" cy="140" r="54" fill="#ffd166"/><text x="164" y="152" text-anchor="middle" font-size="34" font-family="Arial" font-weight="700" fill="#24324a">1元</text>
+  <circle cx="246" cy="140" r="54" fill="#ffd166"/><text x="246" y="152" text-anchor="middle" font-size="34" font-family="Arial" font-weight="700" fill="#24324a">1元</text>
+  <circle cx="346" cy="140" r="38" fill="#8ecae6"/><text x="346" y="149" text-anchor="middle" font-size="30" font-family="Arial" font-weight="700" fill="#24324a">5角</text>
+</svg>

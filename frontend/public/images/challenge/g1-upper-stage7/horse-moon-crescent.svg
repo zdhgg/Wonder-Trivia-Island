@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#eef7ff"/>
+  <ellipse cx="150" cy="170" rx="72" ry="42" fill="#c68642" stroke="#8d5524" stroke-width="4"/>
+  <circle cx="210" cy="132" r="26" fill="#c68642" stroke="#8d5524" stroke-width="4"/>
+  <circle cx="202" cy="128" r="4" fill="#24324a"/><circle cx="216" cy="128" r="4" fill="#24324a"/>
+  <path d="M202 142q7 6 14 0" stroke="#24324a" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <circle cx="334" cy="116" r="36" fill="#ffe066"/>
+  <circle cx="350" cy="108" r="36" fill="#f4fbff"/>
+  <text x="240" y="236" text-anchor="middle" font-size="30" font-family="Arial" font-weight="700" fill="#42506a">小马画（ ? ）</text>
+</svg>

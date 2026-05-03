@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#f8fbff"/>
+  <ellipse cx="148" cy="154" rx="84" ry="52" fill="#f4e1c1"/>
+  <circle cx="218" cy="126" r="28" fill="#f4e1c1"/>
+  <circle cx="118" cy="154" r="14" fill="#8d5524"/><circle cx="178" cy="154" r="14" fill="#8d5524"/>
+  <circle cx="340" cy="154" r="42" fill="#d9d9d9"/>
+  <circle cx="314" cy="126" r="14" fill="#d9d9d9"/><circle cx="366" cy="126" r="14" fill="#d9d9d9"/>
+  <text x="240" y="234" text-anchor="middle" font-size="28" font-family="Arial" font-weight="700" fill="#42506a">看图找对应的一组</text>
+</svg>

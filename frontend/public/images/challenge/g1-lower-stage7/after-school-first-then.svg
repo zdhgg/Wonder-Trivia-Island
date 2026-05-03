@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#eef7ff"/>
+  <rect x="70" y="92" width="150" height="94" rx="20" fill="#dff4ff"/><text x="145" y="148" text-anchor="middle" font-size="30" font-family="Arial" font-weight="700" fill="#42506a">先写作业</text>
+  <path d="M236 140h52" stroke="#8ecae6" stroke-width="10" stroke-linecap="round"/>
+  <path d="M274 120l24 20-24 20z" fill="#24324a"/>
+  <rect x="310" y="92" width="100" height="94" rx="20" fill="#fff1c9"/><text x="360" y="148" text-anchor="middle" font-size="30" font-family="Arial" font-weight="700" fill="#42506a">再看书</text>
+</svg>

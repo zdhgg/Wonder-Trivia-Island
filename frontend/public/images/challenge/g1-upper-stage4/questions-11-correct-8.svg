@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#f8fbff"/>
+  <g transform="translate(52 70)">
+    <g fill="#a8d5ff">
+      <rect x="0" y="0" width="46" height="46" rx="10"/><rect x="58" y="0" width="46" height="46" rx="10"/><rect x="116" y="0" width="46" height="46" rx="10"/><rect x="174" y="0" width="46" height="46" rx="10"/><rect x="232" y="0" width="46" height="46" rx="10"/><rect x="290" y="0" width="46" height="46" rx="10"/>
+      <rect x="29" y="62" width="46" height="46" rx="10"/><rect x="87" y="62" width="46" height="46" rx="10"/><rect x="145" y="62" width="46" height="46" rx="10"/><rect x="203" y="62" width="46" height="46" rx="10"/><rect x="261" y="62" width="46" height="46" rx="10"/>
+    </g>
+    <g stroke="#2e7d32" stroke-width="6" stroke-linecap="round">
+      <path d="M10 24l12 12 18-22"/><path d="M68 24l12 12 18-22"/><path d="M126 24l12 12 18-22"/><path d="M184 24l12 12 18-22"/>
+      <path d="M242 24l12 12 18-22"/><path d="M300 24l12 12 18-22"/><path d="M39 86l12 12 18-22"/><path d="M97 86l12 12 18-22"/>
+    </g>
+    <text x="178" y="138" text-anchor="middle" font-size="28" font-family="Arial" font-weight="700" fill="#42506a">一共 11 道，对了 8 道</text>
+  </g>
+</svg>

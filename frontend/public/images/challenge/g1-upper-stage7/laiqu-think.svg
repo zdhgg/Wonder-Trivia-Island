@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#eef7ff"/>
+  <circle cx="174" cy="150" r="38" fill="#ffd166"/>
+  <circle cx="226" cy="110" r="18" fill="#dff4ff"/>
+  <circle cx="262" cy="88" r="14" fill="#dff4ff"/>
+  <circle cx="290" cy="68" r="10" fill="#dff4ff"/>
+  <text x="240" y="230" text-anchor="middle" font-size="34" font-family="Arial" font-weight="700" fill="#42506a">同类词（ ? ）</text>
+</svg>

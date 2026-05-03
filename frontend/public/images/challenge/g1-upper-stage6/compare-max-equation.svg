@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#f8fbff"/>
+  <rect x="34" y="78" width="96" height="56" rx="14" fill="#ffd6a5"/><text x="82" y="116" text-anchor="middle" font-size="28" font-family="Arial" font-weight="700" fill="#24324a">A</text>
+  <rect x="146" y="78" width="96" height="56" rx="14" fill="#ffcad4"/><text x="194" y="116" text-anchor="middle" font-size="28" font-family="Arial" font-weight="700" fill="#24324a">B</text>
+  <rect x="258" y="78" width="96" height="56" rx="14" fill="#caffbf"/><text x="306" y="116" text-anchor="middle" font-size="28" font-family="Arial" font-weight="700" fill="#24324a">C</text>
+  <rect x="370" y="78" width="76" height="56" rx="14" fill="#bde0fe"/><text x="408" y="116" text-anchor="middle" font-size="28" font-family="Arial" font-weight="700" fill="#24324a">D</text>
+  <text x="240" y="212" text-anchor="middle" font-size="30" font-family="Arial" fill="#5b6984">哪个结果最大？</text>
+</svg>

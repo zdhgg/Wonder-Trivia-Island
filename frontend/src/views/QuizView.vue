@@ -97,6 +97,9 @@ export default {
               <div class="quiz-card__prompt-copy">
                 <p v-if="currentQuestion.type" class="quiz-card__type">{{ currentQuestion.type }}</p>
                 <h2 class="quiz-card__question">{{ currentQuestion.content }}</h2>
+                <div v-if="currentQuestion.imageUrl" class="quiz-card__image-wrap">
+                  <img :src="currentQuestion.imageUrl" alt="题目配图" class="quiz-card__image" loading="lazy" />
+                </div>
               </div>
             </div>
 

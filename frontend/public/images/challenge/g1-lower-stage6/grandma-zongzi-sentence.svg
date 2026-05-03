@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#f4fbf5"/>
+  <path d="M128 190l44-82 44 82-44 28z" fill="#57cc99"/><path d="M244 190l44-82 44 82-44 28z" fill="#57cc99"/>
+  <text x="240" y="244" text-anchor="middle" font-size="26" font-family="Arial" font-weight="700" fill="#42506a">把词语连成通顺句子</text>
+</svg>

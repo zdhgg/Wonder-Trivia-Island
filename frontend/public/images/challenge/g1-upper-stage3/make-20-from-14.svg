@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#f8fbff"/>
+  <rect x="72" y="92" width="140" height="96" rx="18" fill="#dff4ff"/><text x="142" y="150" text-anchor="middle" font-size="54" font-family="Arial" font-weight="700" fill="#24324a">14</text>
+  <text x="240" y="150" text-anchor="middle" font-size="46" font-family="Arial" font-weight="700" fill="#5b6984">+</text>
+  <rect x="268" y="92" width="140" height="96" rx="18" fill="#fff4cc"/><text x="338" y="150" text-anchor="middle" font-size="54" font-family="Arial" font-weight="700" fill="#24324a">?</text>
+  <text x="240" y="232" text-anchor="middle" font-size="32" font-family="Arial" fill="#5b6984">合起来是 20</text>
+</svg>

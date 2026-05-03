@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#f8fbff"/>
+  <circle cx="138" cy="146" r="54" fill="#ff6b6b"/>
+  <path d="M138 92c18-18 38-12 46-2" stroke="#4caf50" stroke-width="6" fill="none"/>
+  <circle cx="318" cy="140" r="42" fill="#ffd166"/>
+  <text x="240" y="228" text-anchor="middle" font-size="34" font-family="Arial" font-weight="700" fill="#42506a">同类词（ ? ）</text>
+</svg>

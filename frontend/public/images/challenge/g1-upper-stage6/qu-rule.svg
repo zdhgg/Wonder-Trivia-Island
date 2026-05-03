@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#f8fbff"/>
+  <text x="176" y="146" text-anchor="middle" font-size="56" font-family="Arial" font-weight="700" fill="#42506a">q + ü</text>
+  <path d="M246 140h54" stroke="#8ecae6" stroke-width="10" stroke-linecap="round"/>
+  <path d="M286 120l24 20-24 20z" fill="#24324a"/>
+  <text x="356" y="146" text-anchor="middle" font-size="56" font-family="Arial" font-weight="700" fill="#24324a">?</text>
+</svg>

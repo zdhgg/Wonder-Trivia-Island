@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#f8fbff"/>
+  <rect x="86" y="82" width="308" height="116" rx="18" fill="#ffffff" stroke="#d7dfeb" stroke-width="4"/>
+  <text x="240" y="126" text-anchor="middle" font-size="28" font-family="Arial" fill="#24324a">今天天气真好</text>
+  <text x="240" y="160" text-anchor="middle" font-size="54" font-family="Arial" font-weight="700" fill="#ff7f50">，</text>
+  <text x="240" y="188" text-anchor="middle" font-size="28" font-family="Arial" fill="#24324a">我们一起去公园</text>
+</svg>

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#f9fbff"/>
+  <g transform="translate(42 74)">
+    <g>
+      <circle cx="28" cy="24" r="16" fill="#ffd166"/><rect x="16" y="44" width="24" height="48" rx="10" fill="#6ec6ff"/>
+      <circle cx="78" cy="24" r="16" fill="#ffd166"/><rect x="66" y="44" width="24" height="48" rx="10" fill="#6ec6ff"/>
+      <circle cx="128" cy="24" r="16" fill="#ffd166"/><rect x="116" y="44" width="24" height="48" rx="10" fill="#6ec6ff"/>
+      <circle cx="178" cy="24" r="16" fill="#ffd166"/><rect x="166" y="44" width="24" height="48" rx="10" fill="#6ec6ff"/>
+      <circle cx="228" cy="24" r="16" fill="#ffd166"/><rect x="216" y="44" width="24" height="48" rx="10" fill="#6ec6ff"/>
+      <circle cx="278" cy="24" r="16" fill="#ffd166"/><rect x="266" y="44" width="24" height="48" rx="10" fill="#6ec6ff"/>
+      <circle cx="328" cy="24" r="16" fill="#ffd166"/><rect x="316" y="44" width="24" height="48" rx="10" fill="#6ec6ff"/>
+    </g>
+    <g transform="translate(18 16)">
+      <circle cx="28" cy="104" r="16" fill="#ffcad4"/><path d="M16 124h24v40H16z" fill="#ff8fab"/><path d="M16 124l-10 24h44l-10-24" fill="#ff8fab"/>
+      <circle cx="78" cy="104" r="16" fill="#ffcad4"/><path d="M66 124h24v40H66z" fill="#ff8fab"/><path d="M66 124l-10 24h44l-10-24" fill="#ff8fab"/>
+      <circle cx="128" cy="104" r="16" fill="#ffcad4"/><path d="M116 124h24v40H116z" fill="#ff8fab"/><path d="M116 124l-10 24h44l-10-24" fill="#ff8fab"/>
+      <circle cx="178" cy="104" r="16" fill="#ffcad4"/><path d="M166 124h24v40H166z" fill="#ff8fab"/><path d="M166 124l-10 24h44l-10-24" fill="#ff8fab"/>
+      <circle cx="228" cy="104" r="16" fill="#ffcad4"/><path d="M216 124h24v40H216z" fill="#ff8fab"/><path d="M216 124l-10 24h44l-10-24" fill="#ff8fab"/>
+    </g>
+  </g>
+</svg>

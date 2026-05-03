@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#f8fbff"/>
+  <g transform="translate(42 70)">
+    <g>
+      <rect x="0" y="0" width="28" height="96" rx="8" fill="#ffb703"/><rect x="34" y="0" width="28" height="96" rx="8" fill="#8ecae6"/><rect x="68" y="0" width="28" height="96" rx="8" fill="#fb8500"/><rect x="102" y="0" width="28" height="96" rx="8" fill="#90be6d"/>
+      <rect x="136" y="0" width="28" height="96" rx="8" fill="#ffb703"/><rect x="170" y="0" width="28" height="96" rx="8" fill="#8ecae6"/><rect x="204" y="0" width="28" height="96" rx="8" fill="#fb8500"/><rect x="238" y="0" width="28" height="96" rx="8" fill="#90be6d"/>
+      <rect x="272" y="0" width="28" height="96" rx="8" fill="#ffb703"/><rect x="306" y="0" width="28" height="96" rx="8" fill="#8ecae6"/><rect x="17" y="20" width="28" height="96" rx="8" fill="#fb8500"/>
+      <rect x="51" y="20" width="28" height="96" rx="8" fill="#90be6d"/><rect x="85" y="20" width="28" height="96" rx="8" fill="#ffb703"/><rect x="119" y="20" width="28" height="96" rx="8" fill="#8ecae6"/>
+      <rect x="153" y="20" width="28" height="96" rx="8" fill="#fb8500"/><rect x="187" y="20" width="28" height="96" rx="8" fill="#90be6d"/>
+    </g>
+    <text x="346" y="48" font-size="30" font-family="Arial" font-weight="700" fill="#42506a">拿走 7 本</text>
+    <text x="346" y="100" font-size="30" font-family="Arial" font-weight="700" fill="#42506a">还剩几本？</text>
+  </g>
+</svg>

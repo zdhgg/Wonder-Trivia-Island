@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#f8fbff"/>
+  <text x="224" y="128" text-anchor="middle" font-size="38" font-family="Arial" font-weight="700" fill="#42506a">快来和我一起玩</text>
+  <rect x="330" y="76" width="78" height="128" rx="20" fill="#fff1c9"/>
+  <rect x="362" y="94" width="14" height="70" rx="7" fill="#24324a"/>
+  <circle cx="369" cy="184" r="10" fill="#24324a"/>
+</svg>

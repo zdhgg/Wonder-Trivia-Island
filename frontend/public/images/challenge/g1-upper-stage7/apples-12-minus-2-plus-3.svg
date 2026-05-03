@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#f8fbff"/>
+  <g transform="translate(40 58)" fill="#ff6b6b">
+    <circle cx="28" cy="28" r="16"/><circle cx="68" cy="28" r="16"/><circle cx="108" cy="28" r="16"/><circle cx="148" cy="28" r="16"/>
+    <circle cx="188" cy="28" r="16"/><circle cx="228" cy="28" r="16"/><circle cx="268" cy="28" r="16"/><circle cx="308" cy="28" r="16"/>
+    <circle cx="48" cy="68" r="16"/><circle cx="88" cy="68" r="16"/><circle cx="128" cy="68" r="16"/><circle cx="168" cy="68" r="16"/>
+  </g>
+  <text x="240" y="226" text-anchor="middle" font-size="28" font-family="Arial" fill="#5b6984">吃掉 2 个，又放进 3 个</text>
+</svg>

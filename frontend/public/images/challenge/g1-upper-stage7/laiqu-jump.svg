@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#eef7ff"/>
+  <path d="M86 178c46-54 92-54 138 0" stroke="#8ecae6" stroke-width="10" fill="none" stroke-linecap="round"/>
+  <path d="M394 178c-46-54-92-54-138 0" stroke="#8ecae6" stroke-width="10" fill="none" stroke-linecap="round"/>
+  <text x="240" y="112" text-anchor="middle" font-size="34" font-family="Arial" font-weight="700" fill="#42506a">同类词（ ? ）</text>
+</svg>

@@ -45,6 +45,7 @@ function buildCreateTableSql(tableName = QUESTIONS_TABLE) {
       knowledgeTag TEXT NOT NULL DEFAULT '',
       type TEXT NOT NULL CHECK (type IN (${buildAllowedTypesSql()})),
       content TEXT NOT NULL,
+      imageUrl TEXT NOT NULL DEFAULT '',
       options TEXT NOT NULL,
       answer TEXT NOT NULL,
       explanation TEXT NOT NULL,
@@ -65,6 +66,7 @@ const insertSql = `
     knowledgeTag,
     type,
     content,
+    imageUrl,
     options,
     answer,
     explanation,
@@ -72,7 +74,7 @@ const insertSql = `
     createdAt,
     updatedAt
   )
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
 `;
 
 function getQuestionPolicyIssues({ subject, grade, semester }) {
@@ -108,6 +110,7 @@ function isQuestionsTableSchemaUpToDate(tableSql = "", columns = []) {
     "knowledgeTag",
     "type",
     "content",
+    "imageUrl",
     "options",
     "answer",
     "explanation",
@@ -149,6 +152,7 @@ function rebuildQuestionsTable(db, columns = []) {
   const hasGradeColumn = columns.some((column) => column.name === "grade");
   const hasSemesterColumn = columns.some((column) => column.name === "semester");
   const hasKnowledgeTagColumn = columns.some((column) => column.name === "knowledgeTag");
+  const hasImageUrlColumn = columns.some((column) => column.name === "imageUrl");
   const hasCreatedAtColumn = columns.some((column) => column.name === "createdAt");
   const hasUpdatedAtColumn = columns.some((column) => column.name === "updatedAt");
   const tempTableName = `${QUESTIONS_TABLE}__next`;
@@ -160,6 +164,7 @@ function rebuildQuestionsTable(db, columns = []) {
     hasKnowledgeTagColumn ? "COALESCE(NULLIF(knowledgeTag, ''), '') AS knowledgeTag" : "'' AS knowledgeTag",
     "type",
     "content",
+    hasImageUrlColumn ? "COALESCE(NULLIF(imageUrl, ''), '') AS imageUrl" : "'' AS imageUrl",
     "options",
     "answer",
     "explanation",
@@ -183,6 +188,7 @@ function rebuildQuestionsTable(db, columns = []) {
           knowledgeTag,
           type,
           content,
+          imageUrl,
           options,
           answer,
           explanation,
@@ -234,6 +240,7 @@ function insertQuestion(db, question) {
     String(question.knowledgeTag || "").trim().slice(0, MAX_KNOWLEDGE_TAG_LENGTH),
     question.type,
     question.content,
+    String(question.imageUrl || "").trim(),
     JSON.stringify(question.options),
     question.answer,
     question.explanation,

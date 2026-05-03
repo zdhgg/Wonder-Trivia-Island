@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#f8fbff"/>
+  <rect x="32" y="96" width="84" height="88" rx="18" fill="#ffd6a5"/><text x="74" y="151" text-anchor="middle" font-size="52" font-family="Arial" font-weight="700" fill="#24324a">白</text>
+  <rect x="142" y="96" width="84" height="88" rx="18" fill="#ffcad4"/><text x="184" y="151" text-anchor="middle" font-size="52" font-family="Arial" font-weight="700" fill="#24324a">陈</text>
+  <rect x="252" y="96" width="84" height="88" rx="18" fill="#caffbf"/><text x="294" y="151" text-anchor="middle" font-size="52" font-family="Arial" font-weight="700" fill="#24324a">胡</text>
+  <rect x="362" y="96" width="84" height="88" rx="18" fill="#bde0fe"/><text x="404" y="151" text-anchor="middle" font-size="52" font-family="Arial" font-weight="700" fill="#24324a">许</text>
+  <text x="240" y="236" text-anchor="middle" font-size="28" font-family="Arial" fill="#42506a">第 2 个是谁？</text>
+</svg>

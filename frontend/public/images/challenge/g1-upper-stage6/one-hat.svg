@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#f8fbff"/>
+  <ellipse cx="240" cy="170" rx="108" ry="24" fill="#8ecae6"/>
+  <path d="M164 164c0-48 34-90 76-90s76 42 76 90z" fill="#ffd166"/>
+  <text x="240" y="236" text-anchor="middle" font-size="30" font-family="Arial" font-weight="700" fill="#42506a">一（ ? ）帽子</text>
+</svg>

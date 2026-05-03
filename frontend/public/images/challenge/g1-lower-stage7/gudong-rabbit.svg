@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#eef7ff"/>
+  <circle cx="158" cy="144" r="32" fill="#fff" stroke="#d6dbe6" stroke-width="4"/><rect x="138" y="178" width="40" height="34" rx="14" fill="#fff" stroke="#d6dbe6" stroke-width="4"/>
+  <rect x="136" y="96" width="12" height="40" rx="6" fill="#fff" stroke="#d6dbe6" stroke-width="4"/><rect x="168" y="96" width="12" height="40" rx="6" fill="#fff" stroke="#d6dbe6" stroke-width="4"/>
+  <circle cx="148" cy="140" r="4" fill="#24324a"/><circle cx="166" cy="140" r="4" fill="#24324a"/>
+  <path d="M148 154q10 8 20 0" stroke="#24324a" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+  <text x="328" y="144" text-anchor="middle" font-size="40" font-family="Arial" font-weight="700" fill="#42506a">咕咚！</text>
+  <text x="328" y="190" text-anchor="middle" font-size="26" font-family="Arial" fill="#5b6984">小兔为什么跑起来？</text>
+</svg>

@@ -216,6 +216,7 @@ router.get("/random", (req, res, next) => {
 
     const questions = rows.map((row) => ({
       ...row,
+      imageUrl: String(row.imageUrl || "").trim(),
       options: parseQuestionOptions(row.options)
     }));
 

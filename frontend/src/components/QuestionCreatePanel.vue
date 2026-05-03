@@ -141,6 +141,16 @@ defineEmits(["save", "generate-ai", "cancel"]);
       <textarea v-model.trim="draft.content" class="question-editor__textarea" rows="3"></textarea>
     </label>
 
+    <label class="question-editor__field">
+      <span class="question-editor__label">题目图片 URL</span>
+      <input
+        v-model.trim="draft.imageUrl"
+        class="question-editor__input"
+        type="url"
+        placeholder="例如：/images/grade1/apple-count-01.png"
+      />
+    </label>
+
     <div class="question-editor__grid question-editor__grid--meta">
       <label class="question-editor__field">
         <span class="question-editor__label">学科</span>

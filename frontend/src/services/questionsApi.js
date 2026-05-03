@@ -79,6 +79,25 @@ export async function fetchQuestionStats(signal) {
   return payload;
 }
 
+export async function fetchHealthStatus(signal) {
+  const response = await fetch("/api/health", {
+    method: "GET",
+    signal
+  });
+
+  if (!response.ok) {
+    throw new Error(`服务健康检查失败：${response.status}`);
+  }
+
+  const payload = await response.json();
+
+  if (typeof payload?.message !== "string") {
+    throw new Error("服务健康检查结果格式不正确。");
+  }
+
+  return payload;
+}
+
 export async function fetchQuestionCoverage({ targets = [], signal } = {}) {
   const response = await fetch("/api/questions/coverage", {
     method: "POST",

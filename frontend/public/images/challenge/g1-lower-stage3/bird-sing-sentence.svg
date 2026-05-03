@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#eef7ff"/>
+  <path d="M82 182h316" stroke="#8d5524" stroke-width="14" stroke-linecap="round"/>
+  <circle cx="188" cy="148" r="24" fill="#ffd166"/>
+  <path d="M208 148h20l-8 10h-12z" fill="#ff8c42"/>
+  <text x="240" y="236" text-anchor="middle" font-size="26" font-family="Arial" font-weight="700" fill="#42506a">把词语排成通顺句子</text>
+</svg>

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#eef7ff"/>
+  <rect x="76" y="78" width="328" height="128" rx="24" fill="#dff4ff"/>
+  <text x="240" y="128" text-anchor="middle" font-size="30" font-family="Arial" font-weight="700" fill="#42506a">我们在教室里</text>
+  <text x="240" y="170" text-anchor="middle" font-size="30" font-family="Arial" font-weight="700" fill="#42506a">认真地读书</text>
+</svg>

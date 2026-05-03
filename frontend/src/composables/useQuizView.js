@@ -900,6 +900,7 @@ export function useQuizView(props, emit) {
       knowledgeTag: String(question.knowledgeTag || "").trim(),
       type: String(question.type || "").trim(),
       content: String(question.content || "").trim(),
+      imageUrl: String(question.imageUrl || "").trim(),
       difficulty: String(question.difficulty || "").trim(),
       options: Array.isArray(question.options)
         ? question.options.map((option) => ({

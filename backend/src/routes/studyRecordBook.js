@@ -90,6 +90,7 @@ function normalizeQuestionSnapshot(question = {}) {
     knowledgeTag: normalizeText(question?.knowledgeTag, 48),
     type: normalizeText(question?.type, 32),
     content: normalizeText(question?.content, 500),
+    imageUrl: normalizeText(question?.imageUrl, 2000),
     difficulty: normalizeText(question?.difficulty, 8),
     options: normalizeQuestionOptions(question?.options)
   };

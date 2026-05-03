@@ -1,6 +1,6 @@
 {
   "name": "wonder-trivia-island",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "A minimal Node.js + Express + SQLite trivia API for elementary school students.",
   "private": true,
   "main": "src/server.js",

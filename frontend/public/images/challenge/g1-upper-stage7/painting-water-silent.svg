@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#f8fbff"/>
+  <circle cx="122" cy="92" r="30" fill="#f4a261"/>
+  <path d="M62 196c46-56 88-86 124-120 38 36 72 66 118 120z" fill="#90be6d"/>
+  <path d="M312 94c34 20 52 46 74 98" stroke="#5aa9e6" stroke-width="12" fill="none" stroke-linecap="round"/>
+  <text x="350" y="220" text-anchor="middle" font-size="28" font-family="Arial" font-weight="700" fill="#42506a">近听水怎么样？</text>
+</svg>

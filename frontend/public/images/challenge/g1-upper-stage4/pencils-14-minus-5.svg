@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#f8fbff"/>
+  <g transform="translate(34 76)">
+    <g>
+      <rect x="0" y="0" width="18" height="112" rx="8" fill="#ffd166"/><rect x="24" y="0" width="18" height="112" rx="8" fill="#ef476f"/><rect x="48" y="0" width="18" height="112" rx="8" fill="#06d6a0"/><rect x="72" y="0" width="18" height="112" rx="8" fill="#118ab2"/>
+      <rect x="96" y="0" width="18" height="112" rx="8" fill="#ffd166"/><rect x="120" y="0" width="18" height="112" rx="8" fill="#ef476f"/><rect x="144" y="0" width="18" height="112" rx="8" fill="#06d6a0"/><rect x="168" y="0" width="18" height="112" rx="8" fill="#118ab2"/>
+      <rect x="192" y="0" width="18" height="112" rx="8" fill="#ffd166"/><rect x="216" y="0" width="18" height="112" rx="8" fill="#ef476f"/><rect x="240" y="0" width="18" height="112" rx="8" fill="#06d6a0"/><rect x="264" y="0" width="18" height="112" rx="8" fill="#118ab2"/>
+      <rect x="288" y="0" width="18" height="112" rx="8" fill="#ffd166"/><rect x="312" y="0" width="18" height="112" rx="8" fill="#ef476f"/>
+    </g>
+    <text x="338" y="44" font-size="30" font-family="Arial" font-weight="700" fill="#42506a">借出 5 支</text>
+    <text x="338" y="96" font-size="30" font-family="Arial" font-weight="700" fill="#42506a">还剩几支？</text>
+  </g>
+</svg>

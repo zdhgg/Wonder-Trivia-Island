@@ -71,6 +71,15 @@ export const SETTINGS_SECTIONS = Object.freeze([
     sectionTitle: "操作日志",
     category: "utility",
     dirtyKey: ""
+  },
+  {
+    id: "settings-about",
+    href: "#settings-about",
+    routeSlug: "about",
+    navLabel: "关于版本",
+    sectionTitle: "关于与版本",
+    category: "utility",
+    dirtyKey: ""
   }
 ]);
 

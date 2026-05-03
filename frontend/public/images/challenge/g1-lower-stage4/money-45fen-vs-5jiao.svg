@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#f8fbff"/>
+  <circle cx="146" cy="136" r="58" fill="#8ecae6"/><text x="146" y="148" text-anchor="middle" font-size="32" font-family="Arial" font-weight="700" fill="#24324a">45分</text>
+  <circle cx="240" cy="136" r="34" fill="#ffffff" stroke="#cfd8ea" stroke-width="4"/>
+  <text x="240" y="148" text-anchor="middle" font-size="42" font-family="Arial" font-weight="700" fill="#5b6984">?</text>
+  <circle cx="334" cy="136" r="58" fill="#ffd166"/><text x="334" y="148" text-anchor="middle" font-size="34" font-family="Arial" font-weight="700" fill="#24324a">5角</text>
+  <text x="240" y="226" text-anchor="middle" font-size="26" font-family="Arial" fill="#5b6984">哪个更多？</text>
+</svg>

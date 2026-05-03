@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#f9fbff"/>
+  <g font-family="Arial" font-weight="700" fill="#24324a" font-size="46" text-anchor="middle">
+    <rect x="34" y="100" width="72" height="72" rx="18" fill="#ffd6a5"/><text x="70" y="148">5</text>
+    <rect x="122" y="100" width="72" height="72" rx="18" fill="#ffcad4"/><text x="158" y="148">10</text>
+    <rect x="210" y="100" width="72" height="72" rx="18" fill="#caffbf"/><text x="246" y="148">15</text>
+    <rect x="298" y="100" width="72" height="72" rx="18" fill="#bde0fe"/><text x="334" y="148">20</text>
+    <rect x="386" y="100" width="60" height="72" rx="18" fill="#fff1c9"/><text x="416" y="148">?</text>
+  </g>
+  <text x="240" y="226" text-anchor="middle" font-size="28" font-family="Arial" fill="#5b6984">每次加 5</text>
+</svg>

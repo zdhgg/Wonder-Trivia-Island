@@ -401,7 +401,7 @@ const {
           <div v-if="!previewResult" class="placeholder-panel">
             <p class="placeholder-panel__title">还没有预检结果</p>
             <p class="placeholder-panel__text">
-              当前支持 CSV / XLSX；字段顺序推荐为：学科、年级、学期、题型、题目、选项A、选项B、选项C、选项D、答案、解析、难度。
+              当前支持 CSV / XLSX；字段顺序推荐为：学科、年级、学期、题型、题目、题目图片、选项A、选项B、选项C、选项D、答案、解析、难度。
             </p>
           </div>
 

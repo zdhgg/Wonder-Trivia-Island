@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#f8fbff"/>
+  <text x="190" y="144" text-anchor="middle" font-size="38" font-family="Arial" font-weight="700" fill="#42506a">你写完作业了吗</text>
+  <rect x="332" y="82" width="78" height="120" rx="22" fill="#fff1c9"/>
+  <path d="M370 108c0-18 14-30 30-30 16 0 28 12 28 28 0 18-12 28-32 28" stroke="#24324a" stroke-width="10" fill="none" stroke-linecap="round"/>
+  <circle cx="398" cy="184" r="10" fill="#24324a"/>
+</svg>

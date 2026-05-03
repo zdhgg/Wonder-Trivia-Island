@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#f8fbff"/>
+  <circle cx="170" cy="108" r="34" fill="#c68642"/><rect x="142" y="142" width="56" height="70" rx="20" fill="#c68642"/>
+  <circle cx="156" cy="104" r="5" fill="#24324a"/><circle cx="184" cy="104" r="5" fill="#24324a"/>
+  <path d="M158 126q12 10 24 0" stroke="#24324a" stroke-width="4" fill="none" stroke-linecap="round"/>
+  <text x="326" y="150" text-anchor="middle" font-size="30" font-family="Arial" font-weight="700" fill="#42506a">为什么空着手回家？</text>
+</svg>

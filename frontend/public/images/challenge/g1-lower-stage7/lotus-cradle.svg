@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#eef7ff"/>
+  <ellipse cx="240" cy="164" rx="124" ry="52" fill="#57cc99"/>
+  <circle cx="240" cy="132" r="24" fill="#dff4ff"/>
+  <text x="240" y="236" text-anchor="middle" font-size="30" font-family="Arial" font-weight="700" fill="#42506a">荷叶像什么？</text>
+</svg>

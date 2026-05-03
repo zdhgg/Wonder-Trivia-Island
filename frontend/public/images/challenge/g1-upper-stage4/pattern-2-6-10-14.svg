@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#f9fbff"/>
+  <g font-family="Arial" font-weight="700" fill="#24324a" font-size="44" text-anchor="middle">
+    <circle cx="70" cy="140" r="34" fill="#ffd6a5"/><text x="70" y="154">2</text>
+    <circle cx="158" cy="140" r="34" fill="#ffcad4"/><text x="158" y="154">6</text>
+    <circle cx="246" cy="140" r="34" fill="#caffbf"/><text x="246" y="154">10</text>
+    <circle cx="334" cy="140" r="34" fill="#bde0fe"/><text x="334" y="154">14</text>
+    <circle cx="420" cy="140" r="28" fill="#fff1c9"/><text x="420" y="152">?</text>
+  </g>
+  <text x="240" y="224" text-anchor="middle" font-size="28" font-family="Arial" fill="#5b6984">每次加 4</text>
+</svg>

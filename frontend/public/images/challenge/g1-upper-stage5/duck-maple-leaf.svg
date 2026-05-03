@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#eef7ff"/>
+  <ellipse cx="150" cy="162" rx="58" ry="40" fill="#ffe08a"/>
+  <circle cx="192" cy="138" r="24" fill="#ffe08a"/>
+  <path d="M210 140h28l-12 12h-16z" fill="#ff8c42"/>
+  <path d="M320 112l14 32 34 2-26 20 8 34-30-18-30 18 8-34-26-20 34-2z" fill="#e76f51"/>
+  <text x="240" y="232" text-anchor="middle" font-size="32" font-family="Arial" font-weight="700" fill="#42506a">小鸭画（ ? ）</text>
+</svg>

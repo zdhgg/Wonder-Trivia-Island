@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#f8fbff"/>
+  <circle cx="128" cy="126" r="42" fill="#ffb703"/>
+  <g stroke="#ffb703" stroke-width="8" stroke-linecap="round">
+    <path d="M128 54v18"/><path d="M128 180v18"/><path d="M56 126h18"/><path d="M182 126h18"/><path d="M78 76l12 12"/><path d="M166 164l12 12"/><path d="M178 76l-12 12"/><path d="M90 164l-12 12"/>
+  </g>
+  <text x="320" y="144" text-anchor="middle" font-size="40" font-family="Arial" font-weight="700" fill="#42506a">今天真热！</text>
+</svg>

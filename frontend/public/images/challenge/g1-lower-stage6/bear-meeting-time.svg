@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#eef7ff"/>
+  <circle cx="144" cy="122" r="34" fill="#c68642"/><circle cx="122" cy="98" r="12" fill="#c68642"/><circle cx="166" cy="98" r="12" fill="#c68642"/>
+  <rect x="118" y="154" width="52" height="58" rx="20" fill="#c68642"/>
+  <circle cx="314" cy="138" r="52" fill="#fff" stroke="#8ecae6" stroke-width="8"/>
+  <line x1="314" y1="138" x2="314" y2="100" stroke="#24324a" stroke-width="8" stroke-linecap="round"/>
+  <line x1="314" y1="138" x2="344" y2="152" stroke="#24324a" stroke-width="10" stroke-linecap="round"/>
+  <text x="314" y="238" text-anchor="middle" font-size="30" font-family="Arial" fill="#42506a">哪句话没说明白？</text>
+</svg>

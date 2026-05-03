@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#102542"/>
+  <g fill="#ffe066">
+    <path d="M120 88l10 22 24 2-18 15 6 24-22-12-22 12 6-24-18-15 24-2z"/>
+    <path d="M240 60l12 26 28 2-21 18 7 28-26-14-26 14 7-28-21-18 28-2z"/>
+    <path d="M350 102l9 20 22 2-17 14 6 22-20-11-20 11 6-22-17-14 22-2z"/>
+  </g>
+  <text x="240" y="228" text-anchor="middle" font-size="34" font-family="Arial" font-weight="700" fill="#f8fbff">闪闪的（ ? ）</text>
+</svg>

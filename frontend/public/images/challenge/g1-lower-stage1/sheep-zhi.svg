@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#f8fbff"/>
+  <ellipse cx="214" cy="156" rx="84" ry="52" fill="#fff" stroke="#d6dbe6" stroke-width="4"/>
+  <circle cx="300" cy="136" r="28" fill="#d9d9d9" stroke="#b9c0cb" stroke-width="4"/>
+  <circle cx="292" cy="132" r="4" fill="#24324a"/><circle cx="308" cy="132" r="4" fill="#24324a"/>
+  <path d="M292 146q8 6 16 0" stroke="#24324a" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+  <ellipse cx="322" cy="122" rx="10" ry="16" fill="#d9d9d9" stroke="#b9c0cb" stroke-width="4"/>
+  <text x="240" y="238" text-anchor="middle" font-size="34" font-family="Arial" font-weight="700" fill="#42506a">一只小羊</text>
+</svg>

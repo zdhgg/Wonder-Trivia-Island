@@ -288,7 +288,7 @@ export function createChallengeRuntime({
         subject: selectedSubjectValue.value,
         grade: chapter.grade,
         semester: chapter.semester || "",
-        knowledgeTag: stage.knowledgeTag || "",
+        knowledgeTag: stage.questionKnowledgeTag || stage.knowledgeTag || "",
         difficulty: stage.difficulty
       }));
       const payload = await fetchQuestionCoverage({

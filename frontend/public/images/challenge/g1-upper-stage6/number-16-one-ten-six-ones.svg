@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#f9fbff"/>
+  <rect x="58" y="82" width="76" height="126" rx="16" fill="#8ecae6"/><text x="96" y="154" text-anchor="middle" font-size="28" font-family="Arial" font-weight="700" fill="#24324a">1个十</text>
+  <g fill="#ffd166">
+    <rect x="188" y="96" width="24" height="92" rx="10"/><rect x="224" y="96" width="24" height="92" rx="10"/><rect x="260" y="96" width="24" height="92" rx="10"/>
+    <rect x="296" y="96" width="24" height="92" rx="10"/><rect x="332" y="96" width="24" height="92" rx="10"/><rect x="368" y="96" width="24" height="92" rx="10"/>
+  </g>
+</svg>

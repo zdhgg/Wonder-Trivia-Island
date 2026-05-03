@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#f4fbf5"/>
+  <path d="M240 88c42 0 76 20 76 20v48c0 46-30 72-76 92-46-20-76-46-76-92v-48s34-20 76-20z" fill="#caffbf" stroke="#90be6d" stroke-width="8"/>
+  <text x="240" y="166" text-anchor="middle" font-size="32" font-family="Arial" font-weight="700" fill="#42506a">意思相近的词</text>
+</svg>

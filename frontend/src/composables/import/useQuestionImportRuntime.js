@@ -9,13 +9,14 @@ import {
 import { useSettingsStore } from "../../stores/useSettingsStore";
 
 const TEMPLATE_ROWS = [
-  ["学科", "年级", "学期", "题型", "题目", "选项A", "选项B", "选项C", "选项D", "答案", "解析", "难度"],
+  ["学科", "年级", "学期", "题型", "题目", "题目图片", "选项A", "选项B", "选项C", "选项D", "答案", "解析", "难度"],
   [
     "语文",
     "一年级",
     "上册",
     "脑筋急转弯",
     "大家看到哪个字，最容易一不小心就“读错”了？",
+    "",
     "错",
     "正",
     "念",
@@ -30,6 +31,7 @@ const TEMPLATE_ROWS = [
     "通用",
     "情景计算",
     "小明有10颗糖，先送给妹妹2颗，又自己吃掉1颗，还剩几颗？",
+    "/images/examples/candy-count.png",
     "7颗",
     "8颗",
     "9颗",
@@ -182,6 +184,7 @@ export function useQuestionImportRuntime({ props, emit }) {
       学期: question?.semester || "",
       题型: question?.type || "",
       题目: question?.content || "",
+      题目图片: question?.imageUrl || "",
       选项A: optionMap.A || "",
       选项B: optionMap.B || "",
       选项C: optionMap.C || "",

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#eef7ff"/>
+  <g fill="#57cc99">
+    <ellipse cx="146" cy="158" rx="60" ry="36"/><ellipse cx="240" cy="132" rx="68" ry="40"/><ellipse cx="334" cy="158" rx="60" ry="36"/>
+  </g>
+  <text x="240" y="236" text-anchor="middle" font-size="30" font-family="Arial" font-weight="700" fill="#42506a">碧绿碧绿的（ ? ）</text>
+</svg>

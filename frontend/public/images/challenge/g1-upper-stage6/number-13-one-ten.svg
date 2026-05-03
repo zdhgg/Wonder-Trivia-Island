@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#f8fbff"/>
+  <rect x="88" y="70" width="304" height="140" rx="24" fill="#fff1c9" stroke="#f5c542" stroke-width="6"/>
+  <text x="240" y="160" text-anchor="middle" font-size="98" font-family="Arial" font-weight="700" fill="#24324a">13</text>
+  <text x="240" y="230" text-anchor="middle" font-size="28" font-family="Arial" fill="#5b6984">左边的 1 在十位</text>
+</svg>

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#f8fbff"/>
+  <path d="M176 98c10-10 24-10 34 0l24 24c10 10 10 24 0 34l-20 20c18 28 44 54 72 72l20-20c10-10 24-10 34 0l24 24c10 10 10 24 0 34-20 20-56 18-98-12-38-28-80-70-108-108-30-42-32-78-12-98z" fill="#8ecae6"/>
+  <text x="240" y="246" text-anchor="middle" font-size="30" font-family="Arial" font-weight="700" fill="#42506a">（ ? ）电话</text>
+</svg>

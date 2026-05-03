@@ -75,6 +75,12 @@ app.get("/health", (req, res) => {
   });
 });
 
+app.get("/api/health", (req, res) => {
+  res.json({
+    message: "Wonder Trivia Island API is running."
+  });
+});
+
 app.use("/api/questions", attachDatabaseConnection, questionsRouter);
 app.use("/api/challenge-progress", challengeProgressRouter);
 app.use("/api/study-record-book", studyRecordBookRouter);

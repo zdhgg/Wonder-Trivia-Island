@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#f8fbff"/>
+  <text x="150" y="150" text-anchor="middle" font-size="86" font-family="Arial" font-weight="700" fill="#42506a">口</text>
+  <text x="260" y="150" text-anchor="middle" font-size="86" font-family="Arial" font-weight="700" fill="#42506a">天</text>
+  <path d="M304 140h54" stroke="#8ecae6" stroke-width="10" stroke-linecap="round"/>
+  <path d="M344 120l24 20-24 20z" fill="#24324a"/>
+  <text x="410" y="150" text-anchor="middle" font-size="86" font-family="Arial" font-weight="700" fill="#24324a">?</text>
+</svg>

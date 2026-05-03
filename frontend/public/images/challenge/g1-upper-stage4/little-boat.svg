@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#eef7ff"/>
+  <circle cx="108" cy="78" r="24" fill="#ffe066"/>
+  <path d="M220 74q52-42 104 0-52 42-104 0z" fill="#fff1a8"/>
+  <circle cx="252" cy="74" r="10" fill="#ffd166"/>
+  <rect x="242" y="86" width="20" height="36" rx="8" fill="#8ecae6"/>
+  <g fill="#b9d6f2">
+    <circle cx="86" cy="170" r="26"/><circle cx="138" cy="156" r="22"/><circle cx="190" cy="176" r="24"/><circle cx="266" cy="162" r="28"/><circle cx="338" cy="176" r="24"/>
+  </g>
+  <text x="240" y="236" text-anchor="middle" font-size="30" font-family="Arial" font-weight="700" fill="#42506a">“我”坐在哪里？</text>
+</svg>

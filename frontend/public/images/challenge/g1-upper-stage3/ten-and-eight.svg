@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#f8fbff"/>
+  <rect x="78" y="74" width="52" height="132" rx="10" fill="#8ecae6"/>
+  <g fill="#ffd166">
+    <circle cx="228" cy="92" r="14"/><circle cx="268" cy="92" r="14"/><circle cx="308" cy="92" r="14"/><circle cx="348" cy="92" r="14"/>
+    <circle cx="228" cy="136" r="14"/><circle cx="268" cy="136" r="14"/><circle cx="308" cy="136" r="14"/><circle cx="348" cy="136" r="14"/>
+  </g>
+  <text x="240" y="232" text-anchor="middle" font-size="28" font-family="Arial" font-weight="700" fill="#42506a">1个十 + 8个一</text>
+</svg>

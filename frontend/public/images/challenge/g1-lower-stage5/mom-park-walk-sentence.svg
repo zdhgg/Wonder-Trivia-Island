@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#eef7ff"/>
+  <circle cx="150" cy="122" r="26" fill="#ffd166"/><rect x="132" y="150" width="36" height="66" rx="14" fill="#8ecae6"/>
+  <circle cx="246" cy="122" r="26" fill="#ffd166"/><rect x="228" y="150" width="36" height="66" rx="14" fill="#ff8fab"/>
+  <path d="M322 190c28-44 50-70 92-82" stroke="#57cc99" stroke-width="12" fill="none" stroke-linecap="round"/>
+  <text x="240" y="244" text-anchor="middle" font-size="26" font-family="Arial" font-weight="700" fill="#42506a">把词语连成一句话</text>
+</svg>

@@ -29,6 +29,7 @@ const FIELD_ALIASES = Object.freeze({
   knowledgeTag: ["knowledgetag", "knowledge_tag", "abilitytag", "ability_tag", "能力标签", "知识标签", "知识点", "标签", "闯关标签"],
   type: ["type", "题型", "类型"],
   content: ["content", "question", "题目", "题干"],
+  imageUrl: ["imageurl", "image_url", "questionimage", "question_image", "题目图片", "图片", "配图", "图片地址", "图片链接"],
   optionA: ["optiona", "选项a", "a", "选项1"],
   optionB: ["optionb", "选项b", "b", "选项2"],
   optionC: ["optionc", "选项c", "c", "选项3"],
@@ -163,6 +164,10 @@ function normalizeDifficulty(rawValue) {
 
 function normalizeKnowledgeTag(rawValue) {
   return normalizeText(rawValue).replace(/\s+/g, " ").slice(0, MAX_KNOWLEDGE_TAG_LENGTH);
+}
+
+function normalizeImageUrl(rawValue) {
+  return normalizeText(rawValue).slice(0, 2000);
 }
 
 function buildDuplicateKey(question) {
@@ -359,6 +364,7 @@ function validateRawRow(rawRow, rowNumber) {
   const knowledgeTag = normalizeKnowledgeTag(readField(fieldMap, "knowledgeTag"));
   const type = normalizeText(readField(fieldMap, "type"));
   const content = normalizeText(readField(fieldMap, "content"));
+  const imageUrl = normalizeImageUrl(readField(fieldMap, "imageUrl"));
   const answer = normalizeText(readField(fieldMap, "answer")).toUpperCase();
   const explanation = normalizeText(readField(fieldMap, "explanation"));
   const difficulty = normalizeDifficulty(readField(fieldMap, "difficulty"));
@@ -490,6 +496,7 @@ function validateRawRow(rawRow, rowNumber) {
           knowledgeTag,
           type,
           content,
+          imageUrl,
           options: OPTION_KEYS.map((optionKey, index) => ({
             key: optionKey,
             text: optionTexts[index]
@@ -509,6 +516,7 @@ function validateRawRow(rawRow, rowNumber) {
       knowledgeTag,
       type,
       content,
+      imageUrl,
       answer,
       difficulty: Number.isNaN(difficulty) ? "" : difficulty
     },
@@ -527,6 +535,7 @@ function validatePreparedQuestion(question, rowDescriptor = "题目") {
     knowledgeTag: normalizeKnowledgeTag(question?.knowledgeTag),
     type: normalizeText(question?.type),
     content: normalizeText(question?.content),
+    imageUrl: normalizeImageUrl(question?.imageUrl),
     answer: normalizeText(question?.answer).toUpperCase(),
     explanation: normalizeText(question?.explanation),
     difficulty: Number.parseInt(question?.difficulty, 10),

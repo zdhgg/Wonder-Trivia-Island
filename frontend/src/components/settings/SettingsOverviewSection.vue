@@ -46,7 +46,11 @@ const emit = defineEmits(["open-section"]);
       <button
         v-for="card in cards"
         :key="card.id"
-        :class="['settings-overview-card', `settings-overview-card--${card.tone}`]"
+        :class="[
+          'settings-overview-card',
+          `settings-overview-card--${card.tone}`,
+          card.size ? `settings-overview-card--${card.size}` : ''
+        ]"
         type="button"
         @click="emit('open-section', card.id)"
       >
@@ -131,5 +135,9 @@ const emit = defineEmits(["open-section"]);
   color: var(--color-ink-soft, #5b6984);
   font-size: 0.82rem;
   font-weight: 700;
+}
+
+.settings-overview-card--wide {
+  grid-column: 1 / -1;
 }
 </style>

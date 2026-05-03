@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#eef7ff"/>
+  <rect x="120" y="92" width="240" height="26" rx="10" fill="#c49a6c"/>
+  <rect x="144" y="118" width="18" height="92" rx="8" fill="#8d5524"/>
+  <rect x="318" y="118" width="18" height="92" rx="8" fill="#8d5524"/>
+  <text x="240" y="244" text-anchor="middle" font-size="30" font-family="Arial" font-weight="700" fill="#42506a">一（ ? ）桌子</text>
+</svg>

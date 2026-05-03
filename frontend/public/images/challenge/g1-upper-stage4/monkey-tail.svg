@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#f8fbff"/>
+  <circle cx="180" cy="104" r="34" fill="#c68642"/>
+  <rect x="152" y="138" width="56" height="68" rx="20" fill="#c68642"/>
+  <circle cx="166" cy="98" r="8" fill="#24324a"/><circle cx="194" cy="98" r="8" fill="#24324a"/>
+  <path d="M168 118q12 10 24 0" stroke="#24324a" stroke-width="4" fill="none" stroke-linecap="round"/>
+  <path d="M210 174q48 0 48 42 0 28-24 28" stroke="#8d5524" stroke-width="10" fill="none" stroke-linecap="round"/>
+  <text x="320" y="132" font-size="34" font-family="Arial" font-weight="700" fill="#42506a">谁的尾巴弯？</text>
+</svg>

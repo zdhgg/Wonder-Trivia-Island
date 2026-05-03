@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#eef7ff"/>
+  <rect x="66" y="76" width="148" height="122" rx="24" fill="#ffe8a3" stroke="#f4c542" stroke-width="6"/>
+  <text x="140" y="150" text-anchor="middle" font-size="54" font-family="Arial" font-weight="700" fill="#24324a">56角</text>
+  <path d="M236 138h52" stroke="#96b7d8" stroke-width="8" stroke-linecap="round"/>
+  <path d="M278 122l22 16-22 16" fill="none" stroke="#96b7d8" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="310" y="76" width="104" height="122" rx="24" fill="#dff4ff" stroke="#9fc7de" stroke-width="6"/>
+  <text x="362" y="132" text-anchor="middle" font-size="34" font-family="Arial" font-weight="700" fill="#24324a">?元</text>
+  <text x="362" y="176" text-anchor="middle" font-size="34" font-family="Arial" font-weight="700" fill="#24324a">?角</text>
+  <text x="240" y="232" text-anchor="middle" font-size="28" font-family="Arial" fill="#42506a">换成元和角</text>
+</svg>

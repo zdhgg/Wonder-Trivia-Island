@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#f8fbff"/>
+  <circle cx="114" cy="82" r="26" fill="#ffe066"/>
+  <path d="M240 196c0-50 24-88 24-88s24 38 24 88" fill="#c49a6c"/>
+  <g fill="#f4a261">
+    <ellipse cx="224" cy="120" rx="40" ry="16"/><ellipse cx="272" cy="126" rx="40" ry="16"/><ellipse cx="244" cy="148" rx="44" ry="18"/>
+  </g>
+  <text x="350" y="150" font-size="34" font-family="Arial" font-weight="700" fill="#42506a">谷穗弯弯</text>
+  <text x="350" y="190" font-size="30" font-family="Arial" fill="#5b6984">对应哪个季节？</text>
+</svg>

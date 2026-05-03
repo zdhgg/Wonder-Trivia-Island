@@ -512,6 +512,9 @@ export default {
               <span v-if="question.knowledgeTag" class="question-card__pill question-card__pill--tag">
                 {{ question.knowledgeTag }}
               </span>
+              <span v-if="question.imageUrl" class="question-card__pill question-card__pill--tag">
+                含配图
+              </span>
               <span class="question-card__pill question-card__pill--difficulty">难度 {{ question.difficulty }}</span>
             </div>
 
@@ -530,6 +533,16 @@ export default {
                 <label class="question-editor__field">
                   <span class="question-editor__label">题目</span>
                   <textarea v-model.trim="editingDraft.content" class="question-editor__textarea" rows="3"></textarea>
+                </label>
+
+                <label class="question-editor__field">
+                  <span class="question-editor__label">题目图片 URL</span>
+                  <input
+                    v-model.trim="editingDraft.imageUrl"
+                    class="question-editor__input"
+                    type="url"
+                    placeholder="例如：/images/grade1/apple-count-01.png"
+                  />
                 </label>
 
                 <div class="question-editor__grid question-editor__grid--meta">
@@ -656,6 +669,10 @@ export default {
                   <span v-if="question.knowledgeTag">标签 {{ question.knowledgeTag }}</span>
                   <span>题号 #{{ question.id }}</span>
                 </div>
+              </div>
+
+              <div v-if="question.imageUrl" class="question-card__media">
+                <img :src="question.imageUrl" alt="题目配图预览" class="question-card__media-image" loading="lazy" />
               </div>
 
               <details class="question-card__details">

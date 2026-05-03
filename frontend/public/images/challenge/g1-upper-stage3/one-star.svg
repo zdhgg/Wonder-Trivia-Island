@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#102542"/>
+  <polygon points="240,70 258,120 312,120 268,150 286,202 240,170 194,202 212,150 168,120 222,120" fill="#ffd166"/>
+  <text x="240" y="244" text-anchor="middle" font-size="32" font-family="Arial" fill="#ffffff">一（ ? ）星星</text>
+</svg>

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#f4fbf5"/>
+  <path d="M156 188l54-102 54 102-54 34z" fill="#57cc99"/><path d="M240 188l54-102 54 102-54 34z" fill="#57cc99"/>
+  <path d="M206 112l74 74M290 112l-74 74" stroke="#f7ede2" stroke-width="6"/>
+  <text x="240" y="246" text-anchor="middle" font-size="30" font-family="Arial" font-weight="700" fill="#42506a">端午节常吃什么？</text>
+</svg>

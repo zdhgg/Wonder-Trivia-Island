@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#f8fbff"/>
+  <rect x="62" y="86" width="148" height="110" rx="22" fill="#caffbf"/><text x="136" y="152" text-anchor="middle" font-size="38" font-family="Arial" font-weight="700" fill="#24324a">春暖</text>
+  <path d="M228 140h52" stroke="#8ecae6" stroke-width="10" stroke-linecap="round"/>
+  <path d="M266 120l24 20-24 20z" fill="#24324a"/>
+  <rect x="304" y="86" width="148" height="110" rx="22" fill="#fff1c9"/><text x="378" y="152" text-anchor="middle" font-size="38" font-family="Arial" font-weight="700" fill="#24324a">?</text>
+</svg>

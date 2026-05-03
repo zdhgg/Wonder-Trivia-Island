@@ -2,7 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const { questions } = require("./questionSeedData");
 
-const header = ["学科", "年级", "学期", "知识标签", "题型", "题目", "选项A", "选项B", "选项C", "选项D", "答案", "解析", "难度"];
+const header = ["学科", "年级", "学期", "知识标签", "题型", "题目", "题目图片", "选项A", "选项B", "选项C", "选项D", "答案", "解析", "难度"];
 const outputPath = path.join(__dirname, "..", "data", "question-seed.csv");
 
 function serializeCsvField(value) {
@@ -25,6 +25,7 @@ const rows = questions.map((question) => {
     question.knowledgeTag || "",
     question.type,
     question.content,
+    question.imageUrl || "",
     optionMap.A || "",
     optionMap.B || "",
     optionMap.C || "",

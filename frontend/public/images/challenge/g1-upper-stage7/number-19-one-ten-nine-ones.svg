@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#f9fbff"/>
+  <rect x="58" y="82" width="76" height="126" rx="16" fill="#8ecae6"/><text x="96" y="154" text-anchor="middle" font-size="28" font-family="Arial" font-weight="700" fill="#24324a">1个十</text>
+  <g fill="#ffd166">
+    <rect x="178" y="96" width="20" height="92" rx="10"/><rect x="206" y="96" width="20" height="92" rx="10"/><rect x="234" y="96" width="20" height="92" rx="10"/>
+    <rect x="262" y="96" width="20" height="92" rx="10"/><rect x="290" y="96" width="20" height="92" rx="10"/><rect x="318" y="96" width="20" height="92" rx="10"/>
+    <rect x="346" y="96" width="20" height="92" rx="10"/><rect x="374" y="96" width="20" height="92" rx="10"/><rect x="402" y="96" width="20" height="92" rx="10"/>
+  </g>
+</svg>

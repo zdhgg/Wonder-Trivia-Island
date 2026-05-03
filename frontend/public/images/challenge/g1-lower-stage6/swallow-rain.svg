@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#eef7ff"/>
+  <path d="M130 86c18-18 48-18 66 0 8-6 18-10 30-10 28 0 50 22 50 50s-22 50-50 50H138c-28 0-50-22-50-50s22-50 50-50c0-12 4-22 12-30z" fill="#cddaf0"/>
+  <path d="M286 166c18-30 48-52 86-60-18 30-48 52-86 60z" fill="#24324a"/>
+  <path d="M372 118l34-12-18 26z" fill="#24324a"/>
+  <text x="240" y="236" text-anchor="middle" font-size="30" font-family="Arial" font-weight="700" fill="#42506a">小燕子为什么飞得低？</text>
+</svg>

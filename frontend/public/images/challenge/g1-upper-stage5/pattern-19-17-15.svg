@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#f8fbff"/>
+  <g font-family="Arial" font-weight="700" fill="#24324a" font-size="42" text-anchor="middle">
+    <circle cx="78" cy="140" r="34" fill="#ffd6a5"/><text x="78" y="154">19</text>
+    <circle cx="182" cy="140" r="34" fill="#ffcad4"/><text x="182" y="154">17</text>
+    <circle cx="286" cy="140" r="34" fill="#caffbf"/><text x="286" y="154">15</text>
+    <circle cx="398" cy="140" r="30" fill="#fff1c9"/><text x="398" y="152">?</text>
+  </g>
+  <text x="240" y="226" text-anchor="middle" font-size="28" font-family="Arial" fill="#5b6984">每次减 2</text>
+</svg>

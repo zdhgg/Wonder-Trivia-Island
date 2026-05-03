@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#102542"/>
+  <circle cx="166" cy="102" r="40" fill="#ffe066"/>
+  <circle cx="184" cy="92" r="40" fill="#11213a"/>
+  <path d="M256 182q44-40 88 0-44 22-88 0z" fill="#fff1a8"/>
+  <text x="240" y="236" text-anchor="middle" font-size="34" font-family="Arial" font-weight="700" fill="#f8fbff">弯弯的月儿像什么？</text>
+</svg>

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#f8fbff"/>
+  <text x="154" y="150" text-anchor="middle" font-size="68" font-family="Arial" font-weight="700" fill="#42506a">双人</text>
+  <path d="M230 140h70" stroke="#8ecae6" stroke-width="10" stroke-linecap="round"/>
+  <path d="M282 120l24 20-24 20z" fill="#24324a"/>
+  <text x="360" y="150" text-anchor="middle" font-size="86" font-family="Arial" font-weight="700" fill="#24324a">?</text>
+</svg>

@@ -1,7 +1,7 @@
 export const HOME_WELCOME_CACHE_KEY = "wonder-trivia-island.home-welcome.cache";
 export const HOME_WELCOME_VISIT_DATE_KEY = "wonder-trivia-island.home-welcome.visit-date";
 export const HOME_WELCOME_AUTO_SPEECH_DATE_KEY = "wonder-trivia-island.home-welcome.auto-speech-date";
-export const HOME_WELCOME_CACHE_VERSION = 1;
+export const HOME_WELCOME_CACHE_VERSION = 2;
 export const HOME_WELCOME_MAX_LINE_LENGTH = 28;
 export const HOME_WELCOME_MAX_SPEECH_LENGTH = 80;
 
@@ -11,62 +11,51 @@ const HOME_WELCOME_FALLBACKS = Object.freeze({
       const gradeSemesterLabel = formatGradeSemesterLabel(context);
       return gradeSemesterLabel ? `${gradeSemesterLabel}已经放到首页啦。` : "新的学习档案已经放到首页啦。";
     },
-    () => "新的学习档案已经就位。",
-    (context) => {
-      const gradeSemesterLabel = formatGradeSemesterLabel(context);
-      return gradeSemesterLabel ? `今天会按${gradeSemesterLabel}陪你继续。` : "今天会按这份档案陪你继续。";
-    }
-  ]),
-  reviewThenChallenge: Object.freeze([
-    (context) => {
-      const stageLabel = extractChallengeFocusLabel(context.challengeStageLabel);
-      return stageLabel ? `${stageLabel}这站还亮着，错题本也在等你。` : "错题本和今天的主线都还亮着。";
-    },
-    (context) => {
-      const stageLabel = extractChallengeFocusLabel(context.challengeStageLabel);
-      return stageLabel ? `回头看看错题本，${stageLabel}这条线还接着上次。` : "回头看看错题本，今天的路线还接着上次。";
-    },
-    () => "今天的路线已经排好了，慢慢来就行。"
-  ]),
-  reviewDue: Object.freeze([
-    (context) => {
-      const dueCount = Math.max(1, Number(context.reviewDueCount || 0));
-      return `错题本里那${dueCount}题，还在等你回头看看。`;
-    },
-    () => "今天的温习已经排好了，慢慢来就行。",
-    () => "这几题放在眼前，心里会更稳。"
-  ]),
-  reviewWarm: Object.freeze([
-    () => "回温中的几题还亮着，今天顺手看看就好。",
-    () => "这几题还在回温，慢慢翻一翻会更稳。",
-    () => "回温中的小提醒，还在这里等你。"
-  ]),
-  challengeContinue: Object.freeze([
-    (context) => {
-      const stageLabel = extractChallengeFocusLabel(context.challengeStageLabel);
-      return stageLabel ? `${stageLabel}这站还亮着。` : "这条闯关路线还接着上次。";
-    },
-    () => "上次的路线还接着，今天照着往前走就行。",
-    () => "这条主线没有断开，还能接着走。"
+    () => "档案已经就位，今天轻轻来就好。",
+    () => "首页已经按你的档案准备好了。"
   ]),
   firstVisitToday: Object.freeze([
     (context) => {
-      const { monthLabel } = resolveTemporalLabels(context);
-      return `${monthLabel}的小岛已经准备好啦。`;
+      const { monthVibe } = resolveTemporalLabels(context);
+      return monthVibe ? `${monthVibe}，小岛已经准备好啦。` : "今天的小岛已经准备好啦。";
     },
     (context) => {
       const { timeBand } = resolveTemporalLabels(context);
-      return timeBand === "evening" || timeBand === "night" ? "晚上回来看一看也刚刚好。" : "今天的路线已经亮起来了。";
+      if (timeBand === "morning") return "早上的小岛很安静，慢慢来就好。";
+      if (timeBand === "noon") return "中午了，来小岛坐一会儿吧。";
+      if (timeBand === "afternoon") return "下午的阳光正好，进来坐坐吧。";
+      if (timeBand === "evening") return "晚上好，小岛的灯还亮着呢。";
+      return "夜深了，小岛还亮着一盏灯。";
     },
-    () => "挑一站开始，猫头鹰会陪着你。"
+    (context) => {
+      const { monthVibe } = resolveTemporalLabels(context);
+      return monthVibe ? `${monthVibe}，猫头鹰在这儿等你。` : "猫头鹰在这儿等你。";
+    }
   ]),
   default: Object.freeze([
-    () => "今天想从哪一站开始？",
+    () => "今天也来啦，真高兴见到你。",
     (context) => {
-      const { seasonLabel } = resolveTemporalLabels(context);
-      return `${seasonLabel}的小岛已经准备好，慢慢来就行。`;
+      const { monthVibe } = resolveTemporalLabels(context);
+      return monthVibe ? `${monthVibe}，小岛还是老样子。` : "小岛还是老样子。";
     },
-    () => "挑一个入口出发，猫头鹰在这儿陪你。"
+    (context) => {
+      const { schoolYearPhase } = resolveTemporalLabels(context);
+      if (schoolYearPhase === "期末临近") return "快到期末了，慢慢来，不用慌。";
+      if (schoolYearPhase === "寒假里") return "寒假里也来啦，真高兴。";
+      if (schoolYearPhase === "暑假里") return "暑假里也来啦，小岛一直在这儿。";
+      if (schoolYearPhase === "新学期开始") return "新学期开始了，小岛也跟着亮起来了。";
+      return "猫头鹰一直在等你呢。";
+    },
+    () => "今天想做什么都可以，不着急。",
+    (context) => {
+      const { timeBand } = resolveTemporalLabels(context);
+      if (timeBand === "evening" || timeBand === "night") return "晚上回来看看，也刚刚好。";
+      return "今天的阳光正好，进来坐坐吧。";
+    },
+    (context) => {
+      const { monthVibe } = resolveTemporalLabels(context);
+      return monthVibe ? `${monthVibe}，慢慢来就好。` : "慢慢来就好。";
+    }
   ])
 });
 
@@ -75,56 +64,43 @@ const HOME_WELCOME_FALLBACK_SPEECHES = Object.freeze({
     (context) => {
       const gradeSemesterLabel = formatGradeSemesterLabel(context);
       return gradeSemesterLabel
-        ? `${gradeSemesterLabel}已经放到首页了，今天就按这份档案慢慢往前学。`
-        : "新的学习档案已经放到首页了，今天就按这份档案慢慢往前学。";
+        ? `${gradeSemesterLabel}已经放到首页了，今天轻轻来就好，我会在这里陪你。`
+        : "新的学习档案已经放到首页了，今天轻轻来就好，我会在这里陪你。";
     },
-    () => "新的学习档案已经准备好了，今天就顺着这份档案慢慢往前学。",
-    (context) => {
-      const stageLabel = extractChallengeFocusLabel(context.challengeStageLabel);
-      return stageLabel ? `档案已经准备好了，${stageLabel}这条线也已经替你接好了。` : "档案已经准备好了，今天想从哪一站开始都行。";
-    }
-  ]),
-  reviewThenChallenge: Object.freeze([
-    (context) => {
-      const stageLabel = extractChallengeFocusLabel(context.challengeStageLabel);
-      return stageLabel ? `${stageLabel}这站还亮着，错题本里的几题也在等你回头看看。` : "错题本和今天的主线都已经备好了，慢慢来就行。";
-    },
-    (context) => {
-      const stageLabel = extractChallengeFocusLabel(context.challengeStageLabel);
-      return stageLabel ? `回头看看错题本，${stageLabel}这条线还接着上次。` : "回头看看错题本，今天的路线也还接着上次。";
-    },
-    () => "今天的路线已经排好了，你按自己的节奏往前走就好。"
-  ]),
-  reviewDue: Object.freeze([
-    () => "错题本里那几题还在等你，今天慢慢翻一翻就好。",
-    () => "今天的温习已经排好了，先回头看看，后面会更稳。",
-    (context) => {
-      const dueCount = Math.max(1, Number(context.reviewDueCount || 0));
-      return `今天有${dueCount}题到期温习，它们还在错题本里等你。`;
-    }
-  ]),
-  reviewWarm: Object.freeze([
-    () => "回温中的几题还亮着，今天顺手看看，节奏会更稳。",
-    () => "这几题还在回温里，慢慢翻一翻就好，不用着急。",
-    () => "回温中的小提醒还在这里，今天看一看会更安心。"
-  ]),
-  challengeContinue: Object.freeze([
-    (context) => {
-      const stageLabel = extractChallengeFocusLabel(context.challengeStageLabel);
-      return stageLabel ? `${stageLabel}这站还亮着，今天接着往前走就行。` : "这条闯关路线还接着上次，今天慢慢往前走就好。";
-    },
-    () => "上次的路线还接着，今天照着往前走就行，不用重新开始。",
-    () => "这条主线没有断开，还在前面等你慢慢接上。"
+    () => "档案已经准备好了，今天想从哪儿开始都可以，不着急。",
+    () => "首页已经按你的档案备好了，慢慢来，我一直在这儿。"
   ]),
   firstVisitToday: Object.freeze([
-    () => "今天的小岛已经准备好了，想从哪一站开始都行。",
-    () => "今天的路线已经亮起来了，猫头鹰会在这里陪着你。",
-    () => "欢迎回来，今天我们也慢慢往前走。"
+    () => "今天的小岛已经准备好了，想做什么都行，猫头鹰会在这里陪着你。",
+    (context) => {
+      const { timeBand, monthVibe } = resolveTemporalLabels(context);
+      if (timeBand === "morning") return monthVibe ? `${monthVibe}，早上的小岛很安静，不急不忙，猫头鹰在这儿等你。` : "早上的小岛很安静，不急不忙，猫头鹰在这儿等你。";
+      if (timeBand === "evening" || timeBand === "night") return "晚上好，小岛的灯还亮着，慢慢待一会儿就好。";
+      return monthVibe ? `${monthVibe}，来小岛坐坐吧，猫头鹰一直在。` : "今天的阳光正好，来小岛坐坐吧，猫头鹰一直在。";
+    },
+    (context) => {
+      const { monthVibe } = resolveTemporalLabels(context);
+      return monthVibe ? `欢迎回来，${monthVibe}，我们也慢慢来，不着急。` : "欢迎回来，今天我们也慢慢来，不着急。";
+    }
   ]),
   default: Object.freeze([
-    () => "今天想先从哪一站开始，我会在这里陪着你。",
-    () => "小岛已经准备好了，今天慢慢往前走一点就好。",
-    () => "挑一个入口开始吧，猫头鹰会一直在这里等你。"
+    () => "今天也来啦，真高兴见到你，猫头鹰会一直在这里陪着你。",
+    (context) => {
+      const { monthVibe } = resolveTemporalLabels(context);
+      return monthVibe ? `${monthVibe}，小岛还是安安静静的，慢慢来，我一直在这儿。` : "小岛还是安安静静的，慢慢来，我一直在这儿。";
+    },
+    (context) => {
+      const { schoolYearPhase } = resolveTemporalLabels(context);
+      if (schoolYearPhase === "期末临近") return "快期末了，不用慌，按自己的节奏慢慢来，我一直在这儿。";
+      if (schoolYearPhase === "寒假里") return "寒假里也来啦，真高兴，小岛一直都在。";
+      if (schoolYearPhase === "暑假里") return "暑假里也来看看啦，小岛一直在这儿等你。";
+      if (schoolYearPhase === "新学期开始") return "新学期开始了，小岛也跟着亮起来了，慢慢来就好。";
+      return "今天想做什么都可以，不着急，先在这儿待一会儿就好。";
+    },
+    (context) => {
+      const { monthVibe } = resolveTemporalLabels(context);
+      return monthVibe ? `${monthVibe}，你来了就好。` : "你来了就好。";
+    }
   ])
 });
 
@@ -164,19 +140,6 @@ function formatGradeSemesterLabel(context = {}) {
   const grade = normalizeText(context.grade, 20);
   const semester = normalizeText(context.semester, 20);
   return `${grade}${semester}`;
-}
-
-function extractChallengeFocusLabel(value = "") {
-  const segments = normalizeText(value, 80)
-    .split("·")
-    .map((segment) => normalizeText(segment, 40))
-    .filter(Boolean);
-
-  if (segments.length >= 2) {
-    return segments[segments.length - 1];
-  }
-
-  return segments[0] || "";
 }
 
 function formatDisplayName(value = "") {
@@ -256,6 +219,40 @@ function resolveSeasonLabelFromMonth(monthNumber = 1) {
   return "新年里";
 }
 
+function resolveMonthVibe(monthNumber = 1) {
+  const vibes = Object.freeze({
+    1: "新年伊始",
+    2: "寒假将尽",
+    3: "春意初萌",
+    4: "春暖花开",
+    5: "初夏微风",
+    6: "盛夏将至",
+    7: "盛夏时光",
+    8: "夏末微凉",
+    9: "秋日新学期",
+    10: "金秋十月",
+    11: "深秋时节",
+    12: "冬日暖阳"
+  });
+
+  return vibes[monthNumber] || "";
+}
+
+function resolveSchoolYearPhase(monthNumber = 1) {
+  if (monthNumber === 1) return "期末临近";
+  if (monthNumber === 2) return "寒假里";
+  if (monthNumber === 3) return "开学不久";
+  if (monthNumber === 4) return "学期中段";
+  if (monthNumber === 5) return "学期过半";
+  if (monthNumber === 6) return "期末临近";
+  if (monthNumber >= 7 && monthNumber <= 8) return "暑假里";
+  if (monthNumber === 9) return "新学期开始";
+  if (monthNumber === 10) return "学期中段";
+  if (monthNumber === 11) return "学期过半";
+  if (monthNumber === 12) return "期末临近";
+  return "";
+}
+
 export function buildHomeWelcomeTemporalContext(date = new Date()) {
   const referenceDate = date instanceof Date ? date : new Date(date);
   const monthNumber = referenceDate.getMonth() + 1;
@@ -267,43 +264,34 @@ export function buildHomeWelcomeTemporalContext(date = new Date()) {
     monthNumber,
     monthLabel: CHINESE_MONTH_LABELS[monthNumber - 1] || `${monthNumber}月`,
     seasonLabel: resolveSeasonLabelFromMonth(monthNumber),
+    monthVibe: resolveMonthVibe(monthNumber),
+    schoolYearPhase: resolveSchoolYearPhase(monthNumber),
     timeBand
   };
 }
 
 function resolveTemporalLabels(context = {}, date = new Date()) {
   const referenceDate = resolveHomeWelcomeReferenceDate(context, date);
-  const timeBand = normalizeText(context.timeBand, 20) || resolveTimeBandFromDate(referenceDate);
-  const monthLabel = normalizeText(context.monthLabel, 20) || buildHomeWelcomeTemporalContext(referenceDate).monthLabel;
-  const seasonLabel = normalizeText(context.seasonLabel, 20) || buildHomeWelcomeTemporalContext(referenceDate).seasonLabel;
+  const temporalContext = buildHomeWelcomeTemporalContext(referenceDate);
+  const timeBand = normalizeText(context.timeBand, 20) || temporalContext.timeBand;
+  const monthLabel = normalizeText(context.monthLabel, 20) || temporalContext.monthLabel;
+  const seasonLabel = normalizeText(context.seasonLabel, 20) || temporalContext.seasonLabel;
+  const monthVibe = normalizeText(context.monthVibe, 20) || temporalContext.monthVibe;
+  const schoolYearPhase = normalizeText(context.schoolYearPhase, 20) || temporalContext.schoolYearPhase;
 
   return {
     referenceDate,
     timeBand,
     monthLabel,
-    seasonLabel
+    seasonLabel,
+    monthVibe,
+    schoolYearPhase
   };
 }
 
 function resolveFallbackScene(context = {}) {
   if (context.isProfileJustSaved) {
     return "profileSaved";
-  }
-
-  if (Number(context.reviewDueCount || 0) > 0 && normalizeText(context.challengeStageLabel, 60)) {
-    return "reviewThenChallenge";
-  }
-
-  if (Number(context.reviewDueCount || 0) > 0) {
-    return "reviewDue";
-  }
-
-  if (Number(context.reviewingCount || 0) > 0) {
-    return "reviewWarm";
-  }
-
-  if (context.recommendedMode === "challenge" && normalizeText(context.challengeStageLabel, 60)) {
-    return "challengeContinue";
   }
 
   if (context.isFirstHomeVisitToday) {
@@ -433,7 +421,7 @@ export function buildHomeWelcomeFallbackSpeechText(context = {}, date = new Date
 
 export function buildHomeWelcomeEyebrow(context = {}, date = new Date()) {
   const scene = resolveFallbackScene(context);
-  const { timeBand, monthLabel } = resolveTemporalLabels(context, date);
+  const { timeBand, monthVibe } = resolveTemporalLabels(context, date);
   const timeEyebrowMap = Object.freeze({
     morning: "早上好",
     noon: "中午好",
@@ -441,14 +429,12 @@ export function buildHomeWelcomeEyebrow(context = {}, date = new Date()) {
     evening: "晚上好",
     night: "夜里好"
   });
+  const timeGreeting = timeEyebrowMap[timeBand] || "欢迎回来";
+  const vibeGreeting = monthVibe || "";
   const eyebrowMap = Object.freeze({
     profileSaved: ["已经同步好", "档案已就位", "今天准备好了"],
-    reviewThenChallenge: ["先回看看", "今天先稳一稳", "错题本在等你"],
-    reviewDue: ["先回看看", "今天先稳一稳", "错题本在等你"],
-    reviewWarm: ["回温继续", "今天慢慢来", "先把方法稳住"],
-    challengeContinue: ["继续往前走", "主线已经点亮", "今天接着学"],
-    firstVisitToday: [timeEyebrowMap[timeBand], `${monthLabel}见`, "小岛准备好了"],
-    default: [timeEyebrowMap[timeBand], `${monthLabel}见`, "奇妙知识岛"]
+    firstVisitToday: [timeGreeting, vibeGreeting, `${timeGreeting}，小岛见`],
+    default: [timeGreeting, vibeGreeting, "又见面了", "奇妙知识岛"]
   });
   const candidates = eyebrowMap[scene] || eyebrowMap.default;
   const seed = `${getHomeWelcomeDateKey(date)}|${buildHomeWelcomeContextHash(context)}|${getHomeWelcomeVariantToken(context)}|eyebrow|${scene}`;
@@ -468,8 +454,7 @@ export function buildHomeWelcomeTitle(
   const normalizedName = formatDisplayName(displayName);
   const hasCustomName = Boolean(useCustomName && normalizedName);
   const gradeSemesterLabel = formatGradeSemesterLabel(context);
-  const stageFocusLabel = extractChallengeFocusLabel(context.challengeStageLabel);
-  const { timeBand, monthLabel, seasonLabel } = resolveTemporalLabels(context, date);
+  const { timeBand, monthVibe, schoolYearPhase } = resolveTemporalLabels(context, date);
   const timeGreetingMap = Object.freeze({
     morning: "早上好",
     noon: "中午好",
@@ -482,105 +467,55 @@ export function buildHomeWelcomeTitle(
     profileSaved: [
       `欢迎回来，${normalizedName}`,
       `${normalizedName}，新的路线已经备好`,
-      gradeSemesterLabel ? `${gradeSemesterLabel}已经就位，${normalizedName}` : `${normalizedName}，今天按新档案继续`,
+      gradeSemesterLabel ? `${gradeSemesterLabel}已经就位，${normalizedName}` : `${normalizedName}，今天轻轻来就好`,
       `首页已经备好，${normalizedName}`,
-      `${normalizedName}，今天按新档案继续`
-    ],
-    reviewThenChallenge: [
-      `${normalizedName}，先稳一稳再出发`,
-      `${normalizedName}，错题本和主线都在等你`,
-      stageFocusLabel ? `${stageFocusLabel}还亮着，${normalizedName}` : `${normalizedName}，今天也慢慢往前走`,
-      `回看几题再出发，${normalizedName}`,
-      `欢迎回来，${normalizedName}`
-    ],
-    reviewDue: [
-      `${normalizedName}，先把错题本翻一翻`,
-      `今天先稳一稳，${normalizedName}`,
-      `回看几题再出发，${normalizedName}`,
-      `${normalizedName}，先从最顺手的几题开始`,
-      `错题本在前面等你，${normalizedName}`
-    ],
-    reviewWarm: [
-      `${normalizedName}，这几题还在回温中`,
-      `${normalizedName}，把方法再听一遍`,
-      `${normalizedName}，今天轻轻复习一下`,
-      `欢迎回来，${normalizedName}`,
-      `${normalizedName}，先把节奏找回来`
-    ],
-    challengeContinue: [
-      `${normalizedName}，主线已经亮起来了`,
-      stageFocusLabel ? `${stageFocusLabel}这站还在等你` : `${normalizedName}，今天接着往前走`,
-      `${normalizedName}，这条线还接着上次`,
-      `欢迎回来，${normalizedName}`,
-      `${normalizedName}，今天继续往前走`
+      `${normalizedName}，今天慢慢来就行`
     ],
     firstVisitToday: [
       `${timeGreeting}，${normalizedName}`,
-      `${monthLabel}的小岛已经准备好，${normalizedName}`,
-      `${normalizedName}，今天从哪一站开始`,
+      monthVibe ? `${monthVibe}，${normalizedName}` : `欢迎回来，${normalizedName}`,
+      `${normalizedName}，今天想做什么都可以`,
       `欢迎回来，${normalizedName}`,
-      gradeSemesterLabel ? `${gradeSemesterLabel}已经备好，${normalizedName}` : `${seasonLabel}的小岛在等你，${normalizedName}`
+      monthVibe ? `${monthVibe}，小岛在等你，${normalizedName}` : `小岛在等你，${normalizedName}`
     ],
     default: [
       `${timeGreeting}，${normalizedName}`,
-      `${normalizedName}，今天想先去哪一站`,
-      `${normalizedName}，准备好继续了`,
+      `${normalizedName}，今天也见到你了`,
+      monthVibe ? `${monthVibe}，${normalizedName}` : `${normalizedName}，在这儿坐一会儿吧`,
       `欢迎回来，${normalizedName}`,
-      `${seasonLabel}也到了，${normalizedName}`,
-      `${monthLabel}的小岛已经在等你，${normalizedName}`
+      schoolYearPhase === "期末临近" ? `快期末了，慢慢来，${normalizedName}` : "",
+      schoolYearPhase === "寒假里" ? `寒假快乐，${normalizedName}` : "",
+      schoolYearPhase === "暑假里" ? `暑假快乐，${normalizedName}` : "",
+      schoolYearPhase === "新学期开始" ? `新学期好，${normalizedName}` : "",
+      monthVibe ? `${monthVibe}，小岛一直在，${normalizedName}` : `${normalizedName}，小岛一直在`
     ]
   });
   const defaultTitleMap = Object.freeze({
     profileSaved: [
       "首页已经按档案同步好",
-      "新的学习路线已经准备好",
+      "新的路线已经准备好了",
       gradeSemesterLabel ? `${gradeSemesterLabel}已经就位` : "新的学习档案已经就位",
       "今天的小岛已经按新档案备好",
       "欢迎来到奇妙知识岛"
     ],
-    reviewThenChallenge: [
-      "今天先稳一稳再出发",
-      "错题本和主线都已经备好",
-      stageFocusLabel ? `${stageFocusLabel}这站还亮着` : "今天的小岛已经准备好",
-      "先回看看，再继续往前走",
-      "欢迎来到奇妙知识岛"
-    ],
-    reviewDue: [
-      "今天的小岛已经准备好",
-      "先从错题本开始也不错",
-      "回看几题，再慢慢出发",
-      "先把今天到期的几题稳住",
-      "欢迎来到奇妙知识岛"
-    ],
-    reviewWarm: [
-      "今天也来奇妙知识岛啦",
-      "先把回温中的方法再听一遍",
-      "准备好继续听一听了",
-      "今天先稳一稳节奏",
-      "欢迎来到奇妙知识岛"
-    ],
-    challengeContinue: [
-      "主线已经在前面亮起来了",
-      stageFocusLabel ? `${stageFocusLabel}这站还在等你` : "今天可以继续往前走",
-      "这条路线还接着上次",
-      "今天的小岛已经点亮",
-      "欢迎来到奇妙知识岛"
-    ],
     firstVisitToday: [
       `${timeGreeting}，奇妙知识岛`,
-      `${monthLabel}的小岛已经准备好`,
+      monthVibe ? `${monthVibe}的奇妙知识岛` : "奇妙知识岛欢迎你回来",
       "奇妙知识岛欢迎你回来",
-      "今天从哪一站开始",
-      gradeSemesterLabel ? `${gradeSemesterLabel}已经备好` : `${seasonLabel}的小岛在等你`,
+      "今天轻轻来就好",
+      monthVibe ? `${monthVibe}，小岛在等你` : "小岛在等你",
       "欢迎来到奇妙知识岛"
     ],
     default: [
       `${timeGreeting}，奇妙知识岛`,
       "奇妙知识岛欢迎你回来",
       "今天的小岛已经准备好",
-      "准备好继续往前走",
-      `${monthLabel}的小岛已经亮起来了`,
-      "今天想从哪一站开始",
+      monthVibe ? monthVibe : "今天也来坐坐吧",
+      schoolYearPhase === "期末临近" ? "快期末了，不用慌" : "",
+      schoolYearPhase === "寒假里" ? "寒假也来啦" : "",
+      schoolYearPhase === "暑假里" ? "暑假也来啦" : "",
+      schoolYearPhase === "新学期开始" ? "新学期开始了" : "",
+      "又见面了",
       "欢迎来到奇妙知识岛"
     ]
   });
@@ -612,13 +547,9 @@ export function buildHomeWelcomeVoiceButtonLabel(
 
   const scene = resolveFallbackScene(context);
   const labelMap = Object.freeze({
-    profileSaved: ["听同步提醒", "听首页小提醒", "听猫头鹰带你看看"],
-    reviewThenChallenge: ["听今天提醒", "听猫头鹰轻轻说", "听路线小提醒"],
-    reviewDue: ["听错题本提醒", "听今天提醒", "听猫头鹰轻轻说"],
-    reviewWarm: ["听回温提醒", "听猫头鹰轻轻说", "听方法小提醒"],
-    challengeContinue: ["听主线提醒", "听今天提醒", "听猫头鹰带路"],
-    firstVisitToday: ["听猫头鹰欢迎你", "听今天提醒", "听小岛问好"],
-    default: ["听猫头鹰说", "听今天提醒", "听小岛小提醒"]
+    profileSaved: ["听猫头鹰说", "听小岛小提醒", "听首页小提醒"],
+    firstVisitToday: ["听猫头鹰欢迎你", "听小岛问好", "听猫头鹰说"],
+    default: ["听猫头鹰说", "听小岛小提醒", "听猫头鹰轻轻说"]
   });
   const candidates = labelMap[scene] || labelMap.default;
   const seed = `${getHomeWelcomeDateKey(date)}|${buildHomeWelcomeContextHash(context)}|${getHomeWelcomeVariantToken(context)}|voice-button|${scene}`;

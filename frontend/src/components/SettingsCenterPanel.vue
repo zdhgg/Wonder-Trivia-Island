@@ -9,6 +9,7 @@ import SettingsBackupSection from "./settings/SettingsBackupSection.vue";
 import SettingsCoachingSection from "./settings/SettingsCoachingSection.vue";
 import SettingsLogsSection from "./settings/SettingsLogsSection.vue";
 import SettingsModelLibrarySection from "./settings/SettingsModelLibrarySection.vue";
+import SettingsAboutSection from "./settings/SettingsAboutSection.vue";
 import SettingsOverviewSection from "./settings/SettingsOverviewSection.vue";
 import SettingsProfileSection from "./settings/SettingsProfileSection.vue";
 import { getSettingsSectionById, SETTINGS_SECTION_IDS } from "./settings/settingsSections";
@@ -74,7 +75,8 @@ const SECTION_COMPONENTS = Object.freeze({
   "settings-coaching": SettingsCoachingSection,
   "settings-audio": SettingsAudioSection,
   "settings-backup": SettingsBackupSection,
-  "settings-logs": SettingsLogsSection
+  "settings-logs": SettingsLogsSection,
+  "settings-about": SettingsAboutSection
 });
 
 const profileDraft = ref({
@@ -299,6 +301,15 @@ const overviewCards = computed(() => [
     summary: logsSectionSummary.value,
     detail: "可查看最近关键操作，并按需清空本机记录。",
     tone: "neutral"
+  },
+  {
+    id: "settings-about",
+    eyebrow: "About",
+    title: getSettingsSectionById("settings-about").sectionTitle,
+    summary: "查看当前版本、系统状态和正式发布记录。",
+    detail: "适合集中放版本号、运行情况和后续更新说明。",
+    tone: "neutral",
+    size: "wide"
   }
 ]);
 const SECTION_SAVE_CONFIG = Object.freeze({
@@ -412,6 +423,10 @@ const stickyBarDetail = computed(() => {
     return "查看和清理都会即时生效。";
   }
 
+  if (normalizedActiveSectionId.value === "settings-about") {
+    return "状态刷新和版本信息都会即时生效，无需保存。";
+  }
+
   return "当前分区可单独处理。";
 });
 const showCurrentSectionSaveAction = computed(() => Boolean(currentSaveSectionConfig.value));
@@ -499,6 +514,8 @@ const activeSectionProps = computed(() => {
         activityLogItems: activityLogItems.value,
         formatTimestamp
       };
+    case "settings-about":
+      return {};
     case "settings-overview":
       return {
         cards: overviewCards.value,

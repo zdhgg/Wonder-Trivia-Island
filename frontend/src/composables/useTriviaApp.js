@@ -625,7 +625,7 @@ export function useTriviaApp() {
 
   const activeKnowledgeTagFilter = computed(() =>
     isChallengeMode.value
-      ? currentStage.value.knowledgeTag || ""
+      ? currentStage.value.questionKnowledgeTag || currentStage.value.knowledgeTag || ""
       : isKnowledgePractice.value
         ? quizPracticeContext.value.knowledgeTag
         : ""
@@ -2117,7 +2117,7 @@ export function useTriviaApp() {
       subject: selectedSubjectValue.value || "全部",
       grade: currentChallengeChapter.value.grade || "全部年级",
       semester: currentChallengeChapter.value.semester || "全部学期",
-      knowledgeTag: stage.knowledgeTag || "",
+      knowledgeTag: stage.questionKnowledgeTag || stage.knowledgeTag || "",
       difficulty: String(stage.difficulty || ""),
       sourceLabel: `${currentChallengeChapterLabel.value} · 第 ${stage.order} 站 · ${stage.title}`
     };

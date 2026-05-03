@@ -44,6 +44,7 @@ function questionToImportRow(question) {
     知识标签: question.knowledgeTag || "",
     题型: question.type,
     题目: question.content,
+    题目图片: question.imageUrl || "",
     选项A: optionMap.A,
     选项B: optionMap.B,
     选项C: optionMap.C,
@@ -714,6 +715,7 @@ test("question routes support grouped stats, single create, subject random filte
 
   const createPayload = await readJson(createResponse);
   assert.equal(createPayload.data.subject, createdQuestionPayload.subject);
+  assert.equal(createPayload.data.imageUrl || "", createdQuestionPayload.imageUrl || "");
   assert.ok(createPayload.data.createdAt);
   assert.ok(createPayload.data.updatedAt);
 

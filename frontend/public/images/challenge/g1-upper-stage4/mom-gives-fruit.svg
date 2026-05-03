@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#f8fbff"/>
+  <circle cx="126" cy="108" r="28" fill="#ffd166"/>
+  <circle cx="116" cy="104" r="4" fill="#24324a"/><circle cx="136" cy="104" r="4" fill="#24324a"/>
+  <path d="M116 120q10 8 20 0" stroke="#24324a" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+  <rect x="108" y="138" width="36" height="72" rx="14" fill="#ff8fab"/>
+  <circle cx="276" cy="108" r="28" fill="#ffd166"/>
+  <circle cx="266" cy="104" r="4" fill="#24324a"/><circle cx="286" cy="104" r="4" fill="#24324a"/>
+  <path d="M266 120q10 8 20 0" stroke="#24324a" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+  <rect x="258" y="138" width="36" height="72" rx="14" fill="#8ecae6"/>
+  <circle cx="202" cy="176" r="22" fill="#ff6b6b"/><path d="M202 154c10-12 18-8 22-2" stroke="#4caf50" stroke-width="4" fill="none"/>
+  <text x="356" y="128" font-size="30" font-family="Arial" font-weight="700" fill="#42506a">怎么说更合适？</text>
+  <text x="356" y="168" font-size="24" font-family="Arial" fill="#5b6984">妈妈递给你水果</text>
+</svg>

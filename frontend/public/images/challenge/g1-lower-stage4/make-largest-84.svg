@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#f8fbff"/>
+  <g font-family="Arial" font-weight="700" fill="#24324a" font-size="54" text-anchor="middle">
+    <rect x="68" y="96" width="78" height="88" rx="18" fill="#ffd6a5"/><text x="107" y="153">2</text>
+    <rect x="202" y="96" width="78" height="88" rx="18" fill="#ffcad4"/><text x="241" y="153">4</text>
+    <rect x="336" y="96" width="78" height="88" rx="18" fill="#caffbf"/><text x="375" y="153">8</text>
+  </g>
+  <text x="240" y="236" text-anchor="middle" font-size="30" font-family="Arial" fill="#42506a">最大两位数是几？</text>
+</svg>

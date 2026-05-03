@@ -19,6 +19,7 @@ const QUESTION_SELECT_FIELDS = [
   "knowledgeTag",
   "type",
   "content",
+  "imageUrl",
   "options",
   "answer",
   "explanation",
@@ -146,6 +147,10 @@ function normalizeRequestText(rawValue, maxLength = 0) {
   return normalized;
 }
 
+function normalizeImageUrl(rawValue) {
+  return normalizeRequestText(rawValue, 2000);
+}
+
 function parseAiRuntime(rawRuntime) {
   if (!rawRuntime || typeof rawRuntime !== "object" || Array.isArray(rawRuntime)) {
     return {
@@ -206,6 +211,7 @@ function serializeQuestionRow(row) {
   return {
     ...row,
     knowledgeTag: resolvedKnowledgeTag,
+    imageUrl: normalizeImageUrl(row.imageUrl),
     options: parseQuestionOptions(row.options)
   };
 }
@@ -239,6 +245,7 @@ function buildQuestionReviewPayload(row, selectedOption, model = "") {
       knowledgeTag: serializedQuestion.knowledgeTag,
       type: serializedQuestion.type,
       content: serializedQuestion.content,
+      imageUrl: serializedQuestion.imageUrl,
       options: serializedQuestion.options
     }
   };
@@ -463,7 +470,7 @@ function findRandomQuestions(db, filters, count, excludeIds = []) {
   return all(
     db,
     `
-      SELECT id, subject, grade, semester, knowledgeTag, type, content, options, difficulty
+      SELECT id, subject, grade, semester, knowledgeTag, type, content, imageUrl, options, difficulty
       FROM questions
       ${whereSql}
       ORDER BY RANDOM()
@@ -512,6 +519,7 @@ module.exports = {
   parseQuestionIds,
   parseQuestionOptions,
   normalizeRequestText,
+  normalizeImageUrl,
   parseAiRuntime,
   normalizeKnowledgeTag,
   serializeQuestionRow,

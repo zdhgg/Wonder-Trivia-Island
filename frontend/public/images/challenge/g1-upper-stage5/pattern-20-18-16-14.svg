@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#f8fbff"/>
+  <g font-family="Arial" font-weight="700" fill="#24324a" font-size="40" text-anchor="middle">
+    <rect x="22" y="104" width="82" height="72" rx="18" fill="#ffd6a5"/><text x="63" y="150">20</text>
+    <rect x="114" y="104" width="82" height="72" rx="18" fill="#ffcad4"/><text x="155" y="150">18</text>
+    <rect x="206" y="104" width="82" height="72" rx="18" fill="#caffbf"/><text x="247" y="150">16</text>
+    <rect x="298" y="104" width="82" height="72" rx="18" fill="#bde0fe"/><text x="339" y="150">14</text>
+    <rect x="390" y="104" width="58" height="72" rx="18" fill="#fff1c9"/><text x="419" y="150">?</text>
+  </g>
+  <text x="240" y="226" text-anchor="middle" font-size="28" font-family="Arial" fill="#5b6984">每次减 2</text>
+</svg>

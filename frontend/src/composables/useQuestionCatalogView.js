@@ -639,6 +639,7 @@ export function useQuestionCatalogView(props, emit) {
       knowledgeTag: "",
       type: "",
       content: "",
+      imageUrl: "",
       optionA: "",
       optionB: "",
       optionC: "",
@@ -667,6 +668,7 @@ export function useQuestionCatalogView(props, emit) {
       knowledgeTag: question.knowledgeTag || "",
       type: question.type,
       content: question.content,
+      imageUrl: question.imageUrl || "",
       optionA: optionMap.A || "",
       optionB: optionMap.B || "",
       optionC: optionMap.C || "",
@@ -685,6 +687,7 @@ export function useQuestionCatalogView(props, emit) {
       knowledgeTag: draft.knowledgeTag,
       type: draft.type,
       content: draft.content,
+      imageUrl: draft.imageUrl,
       options: ANSWER_OPTIONS.map((key) => ({
         key,
         text: draft[`option${key}`]

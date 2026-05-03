@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#f8fbff"/>
+  <path d="M120 166c22-12 52-12 74 0" stroke="#8ecae6" stroke-width="10" fill="none" stroke-linecap="round"/>
+  <path d="M216 154c22-12 52-12 74 0" stroke="#8ecae6" stroke-width="10" fill="none" stroke-linecap="round"/>
+  <path d="M312 142c22-12 52-12 74 0" stroke="#8ecae6" stroke-width="10" fill="none" stroke-linecap="round"/>
+  <text x="240" y="232" text-anchor="middle" font-size="34" font-family="Arial" font-weight="700" fill="#42506a">“轻轻地”形容什么？</text>
+</svg>

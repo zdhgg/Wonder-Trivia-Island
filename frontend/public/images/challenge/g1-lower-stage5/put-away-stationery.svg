@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#f8fbff"/>
+  <rect x="88" y="134" width="120" height="76" rx="16" fill="#ffcad4"/>
+  <rect x="112" y="94" width="16" height="64" rx="8" fill="#ffd166"/><rect x="146" y="94" width="16" height="64" rx="8" fill="#8ecae6"/><rect x="180" y="94" width="16" height="64" rx="8" fill="#90be6d"/>
+  <text x="324" y="150" text-anchor="middle" font-size="30" font-family="Arial" font-weight="700" fill="#42506a">及时收好文具</text>
+</svg>

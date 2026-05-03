@@ -203,7 +203,12 @@ export const CHALLENGE_CHAPTER_ROUTE_CONFIG = Object.freeze({
       routeTitle: "启蒙起步线",
       routeFocus: "看图观察 · 跟题作答",
       stagePlan: Object.freeze({
-        "stage-1": Object.freeze({ title: "看图起步", glyph: "观", chapterLabel: "起步站" }),
+        "stage-1": Object.freeze({
+          title: "看图起步",
+          glyph: "观",
+          chapterLabel: "起步站",
+          questionKnowledgeTag: "看图起步"
+        }),
         "stage-2": Object.freeze({ title: "顺序跟答", glyph: "跟", chapterLabel: "节奏站" }),
         "stage-3": Object.freeze({ title: "数量找友", glyph: "数", chapterLabel: "数感站" }),
         "stage-4": Object.freeze({ title: "短句抓点", glyph: "句", chapterLabel: "抓点站" }),
@@ -497,11 +502,14 @@ export function getChallengeStageConfig(stageId, chapterId = DEFAULT_CHALLENGE_C
     const baseStage = getChallengeStage(stageId);
     const stageOverride = getChallengeChapter(chapterId).stagePlan?.[baseStage.id] ?? {};
     const resolvedTitle = stageOverride.title || baseStage.title;
+    const resolvedKnowledgeTag = stageOverride.knowledgeTag || resolvedTitle;
+    const resolvedQuestionKnowledgeTag = stageOverride.questionKnowledgeTag || resolvedKnowledgeTag;
 
     return {
       ...baseStage,
       ...stageOverride,
-      knowledgeTag: stageOverride.knowledgeTag || resolvedTitle,
+      knowledgeTag: resolvedKnowledgeTag,
+      questionKnowledgeTag: resolvedQuestionKnowledgeTag,
       mission: {
         ...baseStage.mission,
         ...(stageOverride.mission ?? {})

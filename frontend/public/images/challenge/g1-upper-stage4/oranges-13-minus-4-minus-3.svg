@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#f8fbff"/>
+  <g transform="translate(38 60)">
+    <g fill="#ffb347">
+      <circle cx="34" cy="34" r="18"/><circle cx="78" cy="34" r="18"/><circle cx="122" cy="34" r="18"/><circle cx="166" cy="34" r="18"/><circle cx="210" cy="34" r="18"/>
+      <circle cx="56" cy="76" r="18"/><circle cx="100" cy="76" r="18"/><circle cx="144" cy="76" r="18"/><circle cx="188" cy="76" r="18"/>
+      <circle cx="78" cy="118" r="18"/><circle cx="122" cy="118" r="18"/><circle cx="166" cy="118" r="18"/><circle cx="210" cy="118" r="18"/>
+    </g>
+    <text x="262" y="62" font-size="28" font-family="Arial" font-weight="700" fill="#42506a">上午吃了 4 个</text>
+    <text x="262" y="108" font-size="28" font-family="Arial" font-weight="700" fill="#42506a">下午又吃 3 个</text>
+    <text x="262" y="154" font-size="28" font-family="Arial" font-weight="700" fill="#42506a">还剩几个？</text>
+  </g>
+</svg>

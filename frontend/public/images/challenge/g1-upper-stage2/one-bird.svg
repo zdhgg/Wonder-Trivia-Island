@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#eef7ff"/>
+  <g transform="translate(178 86)">
+    <ellipse cx="70" cy="54" rx="40" ry="28" fill="#ffd166"/>
+    <circle cx="38" cy="46" r="18" fill="#ffd166"/>
+    <polygon points="20,48 0,42 20,36" fill="#f4a261"/>
+    <circle cx="42" cy="44" r="3.5" fill="#24324a"/>
+    <path d="M70 82v24M84 82v24" stroke="#8b6a4c" stroke-width="4" stroke-linecap="round"/>
+  </g>
+  <text x="240" y="228" text-anchor="middle" font-size="26" font-family="Arial" font-weight="700" fill="#24324a">一（ ? ）小鸟</text>
+</svg>
