@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#F9F6F1" />
+  <rect x="34" y="24" width="412" height="232" rx="26" fill="#FFFDFC" stroke="#E8DCCF" />
+  <rect x="34" y="24" width="412" height="46" rx="26" fill="#D88B3F" />
+  <text x="56" y="53" font-size="22" font-weight="800" fill="#FFFFFF">值日表</text>
+  <text x="58" y="92" font-size="15" font-weight="600" fill="#8D6D58">看清星期和对应同学</text>
+  <rect x="62" y="108" width="356" height="112" rx="18" fill="#FFF6EC" stroke="#F0D7BD" />
+  <text x="82" y="118" font-size="19" font-weight="700" fill="#6A4631"><tspan x="82" y="118">周一  小东  扫地</tspan><tspan x="82" y="144">周二  小美  擦黑板</tspan><tspan x="82" y="170">周三  小军  摆桌椅</tspan></text>
+</svg>

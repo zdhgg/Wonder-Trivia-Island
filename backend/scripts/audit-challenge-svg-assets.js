@@ -19,6 +19,7 @@ const allowedVisibleAnswerImages = new Set([
   "/images/challenge/g1-lower-stage6/sort-li-bai-chen-wu.svg",
   "/images/challenge/g1-lower-stage7/sort-bai-chen-hu-xu.svg"
 ]);
+const visibleAnswerKnowledgeTags = new Set(["图表看懂", "图文转换"]);
 
 const comparisonQuestionPattern = /相比|哪个.*(更多|更大|更少|更长|更短|更高|更低|更重|更轻)|哪种.*更多|哪一类.*更多/;
 const relationSymbols = new Set([">", "<", "=", "＞", "＜", "≥", "≤"]);
@@ -62,7 +63,12 @@ const runtimeQuestions = [...questions, ...EXTRA_STAGE_ONE_IMAGE_QUESTIONS];
 const svgQuestions = runtimeQuestions.filter((question) => question.imageUrl && question.imageUrl.endsWith(".svg"));
 const issues = [];
 const allowedVisibleAnswers = [];
+let policyAllowedVisibleAnswerCount = 0;
 const referencedImageUrls = new Set();
+
+function allowsVisibleAnswerByPolicy(question) {
+  return visibleAnswerKnowledgeTags.has(String(question.knowledgeTag || "").trim());
+}
 
 for (const question of svgQuestions) {
   const correctOption = question.options.find((option) => option.key === question.answer);
@@ -125,6 +131,11 @@ for (const question of svgQuestions) {
     continue;
   }
 
+  if (allowsVisibleAnswerByPolicy(question)) {
+    policyAllowedVisibleAnswerCount += 1;
+    continue;
+  }
+
   issues.push({
     severity: "critical",
     imageUrl: question.imageUrl,
@@ -146,6 +157,11 @@ if (allowedVisibleAnswers.length > 0) {
   for (const item of allowedVisibleAnswers) {
     console.log(`- ${item.imageUrl} | ${item.answer} | ${item.textNodes.join(" | ")}`);
   }
+}
+
+if (policyAllowedVisibleAnswerCount > 0) {
+  console.log("");
+  console.log(`Visible-answer SVGs allowed by knowledge-tag policy: ${policyAllowedVisibleAnswerCount}`);
 }
 
 if (unusedSvgAssets.length > 0) {

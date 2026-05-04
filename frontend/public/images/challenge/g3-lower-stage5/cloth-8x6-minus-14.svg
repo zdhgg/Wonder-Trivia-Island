@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <defs>
+    <linearGradient id="panel" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="100%" stop-color="#EFF7FF" />
+    </linearGradient>
+  </defs>
+  <rect width="480" height="280" rx="28" fill="#EFF7FF" />
+  <rect x="32" y="24" width="416" height="232" rx="28" fill="url(#panel)" stroke="#CFE2F7" />
+  <rect x="32" y="24" width="416" height="44" rx="28" fill="#2C7BE5" />
+  <text x="52" y="52" font-size="22" font-weight="800" fill="#FFFFFF">布料面积</text>
+  <text x="52" y="88" font-size="15" font-weight="600" fill="#58718D">先算整块布，再减去剪掉的部分</text>
+  
+        
+    <rect x="128" y="106" width="168" height="84" rx="8" fill="#E9F4FF" stroke="#2C7BE5" stroke-width="4" />
+    <text x="212" y="98" text-anchor="middle" font-size="18" font-weight="700" fill="#2C7BE5">8米</text>
+    <text x="314" y="154" font-size="18" font-weight="700" fill="#2C7BE5">6米</text>
+    <text x="52" y="228" font-size="16" font-weight="600" fill="#5B7087">剪去 14 平方米后还剩多少？</text>
+  
+        <rect x="312" y="118" width="88" height="44" rx="12" fill="#FFF1E0" stroke="#FF9B46" stroke-width="3" />
+        <text x="356" y="146" text-anchor="middle" font-size="20" font-weight="800" fill="#D46B00">减 14㎡</text>
+      
+</svg>

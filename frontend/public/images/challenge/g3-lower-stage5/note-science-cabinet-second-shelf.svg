@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#F9F6F1" />
+  <rect x="34" y="24" width="412" height="232" rx="26" fill="#FFFDFC" stroke="#E8DCCF" />
+  <rect x="34" y="24" width="412" height="46" rx="26" fill="#5F8FCE" />
+  <text x="56" y="53" font-size="22" font-weight="800" fill="#FFFFFF">留言</text>
+  <text x="58" y="92" font-size="15" font-weight="600" fill="#8D6D58">根据物品位置找答案</text>
+  <rect x="62" y="108" width="356" height="112" rx="18" fill="#FFF6EC" stroke="#F0D7BD" />
+  <text x="82" y="118" font-size="19" font-weight="700" fill="#6A4631"><tspan x="82" y="118">观察表  在科学柜第二层</tspan><tspan x="82" y="144">放大镜  在窗边</tspan><tspan x="82" y="170">记录本  在讲台上</tspan></text>
+</svg>

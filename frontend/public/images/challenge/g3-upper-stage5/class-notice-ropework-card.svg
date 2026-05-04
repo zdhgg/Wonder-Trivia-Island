@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#F9F6F1" />
+  <rect x="34" y="24" width="412" height="232" rx="26" fill="#FFFDFC" stroke="#E8DCCF" />
+  <rect x="34" y="24" width="412" height="46" rx="26" fill="#C96B3B" />
+  <text x="56" y="53" font-size="22" font-weight="800" fill="#FFFFFF">班级公告</text>
+  <text x="58" y="92" font-size="15" font-weight="600" fill="#8D6D58">按星期查看安排</text>
+  <rect x="62" y="108" width="356" height="112" rx="18" fill="#FFF6EC" stroke="#F0D7BD" />
+  <text x="82" y="118" font-size="19" font-weight="700" fill="#6A4631"><tspan x="82" y="118">周三  带跳绳参加比赛</tspan><tspan x="82" y="144">周四  交手工作品</tspan><tspan x="82" y="170">周五  展示读书卡</tspan></text>
+</svg>

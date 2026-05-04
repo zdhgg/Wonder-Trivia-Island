@@ -69,6 +69,9 @@ export function createChallengeRuntime({
   const challengeAchievementCount = computed(
     () => challengeAchievements.value.filter((achievement) => achievement.isUnlocked).length
   );
+  const challengeFreshAchievementCount = computed(
+    () => challengeAchievements.value.filter((achievement) => achievement.fresh).length
+  );
   const challengeAchievementProgressLabel = computed(
     () => `成就 ${challengeAchievementCount.value} / ${CHALLENGE_ACHIEVEMENTS.length}`
   );
@@ -346,6 +349,7 @@ export function createChallengeRuntime({
     challengeRewardProgressLabel,
     challengeAchievements,
     challengeAchievementCount,
+    challengeFreshAchievementCount,
     challengeAchievementProgressLabel,
     isChallengeCoverageLoading,
     clearChallengeOutcome,

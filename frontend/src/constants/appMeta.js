@@ -1,14 +1,28 @@
 export const APP_META = Object.freeze({
   productName: "奇妙知识岛",
-  version: "1.1.0",
-  releaseTag: "v1.1.0",
-  releaseLabel: "1.1 图片题版",
-  releasedAt: "2026-05-03",
+  version: "1.2.0",
+  releaseTag: "v1.2.0",
+  releaseLabel: "1.2 欢迎语与题库扩展版",
+  releasedAt: "2026-05-04",
   repositoryUrl: "https://github.com/zdhgg/Wonder-Trivia-Island",
-  releaseUrl: "https://github.com/zdhgg/Wonder-Trivia-Island/releases/tag/v1.1.0",
+  releaseUrl: "https://github.com/zdhgg/Wonder-Trivia-Island/releases/tag/v1.2.0",
   architectureSummary: "Vue 3 + Vite 8 · Node.js 24 + Express 5 · SQLite",
   dataModeLabel: "单学习档案 · 本机优先",
   changelog: Object.freeze([
+    Object.freeze({
+      version: "1.2.0",
+      tag: "v1.2.0",
+      date: "2026-05-04",
+      channel: "正式版",
+      title: "首页欢迎语、模型库和二三年级图片题同步升级",
+      summary: "统一首页欢迎语规则，扩展二三年级闯关图片题，并把自定义模型库升级为更稳的资产化绑定。",
+      highlights: Object.freeze([
+        "首页欢迎语新增标题、短句和播报三段式生成，显式约束时段词、标题风格和前后端共享规则。",
+        "补齐二三年级多组闯关图片题素材与同步脚本，挑战题 SVG 审查继续保持可自动验收。",
+        "AI 模型库改为按稳定资产 ID 绑定，编辑、重命名和删除后不再依赖模型名硬匹配。",
+        "闯关页收拢关卡信息与章节成就展示，减少主界面噪音并突出新解锁内容。"
+      ])
+    }),
     Object.freeze({
       version: "1.1.0",
       tag: "v1.1.0",

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <defs>
+    <linearGradient id="panel" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="100%" stop-color="#EFF7FF" />
+    </linearGradient>
+  </defs>
+  <rect width="480" height="280" rx="28" fill="#EFF7FF" />
+  <rect x="32" y="24" width="416" height="232" rx="28" fill="url(#panel)" stroke="#CFE2F7" />
+  <rect x="32" y="24" width="416" height="44" rx="28" fill="#2C7BE5" />
+  <text x="52" y="52" font-size="22" font-weight="800" fill="#FFFFFF">正方形周长</text>
+  <text x="52" y="88" font-size="15" font-weight="600" fill="#58718D">4 条边都一样长</text>
+  
+    <rect x="156" y="102" width="124" height="124" rx="8" fill="#E9F4FF" stroke="#2C7BE5" stroke-width="4" />
+    <text x="218" y="94" text-anchor="middle" font-size="18" font-weight="700" fill="#2C7BE5">7厘米</text>
+    <text x="52" y="244" font-size="16" font-weight="600" fill="#5B7087">周长等于 4 个边长相加。</text>
+  
+</svg>

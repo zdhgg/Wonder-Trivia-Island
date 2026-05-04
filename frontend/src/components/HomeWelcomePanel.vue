@@ -255,17 +255,17 @@ const panelClass = computed(() => [
   font-family: "ZCOOL KuaiLe", "Baloo 2", "Trebuchet MS", sans-serif;
   font-size: clamp(1.9rem, 3vw, 2.6rem);
   line-height: 1.06;
-  max-width: 12ch;
+  max-width: 14ch;
   text-wrap: balance;
 }
 
 .home-welcome__summary {
   margin: 0;
-  max-width: 34ch;
+  max-width: 40ch;
   color: color-mix(in srgb, var(--color-ink-soft) 92%, white);
-  font-size: 0.98rem;
+  font-size: 1rem;
   font-weight: 700;
-  line-height: 1.5;
+  line-height: 1.56;
 }
 
 .home-welcome__actions {
@@ -399,11 +399,11 @@ const panelClass = computed(() => [
 
   .home-welcome__title {
     font-size: clamp(1.65rem, 8vw, 2.12rem);
-    max-width: 11ch;
+    max-width: 12ch;
   }
 
   .home-welcome__summary {
-    max-width: 30ch;
+    max-width: 34ch;
     font-size: 0.92rem;
   }
 

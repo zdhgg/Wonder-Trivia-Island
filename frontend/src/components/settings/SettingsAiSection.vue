@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from "vue";
+import { findModelLibraryEntry, resolveModelLibraryEntryLabel } from "../../stores/useSettingsStore";
 
 const props = defineProps({
   aiDraft: {
@@ -206,7 +207,11 @@ function resolveModelLibraryItems(type = "text") {
 }
 
 function buildModelLibraryKey(item = {}) {
-  return String(item?.name || "");
+  return String(item?.id || item?.name || "");
+}
+
+function resolveModelLibraryOptionLabel(item = {}) {
+  return resolveModelLibraryEntryLabel(item) || String(item?.name || "").trim();
 }
 
 function resolveServiceRuntimeLabel(selection = {}) {
@@ -214,8 +219,7 @@ function resolveServiceRuntimeLabel(selection = {}) {
     return "跟随服务端默认";
   }
 
-  const customModelName = String(selection.customModel || "").trim();
-  const matchedEntry = modelLibrary.value.find((item) => String(item?.name || "").trim() === customModelName);
+  const matchedEntry = findModelLibraryEntry(modelLibrary.value, selection.customModel);
 
   if (!matchedEntry) {
     return "未登记，走服务器默认";
@@ -363,9 +367,9 @@ function resolveServiceRuntimeLabel(selection = {}) {
               <option
                 v-for="modelEntry in resolveModelLibraryItems(card.type)"
                 :key="`${card.key}-select-${buildModelLibraryKey(modelEntry)}`"
-                :value="modelEntry.name"
+                :value="modelEntry.id"
               >
-                {{ modelEntry.name }}
+                {{ resolveModelLibraryOptionLabel(modelEntry) }}
               </option>
             </select>
           </label>

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <defs>
+    <linearGradient id="panel" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="100%" stop-color="#EFF7FF" />
+    </linearGradient>
+  </defs>
+  <rect width="480" height="280" rx="28" fill="#EFF7FF" />
+  <rect x="32" y="24" width="416" height="232" rx="28" fill="url(#panel)" stroke="#CFE2F7" />
+  <rect x="32" y="24" width="416" height="44" rx="28" fill="#2C7BE5" />
+  <text x="52" y="52" font-size="22" font-weight="800" fill="#FFFFFF">绳子剪拼</text>
+  <text x="52" y="88" font-size="15" font-weight="600" fill="#58718D">每个正方形有 4 条边</text>
+  
+    <rect x="92" y="126" width="220" height="28" rx="14" fill="#FFB36B" />
+    <rect x="312" y="126" width="72" height="28" rx="14" fill="#D8ECFF" />
+    <text x="92" y="110" font-size="18" font-weight="700" fill="#35516F">总长 84厘米</text>
+    <text x="202" y="144" text-anchor="middle" font-size="16" font-weight="700" fill="#7A3B00">先用掉做正方形的部分</text>
+    <text x="348" y="144" text-anchor="middle" font-size="16" font-weight="700" fill="#2C7BE5">剩余</text>
+    <text x="52" y="214" font-size="18" font-weight="700" fill="#2C7BE5">4个边长18厘米的正方形</text>
+    <text x="52" y="238" font-size="16" font-weight="600" fill="#5B7087">想一想还剩下多少厘米。</text>
+  
+</svg>

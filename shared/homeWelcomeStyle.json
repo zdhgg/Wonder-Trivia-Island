@@ -1,0 +1,38 @@
+{
+  "maxTitleLength": 28,
+  "maxBubbleLength": 36,
+  "maxSpeechLength": 96,
+  "offStyleTitlePatterns": [
+    "任务",
+    "挑战",
+    "闯关",
+    "冲刺",
+    "打卡",
+    "刷题",
+    "计划",
+    "安排",
+    "立刻",
+    "马上",
+    "赶紧",
+    "快来",
+    "出发",
+    "开启",
+    "开始吧",
+    "冲呀",
+    "太棒啦",
+    "最棒",
+    "错题"
+  ],
+  "titleAnchorKeywords": [
+    "小岛",
+    "猫头鹰"
+  ],
+  "timeMentionAliasMap": {
+    "morning": ["早晨", "早上", "清晨", "早上好"],
+    "noon": ["中午", "中午好"],
+    "afternoon": ["下午", "下午好"],
+    "dusk": ["傍晚", "傍晚了"],
+    "evening": ["晚上", "夜晚", "晚上好"],
+    "late-night": ["深夜", "夜深", "夜里", "夜深了"]
+  }
+}

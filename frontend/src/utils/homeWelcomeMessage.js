@@ -1,13 +1,47 @@
+import homeWelcomeRulesModule from "../../../shared/homeWelcomeRules.browser.mjs";
+
 export const HOME_WELCOME_CACHE_KEY = "wonder-trivia-island.home-welcome.cache";
 export const HOME_WELCOME_VISIT_DATE_KEY = "wonder-trivia-island.home-welcome.visit-date";
 export const HOME_WELCOME_AUTO_SPEECH_DATE_KEY = "wonder-trivia-island.home-welcome.auto-speech-date";
-export const HOME_WELCOME_CACHE_VERSION = 2;
-export const HOME_WELCOME_MAX_LINE_LENGTH = 28;
-export const HOME_WELCOME_MAX_SPEECH_LENGTH = 80;
+export const HOME_WELCOME_CACHE_VERSION = 4;
+const HOME_WELCOME_SHARED_RULES =
+  homeWelcomeRulesModule && typeof homeWelcomeRulesModule === "object" ? homeWelcomeRulesModule : {};
+const HOME_WELCOME_STYLE_CONFIG =
+  HOME_WELCOME_SHARED_RULES.styleConfig && typeof HOME_WELCOME_SHARED_RULES.styleConfig === "object"
+    ? HOME_WELCOME_SHARED_RULES.styleConfig
+    : {};
+export const HOME_WELCOME_MAX_LINE_LENGTH = Number(HOME_WELCOME_STYLE_CONFIG.maxBubbleLength || 28);
+export const HOME_WELCOME_MAX_SPEECH_LENGTH = Number(HOME_WELCOME_STYLE_CONFIG.maxSpeechLength || 80);
+export const HOME_WELCOME_MAX_TITLE_LENGTH = Number(HOME_WELCOME_STYLE_CONFIG.maxTitleLength || 28);
+const HOME_WELCOME_OFF_STYLE_TITLE_PATTERNS = Object.freeze(
+  Array.isArray(HOME_WELCOME_SHARED_RULES.offStyleTitlePatterns) && HOME_WELCOME_SHARED_RULES.offStyleTitlePatterns.length > 0
+    ? HOME_WELCOME_SHARED_RULES.offStyleTitlePatterns
+    : [
+      "任务",
+      "挑战",
+      "闯关",
+      "冲刺",
+      "打卡",
+      "刷题",
+      "计划",
+      "安排",
+      "立刻",
+      "马上",
+      "赶紧",
+      "快来",
+      "出发",
+      "开启",
+      "开始吧",
+      "冲呀",
+      "太棒啦",
+      "最棒",
+      "错题"
+    ]
+);
 
 const HOME_WELCOME_FALLBACKS = Object.freeze({
   profileSaved: Object.freeze([
-    (context) => {
+    (context, date) => {
       const gradeSemesterLabel = formatGradeSemesterLabel(context);
       return gradeSemesterLabel ? `${gradeSemesterLabel}已经放到首页啦。` : "新的学习档案已经放到首页啦。";
     },
@@ -15,53 +49,30 @@ const HOME_WELCOME_FALLBACKS = Object.freeze({
     () => "首页已经按你的档案准备好了。"
   ]),
   firstVisitToday: Object.freeze([
-    (context) => {
-      const { monthVibe } = resolveTemporalLabels(context);
-      return monthVibe ? `${monthVibe}，小岛已经准备好啦。` : "今天的小岛已经准备好啦。";
-    },
-    (context) => {
-      const { timeBand } = resolveTemporalLabels(context);
-      if (timeBand === "morning") return "早上的小岛很安静，慢慢来就好。";
-      if (timeBand === "noon") return "中午了，来小岛坐一会儿吧。";
-      if (timeBand === "afternoon") return "下午的阳光正好，进来坐坐吧。";
-      if (timeBand === "evening") return "晚上好，小岛的灯还亮着呢。";
-      return "夜深了，小岛还亮着一盏灯。";
-    },
-    (context) => {
-      const { monthVibe } = resolveTemporalLabels(context);
-      return monthVibe ? `${monthVibe}，猫头鹰在这儿等你。` : "猫头鹰在这儿等你。";
-    }
+    (context, date) => buildFirstVisitFallbackLine(context, date),
+    (context, date) => buildFirstVisitFallbackSceneLine(context, date),
+    (context, date) => buildFirstVisitCompanionLine(context, date)
   ]),
   default: Object.freeze([
-    () => "今天也来啦，真高兴见到你。",
-    (context) => {
-      const { monthVibe } = resolveTemporalLabels(context);
-      return monthVibe ? `${monthVibe}，小岛还是老样子。` : "小岛还是老样子。";
-    },
-    (context) => {
-      const { schoolYearPhase } = resolveTemporalLabels(context);
+    (context, date) => buildDefaultFallbackLine(context, date),
+    (context, date) => buildDefaultFallbackSceneLine(context, date),
+    (context, date) => {
+      const { schoolYearPhase } = resolveTemporalLabels(context, date);
       if (schoolYearPhase === "期末临近") return "快到期末了，慢慢来，不用慌。";
       if (schoolYearPhase === "寒假里") return "寒假里也来啦，真高兴。";
       if (schoolYearPhase === "暑假里") return "暑假里也来啦，小岛一直在这儿。";
       if (schoolYearPhase === "新学期开始") return "新学期开始了，小岛也跟着亮起来了。";
       return "猫头鹰一直在等你呢。";
     },
-    () => "今天想做什么都可以，不着急。",
-    (context) => {
-      const { timeBand } = resolveTemporalLabels(context);
-      if (timeBand === "evening" || timeBand === "night") return "晚上回来看看，也刚刚好。";
-      return "今天的阳光正好，进来坐坐吧。";
-    },
-    (context) => {
-      const { monthVibe } = resolveTemporalLabels(context);
-      return monthVibe ? `${monthVibe}，慢慢来就好。` : "慢慢来就好。";
-    }
+    (context, date) => buildDefaultFallbackCompanionLine(context, date),
+    (context, date) => buildDefaultFallbackReturnLine(context, date),
+    (context, date) => buildDefaultFallbackEaseLine(context, date)
   ])
 });
 
 const HOME_WELCOME_FALLBACK_SPEECHES = Object.freeze({
   profileSaved: Object.freeze([
-    (context) => {
+    (context, date) => {
       const gradeSemesterLabel = formatGradeSemesterLabel(context);
       return gradeSemesterLabel
         ? `${gradeSemesterLabel}已经放到首页了，今天轻轻来就好，我会在这里陪你。`
@@ -71,36 +82,22 @@ const HOME_WELCOME_FALLBACK_SPEECHES = Object.freeze({
     () => "首页已经按你的档案备好了，慢慢来，我一直在这儿。"
   ]),
   firstVisitToday: Object.freeze([
-    () => "今天的小岛已经准备好了，想做什么都行，猫头鹰会在这里陪着你。",
-    (context) => {
-      const { timeBand, monthVibe } = resolveTemporalLabels(context);
-      if (timeBand === "morning") return monthVibe ? `${monthVibe}，早上的小岛很安静，不急不忙，猫头鹰在这儿等你。` : "早上的小岛很安静，不急不忙，猫头鹰在这儿等你。";
-      if (timeBand === "evening" || timeBand === "night") return "晚上好，小岛的灯还亮着，慢慢待一会儿就好。";
-      return monthVibe ? `${monthVibe}，来小岛坐坐吧，猫头鹰一直在。` : "今天的阳光正好，来小岛坐坐吧，猫头鹰一直在。";
-    },
-    (context) => {
-      const { monthVibe } = resolveTemporalLabels(context);
-      return monthVibe ? `欢迎回来，${monthVibe}，我们也慢慢来，不着急。` : "欢迎回来，今天我们也慢慢来，不着急。";
-    }
+    (context, date) => buildFirstVisitFallbackSpeech(context, date),
+    (context, date) => buildFirstVisitFallbackSceneSpeech(context, date),
+    (context, date) => buildFirstVisitFallbackEaseSpeech(context, date)
   ]),
   default: Object.freeze([
-    () => "今天也来啦，真高兴见到你，猫头鹰会一直在这里陪着你。",
-    (context) => {
-      const { monthVibe } = resolveTemporalLabels(context);
-      return monthVibe ? `${monthVibe}，小岛还是安安静静的，慢慢来，我一直在这儿。` : "小岛还是安安静静的，慢慢来，我一直在这儿。";
-    },
-    (context) => {
-      const { schoolYearPhase } = resolveTemporalLabels(context);
+    (context, date) => buildDefaultFallbackSpeech(context, date),
+    (context, date) => buildDefaultFallbackSceneSpeech(context, date),
+    (context, date) => {
+      const { schoolYearPhase } = resolveTemporalLabels(context, date);
       if (schoolYearPhase === "期末临近") return "快期末了，不用慌，按自己的节奏慢慢来，我一直在这儿。";
       if (schoolYearPhase === "寒假里") return "寒假里也来啦，真高兴，小岛一直都在。";
       if (schoolYearPhase === "暑假里") return "暑假里也来看看啦，小岛一直在这儿等你。";
       if (schoolYearPhase === "新学期开始") return "新学期开始了，小岛也跟着亮起来了，慢慢来就好。";
       return "今天想做什么都可以，不着急，先在这儿待一会儿就好。";
     },
-    (context) => {
-      const { monthVibe } = resolveTemporalLabels(context);
-      return monthVibe ? `${monthVibe}，你来了就好。` : "你来了就好。";
-    }
+    (context, date) => buildDefaultFallbackCompanionSpeech(context, date)
   ])
 });
 
@@ -174,25 +171,63 @@ function resolveHomeWelcomeReferenceDate(context = {}, date = new Date()) {
 }
 
 function resolveTimeBandFromDate(date = new Date()) {
+  return resolveTimeCopyFromDate(date).timeBand;
+}
+
+function resolveTimeCopyFromDate(date = new Date()) {
   const hour = date.getHours();
 
   if (hour >= 5 && hour < 11) {
-    return "morning";
+    return {
+      timeBand: "morning",
+      timeContextKey: "morning",
+      timeCueLabel: "早晨",
+      timeGreetingLabel: "早上好"
+    };
   }
 
   if (hour >= 11 && hour < 14) {
-    return "noon";
+    return {
+      timeBand: "noon",
+      timeContextKey: "noon",
+      timeCueLabel: "中午",
+      timeGreetingLabel: "中午好"
+    };
   }
 
   if (hour >= 14 && hour < 18) {
-    return "afternoon";
+    return {
+      timeBand: "afternoon",
+      timeContextKey: "afternoon",
+      timeCueLabel: "下午",
+      timeGreetingLabel: "下午好"
+    };
   }
 
-  if (hour >= 18 && hour < 23) {
-    return "evening";
+  if (hour >= 18 && hour < 20) {
+    return {
+      timeBand: "evening",
+      timeContextKey: "dusk",
+      timeCueLabel: "傍晚",
+      timeGreetingLabel: "傍晚了"
+    };
   }
 
-  return "night";
+  if (hour >= 20 && hour < 23) {
+    return {
+      timeBand: "evening",
+      timeContextKey: "evening",
+      timeCueLabel: "晚上",
+      timeGreetingLabel: "晚上好"
+    };
+  }
+
+  return {
+    timeBand: "night",
+    timeContextKey: "late-night",
+    timeCueLabel: "深夜",
+    timeGreetingLabel: "夜深了"
+  };
 }
 
 function resolveSeasonLabelFromMonth(monthNumber = 1) {
@@ -256,7 +291,12 @@ function resolveSchoolYearPhase(monthNumber = 1) {
 export function buildHomeWelcomeTemporalContext(date = new Date()) {
   const referenceDate = date instanceof Date ? date : new Date(date);
   const monthNumber = referenceDate.getMonth() + 1;
-  const timeBand = resolveTimeBandFromDate(referenceDate);
+  const {
+    timeBand,
+    timeContextKey,
+    timeCueLabel,
+    timeGreetingLabel
+  } = resolveTimeCopyFromDate(referenceDate);
 
   return {
     currentTimestamp: referenceDate.getTime(),
@@ -266,7 +306,10 @@ export function buildHomeWelcomeTemporalContext(date = new Date()) {
     seasonLabel: resolveSeasonLabelFromMonth(monthNumber),
     monthVibe: resolveMonthVibe(monthNumber),
     schoolYearPhase: resolveSchoolYearPhase(monthNumber),
-    timeBand
+    timeBand,
+    timeContextKey,
+    timeCueLabel,
+    timeGreetingLabel
   };
 }
 
@@ -274,6 +317,9 @@ function resolveTemporalLabels(context = {}, date = new Date()) {
   const referenceDate = resolveHomeWelcomeReferenceDate(context, date);
   const temporalContext = buildHomeWelcomeTemporalContext(referenceDate);
   const timeBand = normalizeText(context.timeBand, 20) || temporalContext.timeBand;
+  const timeContextKey = normalizeText(context.timeContextKey, 20) || temporalContext.timeContextKey;
+  const timeCueLabel = normalizeText(context.timeCueLabel, 20) || temporalContext.timeCueLabel;
+  const timeGreetingLabel = normalizeText(context.timeGreetingLabel, 20) || temporalContext.timeGreetingLabel;
   const monthLabel = normalizeText(context.monthLabel, 20) || temporalContext.monthLabel;
   const seasonLabel = normalizeText(context.seasonLabel, 20) || temporalContext.seasonLabel;
   const monthVibe = normalizeText(context.monthVibe, 20) || temporalContext.monthVibe;
@@ -282,11 +328,581 @@ function resolveTemporalLabels(context = {}, date = new Date()) {
   return {
     referenceDate,
     timeBand,
+    timeContextKey,
+    timeCueLabel,
+    timeGreetingLabel,
     monthLabel,
     seasonLabel,
     monthVibe,
     schoolYearPhase
   };
+}
+
+function resolveTimeMentionCandidates(context = {}, date = new Date()) {
+  const { timeContextKey, timeCueLabel, timeGreetingLabel } = resolveTemporalLabels(context, date);
+  if (typeof HOME_WELCOME_SHARED_RULES.getTimeMentionCandidates === "function") {
+    return HOME_WELCOME_SHARED_RULES.getTimeMentionCandidates({
+      timeContextKey,
+      timeCueLabel,
+      timeGreetingLabel
+    });
+  }
+
+  return Array.from(new Set([timeCueLabel, timeGreetingLabel].filter(Boolean)));
+}
+
+function ensureHomeWelcomeTimeMention(
+  value,
+  context = {},
+  {
+    date = new Date(),
+    maxLength = HOME_WELCOME_MAX_LINE_LENGTH,
+    forSpeech = false
+  } = {}
+) {
+  const normalized = normalizeText(value, maxLength * 3);
+
+  if (!normalized) {
+    return "";
+  }
+
+  const mentions = resolveTimeMentionCandidates(context, date);
+
+  if (mentions.some((mention) => normalized.includes(mention))) {
+    return forSpeech
+      ? normalizeHomeWelcomeSpeechText(normalized, maxLength)
+      : normalizeHomeWelcomeLine(normalized, maxLength);
+  }
+
+  const { timeGreetingLabel, timeCueLabel } = resolveTemporalLabels(context, date);
+  const prefix = timeGreetingLabel || timeCueLabel || "欢迎回来";
+  const prefixed = `${prefix}，${normalized}`;
+
+  return forSpeech
+    ? normalizeHomeWelcomeSpeechText(prefixed, maxLength)
+    : normalizeHomeWelcomeLine(prefixed, maxLength);
+}
+
+function resolveHomeWelcomeDisplayName(context = {}) {
+  return formatDisplayName(context.displayName);
+}
+
+function withMonthVibe(vibe, text) {
+  if (!vibe || !text) {
+    return text || vibe || "";
+  }
+
+  return `${vibe}里，${text}`;
+}
+
+function composeHomeWelcomeSentence(...segments) {
+  const normalizedSegments = segments.map((segment) => normalizeText(segment, 80)).filter(Boolean);
+
+  if (normalizedSegments.length === 0) {
+    return "";
+  }
+
+  if (normalizedSegments.length === 1) {
+    return `${normalizedSegments[0]}。`;
+  }
+
+  if (normalizedSegments.length === 2) {
+    return `${normalizedSegments[0]}，${normalizedSegments[1]}。`;
+  }
+
+  return `${normalizedSegments[0]}，${normalizedSegments.slice(1).join("，")}。`;
+}
+
+function buildFirstVisitFallbackLine(context = {}, date = new Date()) {
+  const { timeContextKey, monthVibe } = resolveTemporalLabels(context, date);
+  const displayName = resolveHomeWelcomeDisplayName(context);
+  const companionCue = displayName ? `${displayName}，猫头鹰在等你` : "猫头鹰在等你";
+
+  switch (timeContextKey) {
+    case "morning":
+      return withMonthVibe(monthVibe, `早上好，${companionCue}`);
+    case "noon":
+      return withMonthVibe(monthVibe, `中午好，${companionCue}`);
+    case "afternoon":
+      return withMonthVibe(monthVibe, `下午好，${companionCue}`);
+    case "dusk":
+      return withMonthVibe(monthVibe, `傍晚好，小岛的灯还亮着呢`);
+    case "evening":
+      return withMonthVibe(monthVibe, `晚上好，小岛的灯还亮着呢`);
+    default:
+      return withMonthVibe(monthVibe, "夜深了，小岛还亮着一盏灯");
+  }
+}
+
+function buildFirstVisitFallbackSceneLine(context = {}, date = new Date()) {
+  const { timeContextKey, monthVibe } = resolveTemporalLabels(context, date);
+  const displayName = resolveHomeWelcomeDisplayName(context);
+
+  switch (timeContextKey) {
+    case "morning":
+      return withMonthVibe(monthVibe, displayName ? `早晨见到${displayName}真好` : "早晨见到你真好");
+    case "noon":
+      return withMonthVibe(monthVibe, displayName ? `中午见到${displayName}真好` : "中午见到你真好");
+    case "afternoon":
+      return withMonthVibe(monthVibe, displayName ? `下午见到${displayName}真好` : "下午见到你真好");
+    case "dusk":
+      return withMonthVibe(monthVibe, displayName ? `傍晚见到${displayName}真好` : "傍晚见到你真好");
+    case "evening":
+      return withMonthVibe(monthVibe, displayName ? `晚上见到${displayName}真好` : "晚上见到你真好");
+    default:
+      return withMonthVibe(monthVibe, "深夜也别着急，慢慢来就好");
+  }
+}
+
+function buildFirstVisitCompanionLine(context = {}, date = new Date()) {
+  const { timeContextKey, monthVibe } = resolveTemporalLabels(context, date);
+  const displayName = resolveHomeWelcomeDisplayName(context);
+  const companionCue = displayName ? `${displayName}，猫头鹰在这儿陪你` : "猫头鹰在这儿陪你";
+
+  switch (timeContextKey) {
+    case "morning":
+      return withMonthVibe(monthVibe, companionCue);
+    case "noon":
+      return withMonthVibe(monthVibe, companionCue);
+    case "afternoon":
+      return withMonthVibe(monthVibe, companionCue);
+    case "dusk":
+      return withMonthVibe(monthVibe, companionCue);
+    case "evening":
+      return withMonthVibe(monthVibe, companionCue);
+    default:
+      return withMonthVibe(monthVibe, "小岛还亮着一盏灯，慢慢来");
+  }
+}
+
+function buildDefaultFallbackLine(context = {}, date = new Date()) {
+  const { timeContextKey, monthVibe } = resolveTemporalLabels(context, date);
+  const displayName = resolveHomeWelcomeDisplayName(context);
+
+  switch (timeContextKey) {
+    case "morning":
+      return withMonthVibe(monthVibe, displayName ? `早上见到${displayName}真好` : "早上见到你真好");
+    case "noon":
+      return withMonthVibe(monthVibe, displayName ? `中午也来啦，${displayName}` : "中午也来啦");
+    case "afternoon":
+      return withMonthVibe(monthVibe, displayName ? `下午也慢慢来，${displayName}` : "下午也慢慢来");
+    case "dusk":
+      return withMonthVibe(monthVibe, displayName ? `傍晚回来看看也刚刚好，${displayName}` : "傍晚回来看看也刚刚好");
+    case "evening":
+      return withMonthVibe(monthVibe, displayName ? `晚上回来看看也刚刚好，${displayName}` : "晚上回来看看也刚刚好");
+    default:
+      return withMonthVibe(monthVibe, "夜深了，慢慢来就好");
+  }
+}
+
+function buildDefaultFallbackSceneLine(context = {}, date = new Date()) {
+  const { timeContextKey, monthVibe } = resolveTemporalLabels(context, date);
+
+  switch (timeContextKey) {
+    case "morning":
+      return withMonthVibe(monthVibe, "小岛还是安安静静地在这儿陪你");
+    case "noon":
+      return withMonthVibe(monthVibe, "小岛还是安安静静地在这儿陪你");
+    case "afternoon":
+      return withMonthVibe(monthVibe, "小岛还是安安静静地在这儿陪你");
+    case "dusk":
+      return withMonthVibe(monthVibe, "小岛还是安安静静地在这儿陪你");
+    case "evening":
+      return withMonthVibe(monthVibe, "小岛还是安安静静地在这儿陪你");
+    default:
+      return withMonthVibe(monthVibe, "小岛还是安安静静地在这儿陪你");
+  }
+}
+
+function buildDefaultFallbackCompanionLine(context = {}, date = new Date()) {
+  const { timeContextKey } = resolveTemporalLabels(context, date);
+
+  switch (timeContextKey) {
+    case "morning":
+      return "早上想做什么都可以，不着急。";
+    case "noon":
+      return "中午想做什么都可以，不着急。";
+    case "afternoon":
+      return "下午想做什么都可以，不着急。";
+    case "dusk":
+      return "傍晚也慢慢来，不着急。";
+    case "evening":
+      return "晚上想做什么都可以，不着急。";
+    default:
+      return "夜深了，先在这儿待一会儿就好。";
+  }
+}
+
+function buildDefaultFallbackReturnLine(context = {}, date = new Date()) {
+  const { timeContextKey } = resolveTemporalLabels(context, date);
+
+  if (timeContextKey === "dusk") {
+    return "傍晚回来看看，也刚刚好。";
+  }
+
+  if (timeContextKey === "evening") {
+    return "晚上回来看看，也刚刚好。";
+  }
+
+  if (timeContextKey === "late-night") {
+    return "夜深了，回来看看也刚刚好。";
+  }
+
+  return "今天的阳光正好，进来坐坐吧。";
+}
+
+function buildDefaultFallbackEaseLine(context = {}, date = new Date()) {
+  const { timeContextKey, monthVibe } = resolveTemporalLabels(context, date);
+
+  switch (timeContextKey) {
+    case "morning":
+      return withMonthVibe(monthVibe, "慢慢来就好");
+    case "noon":
+      return withMonthVibe(monthVibe, "慢慢来就好");
+    case "afternoon":
+      return withMonthVibe(monthVibe, "慢慢来就好");
+    case "dusk":
+      return withMonthVibe(monthVibe, "慢慢来就好");
+    case "evening":
+      return withMonthVibe(monthVibe, "慢慢来就好");
+    default:
+      return withMonthVibe(monthVibe, "不着急，慢慢来就好");
+  }
+}
+
+function buildFirstVisitFallbackSpeech(context = {}, date = new Date()) {
+  const { timeContextKey, monthVibe } = resolveTemporalLabels(context, date);
+  const displayName = resolveHomeWelcomeDisplayName(context);
+  const greet = displayName ? `${displayName}，` : "";
+
+  switch (timeContextKey) {
+    case "morning":
+      return withMonthVibe(monthVibe, `${greet}早上的小岛很安静，猫头鹰在这儿等你`);
+    case "noon":
+      return withMonthVibe(monthVibe, `${greet}中午了，来小岛坐一会儿吧，猫头鹰一直在这儿`);
+    case "afternoon":
+      return withMonthVibe(monthVibe, `${greet}下午的风正轻，进来坐坐吧，猫头鹰一直在这儿`);
+    case "dusk":
+      return withMonthVibe(monthVibe, `${greet}傍晚的小岛还亮着，慢慢待一会儿就好`);
+    case "evening":
+      return withMonthVibe(monthVibe, `${greet}晚上好，小岛的灯还亮着，慢慢待一会儿就好`);
+    default:
+      return withMonthVibe(monthVibe, `${greet}夜深了，小岛还亮着一盏灯，不着急`);
+  }
+}
+
+function buildFirstVisitFallbackSceneSpeech(context = {}, date = new Date()) {
+  const { timeContextKey, monthVibe } = resolveTemporalLabels(context, date);
+
+  switch (timeContextKey) {
+    case "morning":
+      return withMonthVibe(monthVibe, "早晨见到你真好，今天也慢慢来");
+    case "noon":
+      return withMonthVibe(monthVibe, "中午见到你真好，今天也慢慢来");
+    case "afternoon":
+      return withMonthVibe(monthVibe, "下午见到你真好，今天也慢慢来");
+    case "dusk":
+      return withMonthVibe(monthVibe, "傍晚见到你真好，今天也慢慢来");
+    case "evening":
+      return withMonthVibe(monthVibe, "晚上见到你真好，今天也慢慢来");
+    default:
+      return withMonthVibe(monthVibe, "深夜也不着急，慢慢来就好");
+  }
+}
+
+function buildFirstVisitFallbackEaseSpeech(context = {}, date = new Date()) {
+  const { timeContextKey, monthVibe } = resolveTemporalLabels(context, date);
+
+  switch (timeContextKey) {
+    case "morning":
+      return withMonthVibe(monthVibe, "今天早上也慢慢来就好");
+    case "noon":
+      return withMonthVibe(monthVibe, "今天中午也慢慢来就好");
+    case "afternoon":
+      return withMonthVibe(monthVibe, "今天下午也慢慢来就好");
+    case "dusk":
+      return withMonthVibe(monthVibe, "今天傍晚也慢慢来就好");
+    case "evening":
+      return withMonthVibe(monthVibe, "今天晚上也慢慢来就好");
+    default:
+      return withMonthVibe(monthVibe, "深夜也别着急，慢慢来就好");
+  }
+}
+
+function buildDefaultFallbackSpeech(context = {}, date = new Date()) {
+  const { timeContextKey, monthVibe } = resolveTemporalLabels(context, date);
+
+  switch (timeContextKey) {
+    case "morning":
+      return withMonthVibe(monthVibe, "早上见到你真好，猫头鹰会一直在这里陪着你");
+    case "noon":
+      return withMonthVibe(monthVibe, "中午也来啦，猫头鹰会一直在这里陪着你");
+    case "afternoon":
+      return withMonthVibe(monthVibe, "下午也慢慢来，猫头鹰会一直在这里陪着你");
+    case "dusk":
+      return withMonthVibe(monthVibe, "傍晚的小岛很安静，慢慢来，我一直在这儿");
+    case "evening":
+      return withMonthVibe(monthVibe, "晚上也慢慢来，猫头鹰会一直在这里陪着你");
+    default:
+      return withMonthVibe(monthVibe, "深夜也别着急，我一直在这儿");
+  }
+}
+
+function buildDefaultFallbackSceneSpeech(context = {}, date = new Date()) {
+  const { timeContextKey, monthVibe } = resolveTemporalLabels(context, date);
+
+  switch (timeContextKey) {
+    case "morning":
+      return withMonthVibe(monthVibe, "小岛还是安安静静地在这儿，慢慢来");
+    case "noon":
+      return withMonthVibe(monthVibe, "小岛还是安安静静地在这儿，慢慢来");
+    case "afternoon":
+      return withMonthVibe(monthVibe, "小岛还是安安静静地在这儿，慢慢来");
+    case "dusk":
+      return withMonthVibe(monthVibe, "小岛还是安安静静地在这儿，慢慢来");
+    case "evening":
+      return withMonthVibe(monthVibe, "小岛还是安安静静地在这儿，慢慢来");
+    default:
+      return withMonthVibe(monthVibe, "小岛还是安安静静地在这儿，慢慢来");
+  }
+}
+
+function buildDefaultFallbackCompanionSpeech(context = {}, date = new Date()) {
+  const { timeContextKey, monthVibe } = resolveTemporalLabels(context, date);
+
+  switch (timeContextKey) {
+    case "morning":
+      return withMonthVibe(monthVibe, "早上你来了就好");
+    case "noon":
+      return withMonthVibe(monthVibe, "中午你来了就好");
+    case "afternoon":
+      return withMonthVibe(monthVibe, "下午你来了就好");
+    case "dusk":
+      return withMonthVibe(monthVibe, "傍晚你来了就好");
+    case "evening":
+      return withMonthVibe(monthVibe, "晚上你来了就好");
+    default:
+      return withMonthVibe(monthVibe, "深夜你来了就好");
+  }
+}
+
+function resolveTimeAwareNamedTitle(timeContextKey = "morning", normalizedName = "") {
+  switch (timeContextKey) {
+    case "morning":
+      return `早晨见到你真好，${normalizedName}`;
+    case "noon":
+      return `中午也来啦，${normalizedName}`;
+    case "afternoon":
+      return `下午来坐坐吧，${normalizedName}`;
+    case "dusk":
+      return `傍晚来啦，${normalizedName}`;
+    case "evening":
+      return `晚上来啦，${normalizedName}`;
+    default:
+      return `夜深了，${normalizedName}`;
+  }
+}
+
+function resolveTimeAwareNamedInvitation(timeContextKey = "morning", normalizedName = "") {
+  switch (timeContextKey) {
+    case "morning":
+      return `早晨来坐坐吧，${normalizedName}`;
+    case "noon":
+      return `中午来坐坐吧，${normalizedName}`;
+    case "afternoon":
+      return `下午来坐坐吧，${normalizedName}`;
+    case "dusk":
+      return `傍晚来坐坐吧，${normalizedName}`;
+    case "evening":
+      return `晚上来坐坐吧，${normalizedName}`;
+    default:
+      return `夜深了，${normalizedName}`;
+  }
+}
+
+function resolveTimeAwareNamedWaitTitle(timeContextKey = "morning", normalizedName = "") {
+  switch (timeContextKey) {
+    case "morning":
+      return `早晨的小岛在等你，${normalizedName}`;
+    case "noon":
+      return `中午的小岛在等你，${normalizedName}`;
+    case "afternoon":
+      return `下午的小岛在等你，${normalizedName}`;
+    case "dusk":
+      return `小岛等你，${normalizedName}`;
+    case "evening":
+      return `小岛等你，${normalizedName}`;
+    default:
+      return `小岛的灯还亮着呢，${normalizedName}`;
+  }
+}
+
+function resolveTimeAwareVibeNamedTitle(timeContextKey = "morning", monthVibe = "", normalizedName = "") {
+  if (!monthVibe) {
+    return resolveTimeAwareNamedTitle(timeContextKey, normalizedName);
+  }
+
+  switch (timeContextKey) {
+    case "morning":
+      return `${monthVibe}，早晨见到你真好，${normalizedName}`;
+    case "noon":
+      return `${monthVibe}，中午来啦，${normalizedName}`;
+    case "afternoon":
+      return `${monthVibe}，下午来坐坐吧，${normalizedName}`;
+    case "dusk":
+      return `${monthVibe}，傍晚来啦，${normalizedName}`;
+    case "evening":
+      return `${monthVibe}，晚上来啦，${normalizedName}`;
+    default:
+      return `夜深了，${normalizedName}`;
+  }
+}
+
+function resolveTimeAwareIslandTitle(timeContextKey = "morning") {
+  switch (timeContextKey) {
+    case "morning":
+      return "早晨的小岛在等你";
+    case "noon":
+      return "中午的小岛在等你";
+    case "afternoon":
+      return "下午来小岛坐坐吧";
+    case "dusk":
+      return "傍晚来啦";
+    case "evening":
+      return "晚上来啦";
+    default:
+      return "夜深了，小岛还亮着一盏灯";
+  }
+}
+
+function resolveTimeAwareIslandInvitation(timeContextKey = "morning") {
+  switch (timeContextKey) {
+    case "morning":
+      return "早晨来小岛坐坐吧";
+    case "noon":
+      return "中午来小岛坐坐吧";
+    case "afternoon":
+      return "下午来小岛坐坐吧";
+    case "dusk":
+      return "傍晚来小岛坐坐吧";
+    case "evening":
+      return "晚上来小岛坐坐吧";
+    default:
+      return "夜深了，来坐坐吧";
+  }
+}
+
+function resolveTimeAwareIslandWaitTitle(timeContextKey = "morning") {
+  switch (timeContextKey) {
+    case "morning":
+      return "早晨的小岛陪着你";
+    case "noon":
+      return "中午的小岛陪着你";
+    case "afternoon":
+      return "下午的小岛在等你";
+    case "dusk":
+      return "傍晚的小岛等你";
+    case "evening":
+      return "晚上的小岛等你";
+    default:
+      return "夜深了，小岛还亮着一盏灯";
+  }
+}
+
+function resolveTimeAwareVibeIslandTitle(timeContextKey = "morning", monthVibe = "") {
+  if (!monthVibe) {
+    return resolveTimeAwareIslandTitle(timeContextKey);
+  }
+
+  switch (timeContextKey) {
+    case "morning":
+      return `${monthVibe}，早晨的小岛在等你`;
+    case "noon":
+      return `${monthVibe}，中午的小岛在等你`;
+    case "afternoon":
+      return `${monthVibe}，下午来小岛坐坐吧`;
+    case "dusk":
+      return `${monthVibe}，傍晚来啦`;
+    case "evening":
+      return `${monthVibe}，晚上来啦`;
+    default:
+      return "夜深了，小岛还亮着一盏灯";
+  }
+}
+
+function buildNamedHomeWelcomeTitleCandidates(
+  context = {},
+  {
+    scene = "default",
+    normalizedName = "",
+    gradeSemesterLabel = "",
+    date = new Date()
+  } = {}
+) {
+  const { timeContextKey, monthVibe } = resolveTemporalLabels(context, date);
+
+  if (scene === "profileSaved") {
+    return [
+      `${normalizedName}，新的路线已经备好`,
+      gradeSemesterLabel ? `${gradeSemesterLabel}已经就位，${normalizedName}` : `${normalizedName}，今天轻轻来就好`,
+      `首页已经备好，${normalizedName}`,
+      `${normalizedName}，今天慢慢来就行`,
+      `${normalizedName}，现在可以安心啦`
+    ];
+  }
+
+  if (scene === "firstVisitToday") {
+    return [
+      resolveTimeAwareNamedTitle(timeContextKey, normalizedName),
+      resolveTimeAwareNamedInvitation(timeContextKey, normalizedName),
+      resolveTimeAwareNamedWaitTitle(timeContextKey, normalizedName),
+      resolveTimeAwareVibeNamedTitle(timeContextKey, monthVibe, normalizedName)
+    ];
+  }
+
+  return [
+    resolveTimeAwareNamedTitle(timeContextKey, normalizedName),
+    resolveTimeAwareNamedInvitation(timeContextKey, normalizedName),
+    resolveTimeAwareNamedWaitTitle(timeContextKey, normalizedName),
+    resolveTimeAwareVibeNamedTitle(timeContextKey, monthVibe, normalizedName)
+  ];
+}
+
+function buildDefaultHomeWelcomeTitleCandidates(
+  context = {},
+  {
+    scene = "default",
+    gradeSemesterLabel = "",
+    date = new Date()
+  } = {}
+) {
+  const { monthVibe, timeContextKey } = resolveTemporalLabels(context, date);
+
+  if (scene === "profileSaved") {
+    return [
+      "首页已经按档案同步好",
+      "新的路线已经准备好了",
+      gradeSemesterLabel ? `${gradeSemesterLabel}已经就位` : "新的学习档案已经就位",
+      "今天的小岛已经按新档案备好",
+      "欢迎来到奇妙知识岛"
+    ];
+  }
+
+  if (scene === "firstVisitToday") {
+    return [
+      resolveTimeAwareIslandTitle(timeContextKey),
+      resolveTimeAwareIslandInvitation(timeContextKey),
+      resolveTimeAwareIslandWaitTitle(timeContextKey),
+      resolveTimeAwareVibeIslandTitle(timeContextKey, monthVibe)
+    ];
+  }
+
+  return [
+    resolveTimeAwareIslandTitle(timeContextKey),
+    resolveTimeAwareIslandInvitation(timeContextKey),
+    resolveTimeAwareIslandWaitTitle(timeContextKey),
+    resolveTimeAwareVibeIslandTitle(timeContextKey, monthVibe)
+  ];
 }
 
 function resolveFallbackScene(context = {}) {
@@ -384,6 +1000,38 @@ export function normalizeHomeWelcomeSpeechText(value, maxLength = HOME_WELCOME_M
   return `${candidate.slice(0, maxLength - 1).trim()}…`;
 }
 
+export function normalizeHomeWelcomeTitle(value, maxLength = HOME_WELCOME_MAX_TITLE_LENGTH) {
+  return normalizeHomeWelcomeLine(value, maxLength);
+}
+
+export function isHomeWelcomeTextTooSimilar(left, right) {
+  if (typeof HOME_WELCOME_SHARED_RULES.isTextTooSimilar === "function") {
+    return HOME_WELCOME_SHARED_RULES.isTextTooSimilar(left, right);
+  }
+
+  return false;
+}
+
+export function isHomeWelcomeTitleOffStyle(title, context = {}) {
+  const { timeCueLabel, timeGreetingLabel, monthVibe } = resolveTemporalLabels(context);
+  const displayName = normalizeText(context.displayName, 20);
+
+  if (typeof HOME_WELCOME_SHARED_RULES.isTitleOffStyle === "function") {
+    return HOME_WELCOME_SHARED_RULES.isTitleOffStyle(
+      title,
+      {
+        timeCueLabel,
+        timeGreetingLabel,
+        monthVibe,
+        displayName
+      },
+      HOME_WELCOME_OFF_STYLE_TITLE_PATTERNS
+    );
+  }
+
+  return false;
+}
+
 export function buildHomeWelcomeContextHash(context = {}) {
   return [
     normalizeText(context.grade, 20),
@@ -393,6 +1041,8 @@ export function buildHomeWelcomeContextHash(context = {}) {
     String(Number(context.reviewDueCount || 0)),
     String(Number(context.reviewingCount || 0)),
     normalizeText(context.timeBand, 20),
+    normalizeText(context.timeContextKey, 20),
+    normalizeText(context.timeCueLabel, 20),
     normalizeText(context.monthLabel, 20),
     context.isProfileJustSaved ? "profile-saved" : "steady",
     context.isFirstHomeVisitToday ? "first" : "repeat"
@@ -404,9 +1054,12 @@ export function buildHomeWelcomeFallbackLine(context = {}, date = new Date()) {
   const options = HOME_WELCOME_FALLBACKS[scene] || HOME_WELCOME_FALLBACKS.default;
   const seed = `${getHomeWelcomeDateKey(date)}|${buildHomeWelcomeContextHash(context)}|${getHomeWelcomeVariantToken(context)}|${scene}`;
   const selectedOption = pickStableVariant(options, seed);
-  const rawLine = typeof selectedOption === "function" ? selectedOption(context) : selectedOption;
+  const rawLine = typeof selectedOption === "function" ? selectedOption(context, date) : selectedOption;
 
-  return normalizeHomeWelcomeLine(rawLine);
+  return ensureHomeWelcomeTimeMention(rawLine, context, {
+    date,
+    maxLength: HOME_WELCOME_MAX_LINE_LENGTH
+  });
 }
 
 export function buildHomeWelcomeFallbackSpeechText(context = {}, date = new Date()) {
@@ -414,32 +1067,20 @@ export function buildHomeWelcomeFallbackSpeechText(context = {}, date = new Date
   const options = HOME_WELCOME_FALLBACK_SPEECHES[scene] || HOME_WELCOME_FALLBACK_SPEECHES.default;
   const seed = `${getHomeWelcomeDateKey(date)}|${buildHomeWelcomeContextHash(context)}|${getHomeWelcomeVariantToken(context)}|speech|${scene}`;
   const selectedOption = pickStableVariant(options, seed);
-  const rawLine = typeof selectedOption === "function" ? selectedOption(context) : selectedOption;
+  const rawLine = typeof selectedOption === "function" ? selectedOption(context, date) : selectedOption;
 
-  return normalizeHomeWelcomeSpeechText(rawLine) || buildHomeWelcomeFallbackLine(context, date);
+  return (
+    ensureHomeWelcomeTimeMention(rawLine, context, {
+      date,
+      maxLength: HOME_WELCOME_MAX_SPEECH_LENGTH,
+      forSpeech: true
+    }) || buildHomeWelcomeFallbackLine(context, date)
+  );
 }
 
 export function buildHomeWelcomeEyebrow(context = {}, date = new Date()) {
-  const scene = resolveFallbackScene(context);
-  const { timeBand, monthVibe } = resolveTemporalLabels(context, date);
-  const timeEyebrowMap = Object.freeze({
-    morning: "早上好",
-    noon: "中午好",
-    afternoon: "下午好",
-    evening: "晚上好",
-    night: "夜里好"
-  });
-  const timeGreeting = timeEyebrowMap[timeBand] || "欢迎回来";
-  const vibeGreeting = monthVibe || "";
-  const eyebrowMap = Object.freeze({
-    profileSaved: ["已经同步好", "档案已就位", "今天准备好了"],
-    firstVisitToday: [timeGreeting, vibeGreeting, `${timeGreeting}，小岛见`],
-    default: [timeGreeting, vibeGreeting, "又见面了", "奇妙知识岛"]
-  });
-  const candidates = eyebrowMap[scene] || eyebrowMap.default;
-  const seed = `${getHomeWelcomeDateKey(date)}|${buildHomeWelcomeContextHash(context)}|${getHomeWelcomeVariantToken(context)}|eyebrow|${scene}`;
-
-  return normalizeText(pickStableVariant(candidates, seed), 16) || "欢迎回来";
+  const { timeGreetingLabel } = resolveTemporalLabels(context, date);
+  return normalizeText(timeGreetingLabel, 16) || "欢迎回来";
 }
 
 export function buildHomeWelcomeTitle(
@@ -447,6 +1088,7 @@ export function buildHomeWelcomeTitle(
   {
     displayName = "",
     useCustomName = false,
+    avoidText = "",
     date = new Date()
   } = {}
 ) {
@@ -454,76 +1096,24 @@ export function buildHomeWelcomeTitle(
   const normalizedName = formatDisplayName(displayName);
   const hasCustomName = Boolean(useCustomName && normalizedName);
   const gradeSemesterLabel = formatGradeSemesterLabel(context);
-  const { timeBand, monthVibe, schoolYearPhase } = resolveTemporalLabels(context, date);
-  const timeGreetingMap = Object.freeze({
-    morning: "早上好",
-    noon: "中午好",
-    afternoon: "下午好",
-    evening: "晚上好",
-    night: "夜里好"
-  });
-  const timeGreeting = timeGreetingMap[timeBand] || "欢迎回来";
-  const customTitleMap = Object.freeze({
-    profileSaved: [
-      `欢迎回来，${normalizedName}`,
-      `${normalizedName}，新的路线已经备好`,
-      gradeSemesterLabel ? `${gradeSemesterLabel}已经就位，${normalizedName}` : `${normalizedName}，今天轻轻来就好`,
-      `首页已经备好，${normalizedName}`,
-      `${normalizedName}，今天慢慢来就行`
-    ],
-    firstVisitToday: [
-      `${timeGreeting}，${normalizedName}`,
-      monthVibe ? `${monthVibe}，${normalizedName}` : `欢迎回来，${normalizedName}`,
-      `${normalizedName}，今天想做什么都可以`,
-      `欢迎回来，${normalizedName}`,
-      monthVibe ? `${monthVibe}，小岛在等你，${normalizedName}` : `小岛在等你，${normalizedName}`
-    ],
-    default: [
-      `${timeGreeting}，${normalizedName}`,
-      `${normalizedName}，今天也见到你了`,
-      monthVibe ? `${monthVibe}，${normalizedName}` : `${normalizedName}，在这儿坐一会儿吧`,
-      `欢迎回来，${normalizedName}`,
-      schoolYearPhase === "期末临近" ? `快期末了，慢慢来，${normalizedName}` : "",
-      schoolYearPhase === "寒假里" ? `寒假快乐，${normalizedName}` : "",
-      schoolYearPhase === "暑假里" ? `暑假快乐，${normalizedName}` : "",
-      schoolYearPhase === "新学期开始" ? `新学期好，${normalizedName}` : "",
-      monthVibe ? `${monthVibe}，小岛一直在，${normalizedName}` : `${normalizedName}，小岛一直在`
-    ]
-  });
-  const defaultTitleMap = Object.freeze({
-    profileSaved: [
-      "首页已经按档案同步好",
-      "新的路线已经准备好了",
-      gradeSemesterLabel ? `${gradeSemesterLabel}已经就位` : "新的学习档案已经就位",
-      "今天的小岛已经按新档案备好",
-      "欢迎来到奇妙知识岛"
-    ],
-    firstVisitToday: [
-      `${timeGreeting}，奇妙知识岛`,
-      monthVibe ? `${monthVibe}的奇妙知识岛` : "奇妙知识岛欢迎你回来",
-      "奇妙知识岛欢迎你回来",
-      "今天轻轻来就好",
-      monthVibe ? `${monthVibe}，小岛在等你` : "小岛在等你",
-      "欢迎来到奇妙知识岛"
-    ],
-    default: [
-      `${timeGreeting}，奇妙知识岛`,
-      "奇妙知识岛欢迎你回来",
-      "今天的小岛已经准备好",
-      monthVibe ? monthVibe : "今天也来坐坐吧",
-      schoolYearPhase === "期末临近" ? "快期末了，不用慌" : "",
-      schoolYearPhase === "寒假里" ? "寒假也来啦" : "",
-      schoolYearPhase === "暑假里" ? "暑假也来啦" : "",
-      schoolYearPhase === "新学期开始" ? "新学期开始了" : "",
-      "又见面了",
-      "欢迎来到奇妙知识岛"
-    ]
-  });
-  const candidates = hasCustomName ? customTitleMap[scene] || customTitleMap.default : defaultTitleMap[scene] || defaultTitleMap.default;
+  const candidates = hasCustomName
+    ? buildNamedHomeWelcomeTitleCandidates(context, {
+      scene,
+      normalizedName,
+      gradeSemesterLabel,
+      date
+    })
+    : buildDefaultHomeWelcomeTitleCandidates(context, {
+      scene,
+      gradeSemesterLabel,
+      date
+    });
   const seed = `${getHomeWelcomeDateKey(date)}|${buildHomeWelcomeContextHash(context)}|${getHomeWelcomeVariantToken(context)}|title|${normalizedName}|${scene}`;
-  const picked = pickStableVariant(candidates.filter(Boolean), seed);
+  const availableCandidates = candidates.filter(Boolean);
+  const distinctCandidates = availableCandidates.filter((candidate) => !isHomeWelcomeTextTooSimilar(candidate, avoidText));
+  const picked = pickStableVariant(distinctCandidates.length > 0 ? distinctCandidates : availableCandidates, seed);
 
-  return normalizeText(picked, 28) || (hasCustomName ? `欢迎回来，${normalizedName}` : "欢迎来到奇妙知识岛");
+  return normalizeHomeWelcomeTitle(picked) || (hasCustomName ? `欢迎回来，${normalizedName}` : "欢迎来到奇妙知识岛");
 }
 
 export function buildHomeWelcomeVoiceButtonLabel(
@@ -586,6 +1176,7 @@ export function readHomeWelcomeCache(context = {}, date = new Date()) {
 
   try {
     const parsedCache = JSON.parse(rawCache);
+    const normalizedTitle = normalizeHomeWelcomeTitle(parsedCache?.title);
     const normalizedText = normalizeHomeWelcomeLine(parsedCache?.text);
     const normalizedSpeechText = normalizeHomeWelcomeSpeechText(parsedCache?.speechText || parsedCache?.text);
 
@@ -601,6 +1192,7 @@ export function readHomeWelcomeCache(context = {}, date = new Date()) {
 
     return {
       ...parsedCache,
+      title: normalizedTitle,
       text: normalizedText,
       speechText: normalizedSpeechText
     };
@@ -609,7 +1201,17 @@ export function readHomeWelcomeCache(context = {}, date = new Date()) {
   }
 }
 
-export function writeHomeWelcomeCache(context = {}, text = "", { speechText = "", source = "ai", date = new Date() } = {}) {
+export function writeHomeWelcomeCache(
+  context = {},
+  text = "",
+  {
+    title = "",
+    speechText = "",
+    source = "ai",
+    date = new Date()
+  } = {}
+) {
+  const normalizedTitle = normalizeHomeWelcomeTitle(title);
   const normalizedText = normalizeHomeWelcomeLine(text);
   const normalizedSpeechText = normalizeHomeWelcomeSpeechText(speechText || normalizedText);
 
@@ -621,6 +1223,7 @@ export function writeHomeWelcomeCache(context = {}, text = "", { speechText = ""
     version: HOME_WELCOME_CACHE_VERSION,
     date: getHomeWelcomeDateKey(date),
     contextHash: buildHomeWelcomeContextHash(context),
+    title: normalizedTitle,
     text: normalizedText,
     speechText: normalizedSpeechText,
     source: normalizeText(source, 20) || "ai",

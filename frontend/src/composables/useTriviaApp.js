@@ -21,13 +21,16 @@ import {
   buildHomeWelcomeContextHash,
   buildHomeWelcomeFallbackLine,
   buildHomeWelcomeFallbackSpeechText,
-  buildHomeWelcomeTemporalContext,
   buildHomeWelcomeTitle,
+  buildHomeWelcomeTemporalContext,
   buildHomeWelcomeVoiceButtonLabel,
   getHomeWelcomeDateKey,
+  isHomeWelcomeTitleOffStyle,
+  isHomeWelcomeTextTooSimilar,
   markHomeWelcomeVisited,
   normalizeHomeWelcomeLine,
   normalizeHomeWelcomeSpeechText,
+  normalizeHomeWelcomeTitle,
   readHomeWelcomeAutoSpeechDate,
   readHomeWelcomeCache,
   readHomeWelcomeVisitDate,
@@ -555,6 +558,7 @@ export function useTriviaApp() {
     challengeRewardProgressLabel,
     challengeAchievements,
     challengeAchievementCount,
+    challengeFreshAchievementCount,
     challengeAchievementProgressLabel,
     isChallengeCoverageLoading,
     clearChallengeOutcome,
@@ -730,6 +734,7 @@ export function useTriviaApp() {
   const homeWelcomeVariantIndex = ref(0);
   const homeWelcomeFallbackLine = ref("");
   const homeWelcomeFallbackSpeechText = ref("");
+  const homeWelcomeDynamicTitle = ref("");
   const homeWelcomeDynamicLine = ref("");
   const homeWelcomeDynamicSpeechText = ref("");
   const isHomeWelcomeProfileJustSaved = ref(false);
@@ -1054,17 +1059,29 @@ export function useTriviaApp() {
     ...buildHomeWelcomeTemporalContext(homeWelcomeNow.value)
   }));
   const homeWelcomeEyebrow = computed(() => buildHomeWelcomeEyebrow(homeWelcomeContext.value));
-  const homeWelcomeTitle = computed(() =>
-    buildHomeWelcomeTitle(homeWelcomeContext.value, {
-      displayName: homeWelcomeDisplayName.value,
-      useCustomName: isUsingCustomHomeWelcomeName.value
-    })
-  );
   const homeWelcomeSummary = computed(() =>
     homeWelcomeDynamicLine.value ||
     homeWelcomeFallbackLine.value ||
     buildHomeWelcomeFallbackLine(homeWelcomeContext.value)
   );
+  const homeWelcomeTitle = computed(() => {
+    const summary = homeWelcomeSummary.value;
+    const dynamicTitle = normalizeHomeWelcomeTitle(homeWelcomeDynamicTitle.value);
+
+    if (
+      dynamicTitle &&
+      !isHomeWelcomeTitleOffStyle(dynamicTitle, homeWelcomeContext.value) &&
+      !isHomeWelcomeTextTooSimilar(dynamicTitle, summary)
+    ) {
+      return dynamicTitle;
+    }
+
+    return buildHomeWelcomeTitle(homeWelcomeContext.value, {
+      displayName: homeWelcomeDisplayName.value,
+      useCustomName: isUsingCustomHomeWelcomeName.value,
+      avoidText: summary
+    });
+  });
   const homeWelcomeSpeechText = computed(() =>
     homeWelcomeDynamicSpeechText.value ||
     homeWelcomeFallbackSpeechText.value ||
@@ -1369,10 +1386,6 @@ export function useTriviaApp() {
       const bestResult = challengeProgress.value.bestResults[stage.id] ?? null;
       const bestStarCount = bestResult?.starCount ?? 0;
       const rewardEarned = Boolean(bestResult?.rewardEarned);
-      const previewStars = Array.from({ length: 3 }, (_, previewIndex) => ({
-        id: previewIndex + 1,
-        filled: previewIndex < bestStarCount
-      }));
       const isUnlocked = challengeProgress.value.unlockedStageIds.includes(stage.id);
       const isCurrent = selectedStageId.value === stage.id;
       let stateLabel = "已解锁";
@@ -1398,33 +1411,33 @@ export function useTriviaApp() {
       let coverageTone = "loading";
       let coverageLabel = "盘点中";
       let coverageShortLabel = "盘点中";
-      let coverageHint = "正在盘点这一关的专属标签题量。";
+      let coverageHint = "正在盘点本关专属题量。";
 
       if (challengeCoverage.value.status === CHALLENGE_COVERAGE_STATUS.ERROR) {
         coverageLabel = "暂不可用";
         coverageShortLabel = "暂不可用";
-        coverageHint = "当前题量盘点暂时没取回来，稍后再试一次。";
+        coverageHint = "当前题量暂时没取回来，稍后再试。";
       } else if (challengeCoverage.value.status === CHALLENGE_COVERAGE_STATUS.READY) {
         if (coverageCount >= coverageReplayTarget) {
           coverageTone = "strong";
           coverageLabel = "题量充足";
           coverageShortLabel = "充足";
-          coverageHint = `标签题 ${coverageCount}/${coverageRequiredCount}，这一关已经有足够的专属题可重复挑战。`;
+          coverageHint = `专属题 ${coverageCount}/${coverageRequiredCount}，已经足够重复挑战。`;
         } else if (coverageCount >= coverageRequiredCount) {
           coverageTone = "ready";
           coverageLabel = "可以开打";
           coverageShortLabel = "达标";
-          coverageHint = `标签题 ${coverageCount}/${coverageRequiredCount}，这一关已经能按标签稳定开打。`;
+          coverageHint = `专属题 ${coverageCount}/${coverageRequiredCount}，已经可以稳定开打。`;
         } else if (coverageCount > 0) {
           coverageTone = "low";
           coverageLabel = "题量偏少";
           coverageShortLabel = "偏少";
-          coverageHint = `标签题 ${coverageCount}/${coverageRequiredCount}，本关会回退到同年级题库补足题量。`;
+          coverageHint = `专属题 ${coverageCount}/${coverageRequiredCount}，不足部分会回退到同年级题库补足。`;
         } else {
           coverageTone = "empty";
           coverageLabel = "待补标签题";
           coverageShortLabel = "待补";
-          coverageHint = `标签题 0/${coverageRequiredCount}，这关还没有专属题，当前只能回退到同年级题库。`;
+          coverageHint = `专属题 0/${coverageRequiredCount}，当前会回退到同年级题库。`;
         }
       }
 
@@ -1443,7 +1456,6 @@ export function useTriviaApp() {
         missionLabel: stage.mission?.label || "完成本关",
         rewardLabel: stage.reward?.name || "",
         rewardGlyph: stage.reward?.glyph || "",
-        previewStars,
         stateLabel,
         stateTone,
         coverageCount,
@@ -1955,6 +1967,7 @@ export function useTriviaApp() {
 
     homeWelcomeDynamicLine.value = "";
     homeWelcomeDynamicSpeechText.value = "";
+    homeWelcomeDynamicTitle.value = "";
     homeWelcomeFallbackLine.value = buildHomeWelcomeFallbackLine(context);
     homeWelcomeFallbackSpeechText.value = buildHomeWelcomeFallbackSpeechText(context);
     homeWelcomeSpeechErrorMessage.value = "";
@@ -1976,6 +1989,7 @@ export function useTriviaApp() {
     const cachedLine = !force ? readHomeWelcomeCache(context) : null;
 
     if (cachedLine?.text) {
+      homeWelcomeDynamicTitle.value = normalizeHomeWelcomeTitle(cachedLine.title);
       homeWelcomeDynamicLine.value = cachedLine.text;
       homeWelcomeDynamicSpeechText.value = normalizeHomeWelcomeSpeechText(cachedLine.speechText || cachedLine.text);
       homeWelcomeLastFailedContextKey.value = "";
@@ -1995,14 +2009,17 @@ export function useTriviaApp() {
         aiRuntime: settingsStore.effectiveReviewRuntimeConfig,
         signal: requestController.signal
       });
+      const resolvedTitle = normalizeHomeWelcomeTitle(payload?.data?.title);
       const resolvedLine = normalizeHomeWelcomeLine(payload?.data?.bubbleText || payload?.data?.speechText);
       const resolvedSpeechText = normalizeHomeWelcomeSpeechText(payload?.data?.speechText || payload?.data?.bubbleText);
 
       if (resolvedLine) {
+        homeWelcomeDynamicTitle.value = resolvedTitle;
         homeWelcomeDynamicLine.value = resolvedLine;
         homeWelcomeDynamicSpeechText.value = resolvedSpeechText || resolvedLine;
         homeWelcomeLastFailedContextKey.value = "";
         writeHomeWelcomeCache(context, resolvedLine, {
+          title: resolvedTitle,
           speechText: resolvedSpeechText || resolvedLine,
           source: payload?.meta?.source || payload?.meta?.api || "ai"
         });
@@ -2892,6 +2909,7 @@ export function useTriviaApp() {
     challengeRewardProgressLabel,
     challengeAchievements,
     challengeAchievementCount,
+    challengeFreshAchievementCount,
     challengeAchievementProgressLabel,
     challengeCoverageSummaryLabel,
     shouldShowChallengeCatalogShortcut,

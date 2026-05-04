@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <defs>
+    <linearGradient id="panel" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="100%" stop-color="#EFF7FF" />
+    </linearGradient>
+  </defs>
+  <rect width="480" height="280" rx="28" fill="#EFF7FF" />
+  <rect x="32" y="24" width="416" height="232" rx="28" fill="url(#panel)" stroke="#CFE2F7" />
+  <rect x="32" y="24" width="416" height="44" rx="28" fill="#2C7BE5" />
+  <text x="52" y="52" font-size="22" font-weight="800" fill="#FFFFFF">时间推算</text>
+  <text x="52" y="88" font-size="15" font-weight="600" fill="#58718D">先看现在是几时</text>
+  
+        
+    <circle cx="166" cy="148" r="40" fill="#FFFFFF" stroke="#88B7E8" stroke-width="4" />
+    <circle cx="166" cy="148" r="4" fill="#2C7BE5" />
+    <line x1="166" y1="148" x2="180.0" y2="172.2" stroke="#2C7BE5" stroke-width="5" stroke-linecap="round" />
+    <line x1="166" y1="148" x2="166" y2="130" stroke="#FF8A3D" stroke-width="4" stroke-linecap="round" />
+    <text x="166" y="214" text-anchor="middle" font-size="16" font-weight="700" fill="#35516F">现在 8时</text>
+  
+        <text x="238" y="156" font-size="26" font-weight="800" fill="#2C7BE5">+2小时</text>
+        
+    <circle cx="344" cy="148" r="40" fill="#FFFFFF" stroke="#88B7E8" stroke-width="4" />
+    <circle cx="344" cy="148" r="4" fill="#2C7BE5" />
+    <line x1="344" y1="148" x2="330.0" y2="172.2" stroke="#2C7BE5" stroke-width="5" stroke-linecap="round" />
+    <line x1="344" y1="148" x2="344" y2="130" stroke="#FF8A3D" stroke-width="4" stroke-linecap="round" />
+    <text x="344" y="214" text-anchor="middle" font-size="16" font-weight="700" fill="#35516F">再过 2 小时</text>
+  
+      
+</svg>

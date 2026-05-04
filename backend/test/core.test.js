@@ -18,6 +18,7 @@ const { getKnowledgeTagSearchTerms } = require("../src/questions/knowledgeTagAli
 const { ensureQuestionsTable, insertQuestions } = require("../src/questions/repository");
 const { commitQuestionImport, previewQuestionImport, validatePreparedQuestion } = require("../src/services/questionImport");
 const { setOpenAIClientFactoryForTesting } = require("../src/services/questionGeneration");
+const { setOpenAIHomeWelcomeClientFactoryForTesting } = require("../src/services/homeWelcomeMessage");
 const { setOpenAIReviewClientFactoryForTesting } = require("../src/services/questionReview");
 const { setOpenAIProbeClientFactoryForTesting } = require("../src/services/aiRuntimeProbe");
 
@@ -191,12 +192,14 @@ test.after(async () => {
 test.beforeEach(() => {
   resetDatabase();
   setOpenAIClientFactoryForTesting(null);
+  setOpenAIHomeWelcomeClientFactoryForTesting(null);
   setOpenAIReviewClientFactoryForTesting(null);
   setOpenAIProbeClientFactoryForTesting(null);
 });
 
 test.after(() => {
   setOpenAIClientFactoryForTesting(null);
+  setOpenAIHomeWelcomeClientFactoryForTesting(null);
   setOpenAIReviewClientFactoryForTesting(null);
   setOpenAIProbeClientFactoryForTesting(null);
 });
@@ -1531,6 +1534,74 @@ test("question review speech can use Xiaomi MiMo chat completions audio mode", a
 
   const speechBuffer = Buffer.from(await speechResponse.arrayBuffer());
   assert.equal(speechBuffer.toString(), "fake-mimo-review-wav");
+});
+
+test("question routes can generate home welcome text with an explicit time cue", async () => {
+  const homeWelcomeParseCalls = [];
+
+  setOpenAIHomeWelcomeClientFactoryForTesting(() => ({
+    responses: {
+      parse: async (request) => {
+        homeWelcomeParseCalls.push(request);
+        return {
+          id: "resp_test_home_welcome",
+          model: "gpt-5.4-mini",
+          output_parsed: {
+            tone: "warm",
+            title: "傍晚快来挑战吧！",
+            bubbleText: "傍晚了，小岛还亮着呢。",
+            speechText: "今天想做什么都可以，不着急。"
+          }
+        };
+      }
+    },
+    chat: {
+      completions: {
+        create: async () => {
+          throw new Error("Home welcome route should use responses.parse in this test");
+        }
+      }
+    }
+  }));
+
+  const response = await fetch(`${baseUrl}/api/questions/review/home-welcome`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      context: {
+        displayName: "小心心",
+        grade: "一年级",
+        semester: "上册",
+        timeBand: "evening",
+        timeContextKey: "dusk",
+        timeCueLabel: "傍晚",
+        timeGreetingLabel: "傍晚了",
+        monthLabel: "五月",
+        monthVibe: "初夏微风",
+        seasonLabel: "初夏",
+        schoolYearPhase: "学期过半",
+        isFirstHomeVisitToday: true
+      }
+    })
+  });
+
+  assert.equal(response.status, 200);
+
+  const payload = await readJson(response);
+  assert.equal(payload.data.tone, "warm");
+  assert.ok(payload.data.title.includes("傍晚"));
+  assert.ok(!payload.data.title.includes("挑战"));
+  assert.ok(payload.data.bubbleText.includes("傍晚"));
+  assert.ok(payload.data.speechText.includes("傍晚"));
+  assert.notEqual(payload.data.title, payload.data.bubbleText);
+  assert.equal(payload.meta.model, "gpt-5.4-mini");
+  assert.equal(homeWelcomeParseCalls.length, 1);
+  assert.ok(homeWelcomeParseCalls[0].instructions.includes("title 用在首页大标题"));
+  assert.ok(homeWelcomeParseCalls[0].instructions.includes("必须显式带上给定的时段词"));
+  assert.ok(homeWelcomeParseCalls[0].instructions.includes("傍晚"));
+  assert.ok(homeWelcomeParseCalls[0].input.includes("时段关键词：傍晚"));
 });
 
 test("question routes can generate AI session summary for a completed round", async () => {

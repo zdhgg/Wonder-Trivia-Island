@@ -122,6 +122,8 @@ const DEFAULT_COACHING_PREFERENCES = Object.freeze({
 });
 
 const MODEL_NAME_PATTERN = /^[\w./:-]{1,120}$/;
+const MODEL_LIBRARY_ID_PREFIX = "wti-model-asset-";
+const MODEL_LIBRARY_ID_PATTERN = /^[a-z0-9_-]{1,120}$/i;
 const MAX_CUSTOM_MODEL_LIBRARY_ITEMS = 12;
 const API_KEY_PATTERN = /^[^\s]{1,240}$/;
 const MODEL_LIBRARY_NOTE_MAX_LENGTH = 120;
@@ -163,6 +165,30 @@ function normalizeModelName(value, fallback = "") {
   }
 
   return MODEL_NAME_PATTERN.test(normalizedValue) ? normalizedValue : fallback;
+}
+
+function normalizeModelLibraryId(value, fallback = "") {
+  const normalizedValue = normalizeText(value, fallback, 120);
+
+  if (!normalizedValue) {
+    return fallback;
+  }
+
+  return MODEL_LIBRARY_ID_PATTERN.test(normalizedValue) ? normalizedValue : fallback;
+}
+
+function isGeneratedModelLibraryId(value = "") {
+  return normalizeModelLibraryId(value, "").startsWith(MODEL_LIBRARY_ID_PREFIX);
+}
+
+function hashString(value = "") {
+  let hash = 5381;
+
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 33) ^ value.charCodeAt(index);
+  }
+
+  return (hash >>> 0).toString(36);
 }
 
 function normalizeProviderUrl(value, fallback = "") {
@@ -219,7 +245,50 @@ function normalizeModelLibraryType(value, fallback = AI_MODEL_LIBRARY_TYPES.TEXT
   return fallback;
 }
 
-function normalizeModelLibraryEntry(candidate, fallbackType = AI_MODEL_LIBRARY_TYPES.TEXT) {
+function buildModelLibraryFingerprint(entry = {}) {
+  const type = normalizeModelLibraryType(entry.type, AI_MODEL_LIBRARY_TYPES.TEXT);
+
+  return [
+    normalizeModelName(entry.name, ""),
+    type,
+    normalizeText(entry.providerLabel, "", 40).toLowerCase(),
+    normalizeProviderUrl(entry.baseUrl, "").toLowerCase(),
+    type === AI_MODEL_LIBRARY_TYPES.TEXT ? String(entry.textApiMode || AI_TEXT_API_MODE.AUTO).trim() : "",
+    type === AI_MODEL_LIBRARY_TYPES.TTS ? normalizeText(entry.ttsVoice, "", 40).toLowerCase() : "",
+    type === AI_MODEL_LIBRARY_TYPES.TTS ? String(entry.ttsAudioFormat || "mp3").trim().toLowerCase() : ""
+  ].join("|");
+}
+
+function buildGeneratedModelLibraryId(entry = {}, occurrenceIndex = 0) {
+  const baseValue = buildModelLibraryFingerprint(entry) || normalizeModelName(entry.name, "") || "custom-model";
+  const occurrenceSuffix = occurrenceIndex > 0 ? `-${occurrenceIndex + 1}` : "";
+
+  return `${MODEL_LIBRARY_ID_PREFIX}${hashString(baseValue)}${occurrenceSuffix}`;
+}
+
+function createUniqueModelLibraryId(entry = {}, usedIds = new Set(), fingerprintCounts = new Map()) {
+  const requestedId = normalizeModelLibraryId(entry.id, "");
+
+  if (requestedId && !usedIds.has(requestedId)) {
+    usedIds.add(requestedId);
+    return requestedId;
+  }
+
+  const fingerprint = buildModelLibraryFingerprint(entry);
+  let occurrenceIndex = fingerprintCounts.get(fingerprint) || 0;
+  let nextId = buildGeneratedModelLibraryId(entry, occurrenceIndex);
+
+  while (usedIds.has(nextId)) {
+    occurrenceIndex += 1;
+    nextId = buildGeneratedModelLibraryId(entry, occurrenceIndex);
+  }
+
+  fingerprintCounts.set(fingerprint, occurrenceIndex + 1);
+  usedIds.add(nextId);
+  return nextId;
+}
+
+function normalizeModelLibraryEntry(candidate, fallbackType = AI_MODEL_LIBRARY_TYPES.TEXT, fallbackId = "") {
   const isObjectCandidate = candidate && typeof candidate === "object" && !Array.isArray(candidate);
   const name = normalizeModelName(
     isObjectCandidate ? candidate.name || candidate.modelName || candidate.value || candidate.label : candidate,
@@ -239,6 +308,7 @@ function normalizeModelLibraryEntry(candidate, fallbackType = AI_MODEL_LIBRARY_T
     : AI_TEXT_API_MODE.AUTO;
 
   return {
+    id: normalizeModelLibraryId(isObjectCandidate ? candidate.id || candidate.assetId || candidate.modelId : "", fallbackId),
     name,
     type,
     textApiMode: type === AI_MODEL_LIBRARY_TYPES.TEXT ? textApiMode : AI_TEXT_API_MODE.AUTO,
@@ -255,39 +325,66 @@ function normalizeModelLibraryEntry(candidate, fallbackType = AI_MODEL_LIBRARY_T
 }
 
 function normalizeCustomModelLibrary(savedLibrary = [], extraCandidates = []) {
-  const candidates = [];
+  const normalizedLibrary = [];
+  const usedIds = new Set();
+  const fingerprintCounts = new Map();
+  const seenExtraCandidates = new Set();
 
   if (Array.isArray(savedLibrary)) {
-    candidates.push(...savedLibrary);
+    savedLibrary.forEach((candidate) => {
+      const fallbackType =
+        candidate && typeof candidate === "object" && !Array.isArray(candidate)
+          ? normalizeModelLibraryType(candidate.type, AI_MODEL_LIBRARY_TYPES.TEXT)
+          : AI_MODEL_LIBRARY_TYPES.TEXT;
+      const normalizedCandidate = normalizeModelLibraryEntry(candidate, fallbackType);
+
+      if (!normalizedCandidate) {
+        return;
+      }
+
+      normalizedLibrary.push({
+        ...normalizedCandidate,
+        id: createUniqueModelLibraryId(normalizedCandidate, usedIds, fingerprintCounts)
+      });
+    });
   }
 
   if (Array.isArray(extraCandidates)) {
-    candidates.push(...extraCandidates);
+    extraCandidates.forEach((candidate) => {
+      const fallbackType =
+        candidate && typeof candidate === "object" && !Array.isArray(candidate)
+          ? normalizeModelLibraryType(candidate.type, AI_MODEL_LIBRARY_TYPES.TEXT)
+          : AI_MODEL_LIBRARY_TYPES.TEXT;
+      const normalizedCandidate = normalizeModelLibraryEntry(candidate, fallbackType);
+
+      if (!normalizedCandidate) {
+        return;
+      }
+
+      const extraCandidateKey = `${normalizedCandidate.type}::${normalizedCandidate.name.toLowerCase()}`;
+
+      if (seenExtraCandidates.has(extraCandidateKey)) {
+        return;
+      }
+
+      seenExtraCandidates.add(extraCandidateKey);
+
+      if (
+        normalizedLibrary.some(
+          (item) =>
+            item.type === normalizedCandidate.type &&
+            String(item.name || "").trim().toLowerCase() === normalizedCandidate.name.toLowerCase()
+        )
+      ) {
+        return;
+      }
+
+      normalizedLibrary.push({
+        ...normalizedCandidate,
+        id: createUniqueModelLibraryId(normalizedCandidate, usedIds, fingerprintCounts)
+      });
+    });
   }
-
-  const normalizedLibrary = [];
-  const seen = new Set();
-
-  candidates.forEach((candidate) => {
-    const fallbackType =
-      candidate && typeof candidate === "object" && !Array.isArray(candidate)
-        ? normalizeModelLibraryType(candidate.type, AI_MODEL_LIBRARY_TYPES.TEXT)
-        : AI_MODEL_LIBRARY_TYPES.TEXT;
-    const normalizedCandidate = normalizeModelLibraryEntry(candidate, fallbackType);
-
-    if (!normalizedCandidate) {
-      return;
-    }
-
-    const candidateKey = normalizedCandidate.name;
-
-    if (seen.has(candidateKey)) {
-      return;
-    }
-
-    seen.add(candidateKey);
-    normalizedLibrary.push(normalizedCandidate);
-  });
 
   return normalizedLibrary.slice(0, MAX_CUSTOM_MODEL_LIBRARY_ITEMS);
 }
@@ -306,9 +403,24 @@ function normalizeAiModelSelection(savedSelection = {}, defaultPresetModel = "")
   };
 }
 
-function resolveAiSelectionModel(selection = {}) {
+function normalizeAiModelSelectionReference(selection = {}, customModelLibrary = []) {
+  const matchedEntry = findModelLibraryEntry(customModelLibrary, selection.customModel);
+
+  return {
+    ...selection,
+    customModel: matchedEntry?.id || normalizeModelName(selection.customModel, "")
+  };
+}
+
+function resolveAiSelectionModel(selection = {}, customModelLibrary = []) {
   if (selection.mode === AI_MODEL_MODE.CUSTOM) {
-    return selection.customModel || "";
+    const matchedEntry = findModelLibraryEntry(customModelLibrary, selection.customModel);
+
+    if (matchedEntry) {
+      return normalizeModelName(matchedEntry.name, "");
+    }
+
+    return isGeneratedModelLibraryId(selection.customModel) ? "" : selection.customModel || "";
   }
 
   if (selection.mode === AI_MODEL_MODE.PRESET) {
@@ -318,14 +430,92 @@ function resolveAiSelectionModel(selection = {}) {
   return "";
 }
 
-function findModelLibraryEntryByName(customModelLibrary = [], modelName = "") {
+function findModelLibraryEntriesByName(customModelLibrary = [], modelName = "") {
   const normalizedName = normalizeModelName(modelName, "");
 
   if (!normalizedName || !Array.isArray(customModelLibrary)) {
+    return [];
+  }
+
+  return customModelLibrary.filter((item) => normalizeModelName(item?.name, "") === normalizedName);
+}
+
+export function findModelLibraryEntry(customModelLibrary = [], modelRef = "") {
+  const normalizedRef = normalizeText(modelRef, "", 120);
+
+  if (!normalizedRef || !Array.isArray(customModelLibrary)) {
     return null;
   }
 
-  return customModelLibrary.find((item) => normalizeModelName(item?.name, "") === normalizedName) || null;
+  const matchedById =
+    customModelLibrary.find((item) => normalizeModelLibraryId(item?.id, "") === normalizedRef) || null;
+
+  if (matchedById) {
+    return matchedById;
+  }
+
+  const matchedByName = findModelLibraryEntriesByName(customModelLibrary, normalizedRef);
+  return matchedByName.length === 1 ? matchedByName[0] : null;
+}
+
+function resolveModelLibraryEntryDescriptor(entry = {}) {
+  const providerLabel = normalizeText(entry?.providerLabel, "", 40);
+
+  if (providerLabel) {
+    return providerLabel;
+  }
+
+  const baseUrl = normalizeProviderUrl(entry?.baseUrl, "");
+
+  if (baseUrl) {
+    try {
+      return new URL(baseUrl).host;
+    } catch {
+      return baseUrl;
+    }
+  }
+
+  const note = normalizeText(entry?.note, "", MODEL_LIBRARY_NOTE_MAX_LENGTH);
+
+  if (note) {
+    return note;
+  }
+
+  const entryId = normalizeModelLibraryId(entry?.id, "");
+  return entryId ? `资产 ${entryId.slice(-6)}` : "";
+}
+
+export function resolveModelLibraryEntryLabel(entry = {}) {
+  const modelName = normalizeModelName(entry?.name, "");
+
+  if (!modelName) {
+    return "";
+  }
+
+  const descriptor = resolveModelLibraryEntryDescriptor(entry);
+  return descriptor ? `${modelName} · ${descriptor}` : modelName;
+}
+
+export function resolveAiSelectionLabel(selection = {}, customModelLibrary = []) {
+  if (selection?.mode === AI_MODEL_MODE.CUSTOM) {
+    const matchedEntry = findModelLibraryEntry(customModelLibrary, selection.customModel);
+
+    if (matchedEntry) {
+      return resolveModelLibraryEntryLabel(matchedEntry);
+    }
+
+    return isGeneratedModelLibraryId(selection?.customModel) ? "" : normalizeModelName(selection?.customModel, "");
+  }
+
+  if (selection?.mode === AI_MODEL_MODE.PRESET) {
+    return normalizeModelName(selection?.presetModel, "");
+  }
+
+  return "";
+}
+
+export function resolveAiModelNameForSelection(selection = {}, customModelLibrary = []) {
+  return resolveAiSelectionModel(selection, customModelLibrary);
 }
 
 export function resolveAiRuntimeConfigForSelection(selection = {}, customModelLibrary = []) {
@@ -333,7 +523,7 @@ export function resolveAiRuntimeConfigForSelection(selection = {}, customModelLi
     return null;
   }
 
-  const matchedEntry = findModelLibraryEntryByName(customModelLibrary, selection.customModel);
+  const matchedEntry = findModelLibraryEntry(customModelLibrary, selection.customModel);
 
   if (!matchedEntry) {
     return null;
@@ -369,7 +559,7 @@ export function resolveAiRuntimeConfigForSelection(selection = {}, customModelLi
 }
 
 export function resolveAiRuntimeLabelForSelection(selection = {}, customModelLibrary = []) {
-  const matchedEntry = findModelLibraryEntryByName(customModelLibrary, selection?.customModel);
+  const matchedEntry = findModelLibraryEntry(customModelLibrary, selection?.customModel);
   const rawProviderLabel = normalizeText(matchedEntry?.providerLabel, "", 40);
   const rawBaseUrl = normalizeProviderUrl(matchedEntry?.baseUrl, "");
   const rawApiKey = normalizeProviderApiKey(matchedEntry?.apiKey);
@@ -392,7 +582,7 @@ export function resolveAiRuntimeLabelForSelection(selection = {}, customModelLib
     return "模型自带 API Key";
   }
 
-  if (selection?.mode === AI_MODEL_MODE.CUSTOM && resolveAiSelectionModel(selection)) {
+  if (selection?.mode === AI_MODEL_MODE.CUSTOM && resolveAiSelectionModel(selection, customModelLibrary)) {
     return "未登记，走服务器默认";
   }
 
@@ -424,15 +614,30 @@ function normalizeAiPreferences(savedPreferences = {}) {
     DEFAULT_AI_PREFERENCES.ttsModel.presetModel
   );
   const customModelLibrary = normalizeCustomModelLibrary(savedPreferences.customModelLibrary, [
-    questionSelection.customModel ? { name: questionSelection.customModel, type: AI_MODEL_LIBRARY_TYPES.TEXT } : null,
-    reviewSelection.customModel ? { name: reviewSelection.customModel, type: AI_MODEL_LIBRARY_TYPES.TEXT } : null,
-    ttsSelection.customModel ? { name: ttsSelection.customModel, type: AI_MODEL_LIBRARY_TYPES.TTS } : null
+    questionSelection.mode === AI_MODEL_MODE.CUSTOM &&
+    questionSelection.customModel &&
+    !findModelLibraryEntry(savedPreferences.customModelLibrary, questionSelection.customModel) &&
+    !isGeneratedModelLibraryId(questionSelection.customModel)
+      ? { name: questionSelection.customModel, type: AI_MODEL_LIBRARY_TYPES.TEXT }
+      : null,
+    reviewSelection.mode === AI_MODEL_MODE.CUSTOM &&
+    reviewSelection.customModel &&
+    !findModelLibraryEntry(savedPreferences.customModelLibrary, reviewSelection.customModel) &&
+    !isGeneratedModelLibraryId(reviewSelection.customModel)
+      ? { name: reviewSelection.customModel, type: AI_MODEL_LIBRARY_TYPES.TEXT }
+      : null,
+    ttsSelection.mode === AI_MODEL_MODE.CUSTOM &&
+    ttsSelection.customModel &&
+    !findModelLibraryEntry(savedPreferences.customModelLibrary, ttsSelection.customModel) &&
+    !isGeneratedModelLibraryId(ttsSelection.customModel)
+      ? { name: ttsSelection.customModel, type: AI_MODEL_LIBRARY_TYPES.TTS }
+      : null
   ]);
 
   return {
-    questionModel: questionSelection,
-    reviewModel: reviewSelection,
-    ttsModel: ttsSelection,
+    questionModel: normalizeAiModelSelectionReference(questionSelection, customModelLibrary),
+    reviewModel: normalizeAiModelSelectionReference(reviewSelection, customModelLibrary),
+    ttsModel: normalizeAiModelSelectionReference(ttsSelection, customModelLibrary),
     customModelLibrary,
     updatedAt: normalizeText(savedPreferences.updatedAt, "", 40)
   };
@@ -543,23 +748,23 @@ export const useSettingsStore = defineStore("settings", {
 
   getters: {
     effectiveQuestionModel(state) {
-      return resolveAiSelectionModel(state.aiPreferences.questionModel);
+      return resolveAiSelectionModel(state.aiPreferences.questionModel, state.aiPreferences.customModelLibrary);
     },
 
-    effectiveQuestionModelLabel() {
-      return this.effectiveQuestionModel || "跟随服务端默认";
+    effectiveQuestionModelLabel(state) {
+      return resolveAiSelectionLabel(state.aiPreferences.questionModel, state.aiPreferences.customModelLibrary) || "跟随服务端默认";
     },
 
     effectiveReviewModel(state) {
-      return resolveAiSelectionModel(state.aiPreferences.reviewModel);
+      return resolveAiSelectionModel(state.aiPreferences.reviewModel, state.aiPreferences.customModelLibrary);
     },
 
-    effectiveReviewModelLabel() {
-      return this.effectiveReviewModel || "跟随服务端默认";
+    effectiveReviewModelLabel(state) {
+      return resolveAiSelectionLabel(state.aiPreferences.reviewModel, state.aiPreferences.customModelLibrary) || "跟随服务端默认";
     },
 
     effectiveTtsModel(state) {
-      return resolveAiSelectionModel(state.aiPreferences.ttsModel);
+      return resolveAiSelectionModel(state.aiPreferences.ttsModel, state.aiPreferences.customModelLibrary);
     },
 
     effectiveQuestionRuntimeConfig(state) {
@@ -574,12 +779,12 @@ export const useSettingsStore = defineStore("settings", {
       return resolveAiRuntimeConfigForSelection(state.aiPreferences.ttsModel, state.aiPreferences.customModelLibrary);
     },
 
-    effectiveTtsModelLabel() {
-      return this.effectiveTtsModel || "跟随服务端默认";
+    effectiveTtsModelLabel(state) {
+      return resolveAiSelectionLabel(state.aiPreferences.ttsModel, state.aiPreferences.customModelLibrary) || "跟随服务端默认";
     },
 
     effectiveAiModel(state) {
-      return resolveAiSelectionModel(state.aiPreferences.questionModel);
+      return resolveAiSelectionModel(state.aiPreferences.questionModel, state.aiPreferences.customModelLibrary);
     },
 
     effectiveAiModelLabel() {

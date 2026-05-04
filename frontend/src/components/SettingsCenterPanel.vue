@@ -22,6 +22,7 @@ import {
   AUTO_ADVANCE_DELAY_OPTIONS,
   HOME_WELCOME_VOICE_MODE_OPTIONS,
   PROFILE_GENDER_OPTIONS,
+  resolveAiModelNameForSelection,
   resolveAiRuntimeConfigForSelection,
   resolveAiRuntimeLabelForSelection,
   useSettingsStore
@@ -148,15 +149,7 @@ function isAiModelSelectionDirty(draftSelection = {}, savedSelection = {}) {
 }
 
 function resolveDraftAiSelectionModel(selection = {}) {
-  if (selection.mode === AI_MODEL_MODE.CUSTOM) {
-    return String(selection.customModel || "").trim();
-  }
-
-  if (selection.mode === AI_MODEL_MODE.PRESET) {
-    return String(selection.presetModel || "").trim();
-  }
-
-  return "";
+  return resolveAiModelNameForSelection(selection, aiDraft.value.customModelLibrary);
 }
 
 function buildDraftServiceProbeConfig() {

@@ -2,6 +2,7 @@
 import { computed, ref, watch } from "vue";
 import ModalDialog from "../ModalDialog.vue";
 import { testAiRuntimeConnection } from "../../services/questionsApi";
+import { resolveModelLibraryEntryLabel } from "../../stores/useSettingsStore";
 
 const props = defineProps({
   aiDraft: {
@@ -29,8 +30,8 @@ const searchQuery = ref("");
 const activeTypeFilter = ref("all");
 const activeProviderFilter = ref("all");
 const createDraft = ref(createEmptyModelDraft());
-const editingModelName = ref("");
-const modelTestStatusByName = ref({});
+const editingModelId = ref("");
+const modelTestStatusById = ref({});
 const draftTestStatus = ref(createEmptyTestState());
 const showCreateApiKey = ref(false);
 const draftNotice = ref("");
@@ -41,7 +42,7 @@ const MODEL_TYPE_LABELS = Object.freeze({
   tts: "语音模型"
 });
 const MODEL_DRAFT_MEMORY_KEY = "wonder-trivia-island.settings.model-library-draft-memory";
-const MODEL_FIELD_HISTORY_LIMIT = 6;
+const MODEL_FIELD_HISTORY_LIMIT = 4;
 const TEXT_API_MODE_OPTIONS = Object.freeze([
   { value: "auto", label: "自动兼容" },
   { value: "responses", label: "强制 Responses" },
@@ -308,6 +309,7 @@ function createSuggestionGroup(title = "", items = [], maxLength = 120, limit = 
 const modelLibrary = computed(() =>
   (Array.isArray(props.aiDraft.customModelLibrary) ? props.aiDraft.customModelLibrary : [])
     .map((item) => ({
+      id: String(item?.id || "").trim(),
       name: String(item?.name || "").trim(),
       type: String(item?.type || "text").trim() || "text",
       textApiMode: String(item?.textApiMode || "auto").trim() || "auto",
@@ -324,7 +326,15 @@ const modelLibrary = computed(() =>
         return left.type.localeCompare(right.type, "zh-CN");
       }
 
-      return left.name.localeCompare(right.name, "zh-CN");
+      if (left.name !== right.name) {
+        return left.name.localeCompare(right.name, "zh-CN");
+      }
+
+      if (left.providerLabel !== right.providerLabel) {
+        return left.providerLabel.localeCompare(right.providerLabel, "zh-CN");
+      }
+
+      return left.id.localeCompare(right.id, "zh-CN");
     })
 );
 const modelLibraryCount = computed(() => modelLibrary.value.length);
@@ -379,18 +389,15 @@ const filterSummary = computed(() => {
   return `当前显示 ${visibleLibrary.value.length} / ${modelLibraryCount.value} 条结果`;
 });
 const normalizedCreateName = computed(() => String(createDraft.value.name || "").trim().slice(0, 120));
-const isEditingModel = computed(() => Boolean(String(editingModelName.value || "").trim()));
-const canSubmitCreate = computed(
-  () =>
-    Boolean(normalizedCreateName.value) &&
-    !modelLibrary.value.some((item) => {
-      if (item.name.toLowerCase() !== normalizedCreateName.value.toLowerCase()) {
-        return false;
-      }
+const isEditingModel = computed(() => Boolean(String(editingModelId.value || "").trim()));
+const createSubmitBlockReason = computed(() => {
+  if (!normalizedCreateName.value && activeCreateField.value === "name") {
+    return "先填模型名。";
+  }
 
-      return item.name !== editingModelName.value;
-    })
-);
+  return "";
+});
+const canSubmitCreate = computed(() => Boolean(normalizedCreateName.value));
 const showRememberedDefaults = computed(
   () =>
     !isEditingModel.value &&
@@ -433,6 +440,19 @@ const preferredTemplate = computed(() => {
     }) || null
   );
 });
+const visibleProviderTemplates = computed(() => PROVIDER_TEMPLATES.filter((template) => template.key !== "custom"));
+const showCreateProviderTemplates = computed(
+  () =>
+    !String(createDraft.value.providerLabel || "").trim() &&
+    !String(createDraft.value.baseUrl || "").trim() &&
+    !String(createDraft.value.apiKey || "").trim()
+);
+const createModalInlineNote = computed(() =>
+  isEditingModel.value ? "当前绑定仍会指向这条模型资产。" : "Base URL 需和 API Key 一起填写。"
+);
+const createModelNamePlaceholder = computed(() =>
+  String(createDraft.value.type || "text") === "tts" ? "例如 gpt-4o-mini-tts / mimo-v2.5-tts" : "例如 gpt-5.4-mini / deepseek-v4-flash"
+);
 const activeTtsVoiceProvider = computed(() => {
   const normalizedProvider = String(createDraft.value.providerLabel || "").trim().toLowerCase();
   const normalizedBaseUrl = String(createDraft.value.baseUrl || "").trim().toLowerCase();
@@ -464,54 +484,61 @@ const modelNameSuggestionGroups = computed(() =>
     createSuggestionGroup(
       createDraft.value.type === "tts" ? "常见语音模型" : "常见文本模型",
       (MODEL_NAME_EXAMPLES[String(createDraft.value.type || "text")] || []).map((value) => ({ value, label: value, emphasis: true })),
-      120
+      120,
+      2
     ),
-    createSuggestionGroup("最近填写", draftMemory.value.recentNames, 120)
+    createSuggestionGroup("最近填写", draftMemory.value.recentNames, 120, 3)
   ].filter(Boolean)
 );
 const providerSuggestionGroups = computed(() =>
-  [
-    preferredTemplate.value?.providerLabel
-      ? createSuggestionGroup("当前最匹配", [{ value: preferredTemplate.value.providerLabel, label: preferredTemplate.value.label, emphasis: true }], 40)
-      : null,
-    createSuggestionGroup(
-      "常见 Provider",
-      PROVIDER_TEMPLATES.map((template) => ({
-        value: template.providerLabel,
-        label: template.label,
-        emphasis: template.key === preferredTemplate.value?.key
-      })).filter((item) => item.value),
-      40
-    ),
-    createSuggestionGroup("最近填写", draftMemory.value.recentProviders, 40)
-  ].filter(Boolean)
+  (() => {
+    if (String(createDraft.value.providerLabel || "").trim()) {
+      return [];
+    }
+
+    return [
+      createSuggestionGroup(
+        "常见 Provider",
+        PROVIDER_TEMPLATES.map((template) => ({
+          value: template.providerLabel,
+          label: template.label,
+          emphasis: false
+        })).filter((item) => item.value),
+        40,
+        2
+      ),
+      createSuggestionGroup("最近填写", draftMemory.value.recentProviders, 40, 1)
+    ].filter(Boolean);
+  })()
 );
 const baseUrlSuggestionGroups = computed(() =>
-  [
-    preferredTemplate.value?.baseUrl
-      ? createSuggestionGroup(
-          "当前最匹配",
-          [{ value: preferredTemplate.value.baseUrl, label: `${preferredTemplate.value.label} · ${preferredTemplate.value.baseUrl}`, emphasis: true }],
-          240
-        )
-      : null,
-    createSuggestionGroup(
-      "常见地址",
-      PROVIDER_TEMPLATES.map((template) => ({
-        value: template.baseUrl,
-        label: template.baseUrl ? `${template.label} · ${template.baseUrl}` : "",
-        emphasis: template.key === preferredTemplate.value?.key
-      })).filter((item) => item.value),
-      240
-    ),
-    createSuggestionGroup("最近填写", draftMemory.value.recentBaseUrls, 240)
-  ].filter(Boolean)
+  (() => {
+    const normalizedBaseUrl = String(createDraft.value.baseUrl || "").trim().toLowerCase();
+
+    if (!normalizedBaseUrl) {
+      return [
+        createSuggestionGroup(
+          "常见地址",
+          PROVIDER_TEMPLATES.map((template) => ({
+            value: template.baseUrl,
+            label: template.baseUrl ? `${template.label} · ${template.baseUrl}` : "",
+            emphasis: false
+          })).filter((item) => item.value),
+          240,
+          2
+        ),
+        createSuggestionGroup("最近填写", draftMemory.value.recentBaseUrls, 240, 1)
+      ].filter(Boolean);
+    }
+
+    return [];
+  })()
 );
 const noteSuggestionGroups = computed(() =>
   [
-    createSuggestionGroup("常用备注", NOTE_SUGGESTIONS.map((value) => ({ value, label: value, emphasis: true })), 120),
-    createSuggestionGroup("最近填写", draftMemory.value.recentNotes, 120),
-    createSuggestionGroup("已有模型备注", modelLibrary.value.map((item) => item.note).filter(Boolean), 120)
+    createSuggestionGroup("常用备注", NOTE_SUGGESTIONS.map((value) => ({ value, label: value, emphasis: true })), 120, 2),
+    createSuggestionGroup("最近填写", draftMemory.value.recentNotes, 120, 2),
+    createSuggestionGroup("已有模型备注", modelLibrary.value.map((item) => item.note).filter(Boolean), 120, 2)
   ].filter(Boolean)
 );
 const ttsVoiceSuggestionGroups = computed(() => {
@@ -527,7 +554,7 @@ const ttsVoiceSuggestionGroups = computed(() => {
         "Xiaomi MiMo 常见音色",
         MIMO_TTS_VOICE_OPTIONS.map((value) => ({ value, label: value, emphasis: value === "Chloe" })),
         40,
-        9
+        4
       )
     );
   } else if (activeTtsVoiceProvider.value === "openai-compatible") {
@@ -536,7 +563,7 @@ const ttsVoiceSuggestionGroups = computed(() => {
         "OpenAI 兼容常见音色",
         OPENAI_TTS_VOICE_OPTIONS.map((value) => ({ value, label: value, emphasis: value === "alloy" || value === "coral" })),
         40,
-        8
+        4
       )
     );
   } else {
@@ -545,7 +572,7 @@ const ttsVoiceSuggestionGroups = computed(() => {
         "OpenAI 兼容常见音色",
         OPENAI_TTS_VOICE_OPTIONS.map((value) => ({ value, label: value, emphasis: value === "alloy" || value === "coral" })),
         40,
-        8
+        4
       )
     );
     groups.push(
@@ -553,13 +580,13 @@ const ttsVoiceSuggestionGroups = computed(() => {
         "Xiaomi MiMo 常见音色",
         MIMO_TTS_VOICE_OPTIONS.map((value) => ({ value, label: value, emphasis: value === "Chloe" })),
         40,
-        9
+        4
       )
     );
   }
 
-  groups.push(createSuggestionGroup("最近填写", draftMemory.value.recentTtsVoices, 40));
-  groups.push(createSuggestionGroup("已有模型音色", modelLibrary.value.filter((item) => item.type === "tts").map((item) => item.ttsVoice).filter(Boolean), 40));
+  groups.push(createSuggestionGroup("最近填写", draftMemory.value.recentTtsVoices, 40, 3));
+  groups.push(createSuggestionGroup("已有模型音色", modelLibrary.value.filter((item) => item.type === "tts").map((item) => item.ttsVoice).filter(Boolean), 40, 3));
 
   return groups.filter(Boolean);
 });
@@ -573,9 +600,34 @@ function clearFilters() {
   activeProviderFilter.value = "all";
 }
 
+function createLocalModelLibraryId() {
+  return `wti-model-asset-local-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function resolveModelEntryKey(modelEntry = {}) {
+  return String(modelEntry?.id || modelEntry?.name || "").trim();
+}
+
+function resolveModelEntryDisplayLabel(modelEntry = {}) {
+  return resolveModelLibraryEntryLabel(modelEntry) || String(modelEntry?.name || "").trim();
+}
+
+function selectionReferencesModelEntry(selection = {}, modelEntry = {}) {
+  const currentReference = String(selection?.customModel || "").trim();
+
+  if (!currentReference) {
+    return false;
+  }
+
+  const modelEntryId = resolveModelEntryKey(modelEntry);
+  const modelEntryName = String(modelEntry?.name || "").trim();
+
+  return currentReference === modelEntryId || currentReference === modelEntryName;
+}
+
 function openCreateModal() {
-  editingModelName.value = "";
-  createDraft.value = buildCreateDraftFromMemory();
+  editingModelId.value = "";
+  createDraft.value = createEmptyModelDraft();
   draftTestStatus.value = createEmptyTestState();
   showCreateApiKey.value = false;
   activeCreateField.value = "";
@@ -583,7 +635,7 @@ function openCreateModal() {
 }
 
 function openEditModal(modelEntry = {}) {
-  editingModelName.value = String(modelEntry?.name || "").trim();
+  editingModelId.value = resolveModelEntryKey(modelEntry);
   createDraft.value = {
     name: String(modelEntry?.name || "").trim(),
     type: String(modelEntry?.type || "text").trim() || "text",
@@ -603,7 +655,7 @@ function openEditModal(modelEntry = {}) {
 
 function closeCreateModal() {
   isCreateModalOpen.value = false;
-  editingModelName.value = "";
+  editingModelId.value = "";
   draftTestStatus.value = createEmptyTestState();
   activeCreateField.value = "";
 }
@@ -614,7 +666,12 @@ function commitCreateModel() {
     return;
   }
 
+  const previousEntry = isEditingModel.value
+    ? modelLibrary.value.find((item) => item.id === editingModelId.value) || null
+    : null;
+
   const nextEntry = {
+    id: isEditingModel.value ? editingModelId.value : createLocalModelLibraryId(),
     name: normalizedCreateName.value,
     type: String(createDraft.value.type || "text"),
     textApiMode: String(createDraft.value.type || "text") === "text" ? String(createDraft.value.textApiMode || "auto").trim() || "auto" : "auto",
@@ -628,23 +685,27 @@ function commitCreateModel() {
 
   if (isEditingModel.value) {
     props.aiDraft.customModelLibrary = modelLibrary.value.map((item) =>
-      item.name === editingModelName.value
+      item.id === editingModelId.value
         ? nextEntry
         : item
     );
-    renameModelUsage(editingModelName.value, nextEntry.name);
-    draftNotice.value = `模型「${nextEntry.name}」已更新到当前草稿，记得点击“保存 AI 配置”后才会真正保存到本机。`;
+    [props.aiDraft.questionModel, props.aiDraft.reviewModel, props.aiDraft.ttsModel].forEach((selection) => {
+      if (selectionReferencesModelEntry(selection, previousEntry || {})) {
+        selection.customModel = nextEntry.id;
+      }
+    });
+    draftNotice.value = `模型资产「${resolveModelEntryDisplayLabel(nextEntry)}」已更新到当前草稿，记得点击“保存 AI 配置”后才会真正保存到本机。`;
   } else {
     props.aiDraft.customModelLibrary = [...modelLibrary.value, nextEntry];
-    draftNotice.value = `模型「${nextEntry.name}」已加入当前草稿，记得点击“保存 AI 配置”后才会真正保存到本机。`;
+    draftNotice.value = `模型资产「${resolveModelEntryDisplayLabel(nextEntry)}」已加入当前草稿，记得点击“保存 AI 配置”后才会真正保存到本机。`;
   }
 
   rememberDraftUsage(nextEntry);
   closeCreateModal();
 }
 
-function removeModelUsage(selection, modelName = "") {
-  if (String(selection?.customModel || "") !== String(modelName || "")) {
+function removeModelUsage(selection, modelEntry = {}) {
+  if (!selectionReferencesModelEntry(selection, modelEntry)) {
     return;
   }
 
@@ -656,37 +717,29 @@ function removeModelUsage(selection, modelName = "") {
 }
 
 function handleRemoveModel(modelEntry = {}) {
-  const targetName = String(modelEntry?.name || "");
+  const targetId = resolveModelEntryKey(modelEntry);
+  const targetLabel = resolveModelEntryDisplayLabel(modelEntry);
 
-  if (!targetName) {
+  if (!targetId) {
     return;
   }
 
   if (typeof window !== "undefined") {
-    const shouldRemove = window.confirm(`移除模型「${targetName}」后，当前引用它的自定义绑定会回退为跟随服务端默认。是否继续？`);
+    const shouldRemove = window.confirm(`移除模型资产「${targetLabel}」后，当前引用它的自定义绑定会回退为跟随服务端默认。是否继续？`);
 
     if (!shouldRemove) {
       return;
     }
   }
 
-  props.aiDraft.customModelLibrary = modelLibrary.value.filter((item) => item.name !== targetName);
-  removeModelUsage(props.aiDraft.questionModel, targetName);
-  removeModelUsage(props.aiDraft.reviewModel, targetName);
-  removeModelUsage(props.aiDraft.ttsModel, targetName);
-  draftNotice.value = `模型「${targetName}」已从当前草稿移除，记得点击“保存 AI 配置”后才会真正保存到本机。`;
-}
-
-function renameModelUsage(previousName = "", nextName = "") {
-  if (!previousName || !nextName || previousName === nextName) {
-    return;
-  }
-
-  [props.aiDraft.questionModel, props.aiDraft.reviewModel, props.aiDraft.ttsModel].forEach((selection) => {
-    if (String(selection?.customModel || "") === previousName) {
-      selection.customModel = nextName;
-    }
-  });
+  props.aiDraft.customModelLibrary = modelLibrary.value.filter((item) => item.id !== targetId);
+  removeModelUsage(props.aiDraft.questionModel, modelEntry);
+  removeModelUsage(props.aiDraft.reviewModel, modelEntry);
+  removeModelUsage(props.aiDraft.ttsModel, modelEntry);
+  draftNotice.value = `模型资产「${targetLabel}」已从当前草稿移除，记得点击“保存 AI 配置”后才会真正保存到本机。`;
+  const nextTestStatusById = { ...modelTestStatusById.value };
+  delete nextTestStatusById[targetId];
+  modelTestStatusById.value = nextTestStatusById;
 }
 
 function applyCreateProviderTemplate(template) {
@@ -728,23 +781,23 @@ function applyDraftSuggestion(fieldName = "", value = "") {
 function resolveActiveFieldHint(fieldName = "") {
   switch (String(fieldName || "").trim()) {
     case "name":
-      return "使用供应商给出的完整模型 ID。文本和语音模型建议分开登记，方便后面直接筛选和绑定。";
+      return "填供应商给出的完整模型 ID；同名模型可以按不同 Provider 分开登记。";
     case "type":
-      return "文本模型用于出题和点评；语音模型用于播报点评和总结。";
+      return "文本用于出题和点评，语音用于播报。";
     case "providerLabel":
-      return "建议填供应商名或内部标识，后面按 Provider 筛选时会更清楚。";
+      return "建议填供应商名，后面筛选更清楚。";
     case "textApiMode":
-      return "一般先用“自动兼容”；像 Xiaomi MiMo 这类只兼容 chat/completions 的服务，可以直接固定到后者。";
+      return "一般先用自动；MiMo 这类可固定到 Chat Completions。";
     case "baseUrl":
-      return "Base URL 填到 /v1 即可，不要拼上 /chat/completions 或 /audio/speech 这类具体接口路径。";
+      return "填到 /v1 即可，不要带具体接口路径。";
     case "ttsVoice":
-      return "优先填写官方文档确认可用的音色名；如果是 Xiaomi MiMo，默认可先用 Chloe。";
+      return "优先填官方音色名；MiMo 可先用 Chloe。";
     case "ttsAudioFormat":
-      return "常规浏览器播放优先推荐 WAV；PCM16 更适合底层流式处理，不适合当默认网页播放格式。";
+      return "网页默认优先 WAV。";
     case "apiKey":
-      return "API Key 只会参与本地配置保存，不会加入填写记忆或提示建议。";
+      return "只在本地保存，不会进入建议列表。";
     case "note":
-      return "可以记录这条模型更适合做什么，例如“适合出题”“中文稳定”“语音自然”。";
+      return "写一句用途即可。";
     default:
       return "";
   }
@@ -852,8 +905,8 @@ async function handleTestCreateDraft() {
   }
 }
 
-function getModelTestState(modelName = "") {
-  return modelTestStatusByName.value[String(modelName || "").trim()] || {
+function getModelTestState(modelEntry = {}) {
+  return modelTestStatusById.value[resolveModelEntryKey(modelEntry)] || {
     status: "idle",
     message: "",
     details: ""
@@ -888,14 +941,15 @@ function buildRuntimeConfigForTest(entry = {}) {
 
 async function handleTestModel(modelEntry = {}) {
   const modelName = String(modelEntry?.name || "").trim();
+  const modelEntryKey = resolveModelEntryKey(modelEntry);
 
-  if (!modelName) {
+  if (!modelName || !modelEntryKey) {
     return;
   }
 
-  modelTestStatusByName.value = {
-    ...modelTestStatusByName.value,
-    [modelName]: {
+  modelTestStatusById.value = {
+    ...modelTestStatusById.value,
+    [modelEntryKey]: {
       status: "loading",
       message: "测试中...",
       details: ""
@@ -906,9 +960,9 @@ async function handleTestModel(modelEntry = {}) {
     const runtimeConfig = buildRuntimeConfigForTest(modelEntry);
 
     if (runtimeConfig.hasBaseUrlWithoutApiKey) {
-      modelTestStatusByName.value = {
-        ...modelTestStatusByName.value,
-        [modelName]: {
+      modelTestStatusById.value = {
+        ...modelTestStatusById.value,
+        [modelEntryKey]: {
           status: "error",
           message: "测试失败",
           details: "Base URL 需要和 API Key 一起填写后才会生效。"
@@ -933,18 +987,18 @@ async function handleTestModel(modelEntry = {}) {
         return item.key === "questionModel";
       }) || null;
 
-    modelTestStatusByName.value = {
-      ...modelTestStatusByName.value,
-      [modelName]: {
+    modelTestStatusById.value = {
+      ...modelTestStatusById.value,
+      [modelEntryKey]: {
         status: matchedResult?.ok ? "success" : "error",
         message: matchedResult?.ok ? "测试通过" : "测试失败",
         details: matchedResult?.detail || ""
       }
     };
   } catch (error) {
-    modelTestStatusByName.value = {
-      ...modelTestStatusByName.value,
-      [modelName]: {
+    modelTestStatusById.value = {
+      ...modelTestStatusById.value,
+      [modelEntryKey]: {
         status: "error",
         message: "测试失败",
         details: error?.message || "连接测试失败。"
@@ -1056,7 +1110,7 @@ watch(
     </div>
 
     <div v-if="visibleLibrary.length" class="settings-model-library__list">
-      <article v-for="modelEntry in visibleLibrary" :key="modelEntry.name" class="settings-model-library__item">
+      <article v-for="modelEntry in visibleLibrary" :key="resolveModelEntryKey(modelEntry)" class="settings-model-library__item">
         <div class="settings-model-library__item-copy">
           <div class="settings-model-library__item-topline">
             <strong class="settings-model-library__item-title">{{ modelEntry.name }}</strong>
@@ -1078,19 +1132,19 @@ watch(
           <p v-if="modelEntry.baseUrl" class="settings-model-library__item-note">{{ modelEntry.baseUrl }}</p>
           <p v-if="modelEntry.note" class="settings-model-library__item-note">{{ modelEntry.note }}</p>
           <p
-            v-if="getModelTestState(modelEntry.name).status !== 'idle'"
+            v-if="getModelTestState(modelEntry).status !== 'idle'"
             :class="[
               'settings-model-library__test-status',
-              `settings-model-library__test-status--${getModelTestState(modelEntry.name).status}`
+              `settings-model-library__test-status--${getModelTestState(modelEntry).status}`
             ]"
           >
-            {{ getModelTestState(modelEntry.name).message }}
-            <span v-if="getModelTestState(modelEntry.name).details"> · {{ getModelTestState(modelEntry.name).details }}</span>
+            {{ getModelTestState(modelEntry).message }}
+            <span v-if="getModelTestState(modelEntry).details"> · {{ getModelTestState(modelEntry).details }}</span>
           </p>
         </div>
         <div class="settings-model-library__item-actions">
           <button class="settings-model-library__action" type="button" @click="handleTestModel(modelEntry)">
-            {{ getModelTestState(modelEntry.name).status === "loading" ? "测试中..." : "测试模型" }}
+            {{ getModelTestState(modelEntry).status === "loading" ? "测试中..." : "测试模型" }}
           </button>
           <button class="settings-model-library__action" type="button" @click="openEditModal(modelEntry)">编辑</button>
           <button class="settings-model-library__remove" type="button" @click="handleRemoveModel(modelEntry)">移除</button>
@@ -1113,36 +1167,32 @@ watch(
       title-id="settings-model-library-create-title"
       :heading-eyebrow="isEditingModel ? 'Edit Model' : 'Add Model'"
       :heading-title="isEditingModel ? '编辑模型' : '添加模型'"
-      :heading-description="
-        isEditingModel
-          ? '修改这条模型资产的名称、Provider、Base URL、API Key 和备注。若重命名，当前引用它的自定义绑定也会一起更新。'
-          : '登记一个可复用的模型资产。这里不分配服务绑定；如果填写 Base URL，必须同时填写 API Key，后续从模型库带入时才会同步套用这条模型自带的连接设置。'
-      "
       :close-label="isEditingModel ? '关闭编辑模型弹窗' : '关闭添加模型弹窗'"
       close-button-text="取消"
       panel-class="settings-model-library__dialog"
       initial-focus-selector="[data-modal-primary='true']"
     >
       <div class="settings-model-library__modal-body">
+        <p class="settings-model-library__inline-banner">{{ createModalInlineNote }}</p>
+
         <section v-if="showRememberedDefaults" class="settings-model-library__memory-banner">
-          <div class="settings-model-library__memory-copy">
-            <p class="settings-model-library__memory-eyebrow">上次常用设置</p>
-            <p class="settings-model-library__memory-text">{{ rememberedDraftSummary }}</p>
-          </div>
-          <button class="settings-model-library__action" type="button" @click="createDraft = buildCreateDraftFromMemory()">
-            带入最近填写
+          <p class="settings-model-library__memory-inline">
+            <span class="settings-model-library__memory-eyebrow">上次配置</span>
+            <span class="settings-model-library__memory-text">{{ rememberedDraftSummary }}</span>
+          </p>
+          <button class="settings-model-library__action settings-model-library__memory-action" type="button" @click="createDraft = buildCreateDraftFromMemory()">
+            带入上次配置
           </button>
         </section>
 
-        <div class="settings-model-library__dialog-shell">
-          <div class="settings-model-library__dialog-main">
+        <div class="settings-model-library__dialog-main">
             <section class="settings-model-library__group">
               <div class="settings-model-library__group-head">
                 <div>
                   <p class="settings-model-library__group-eyebrow">Basic</p>
                   <h5 class="settings-model-library__group-title">基础信息</h5>
                 </div>
-                <p class="settings-model-library__group-note">先登记模型身份，后面的连接设置和能力选项会跟着类型联动。</p>
+                <p class="settings-model-library__group-note">先填模型名和类型。</p>
               </div>
 
               <div class="settings-form settings-model-library__dialog-form">
@@ -1156,11 +1206,17 @@ watch(
                     class="settings-input"
                     type="text"
                     maxlength="120"
-                    placeholder="例如 gpt-5.4-mini / gpt-4o-mini-tts"
+                    :placeholder="createModelNamePlaceholder"
                     @focus="setActiveCreateField('name')"
                     @click="setActiveCreateField('name')"
                     @keyup.enter="commitCreateModel"
                   />
+                  <p
+                    v-if="createSubmitBlockReason"
+                    class="settings-model-library__field-help"
+                  >
+                    {{ createSubmitBlockReason }}
+                  </p>
                   <div v-if="activeCreateField === 'name' && resolveFieldSuggestions('name').length" class="settings-model-library__suggestions">
                     <div
                       v-for="group in resolveFieldSuggestions('name')"
@@ -1253,18 +1309,18 @@ watch(
                   <p class="settings-model-library__group-eyebrow">Runtime</p>
                   <h5 class="settings-model-library__group-title">连接设置</h5>
                 </div>
-                <p class="settings-model-library__group-note">这些配置会在从模型库绑定服务时一起带入；如果要登记独立网关，请把 Base URL 和 API Key 一起填上。</p>
+                <p class="settings-model-library__group-note">独立网关时，URL 和 Key 一起填。</p>
               </div>
 
               <div class="settings-form settings-model-library__dialog-form">
-                <div class="settings-field settings-field--span settings-model-library__dialog-field">
+                <div v-if="showCreateProviderTemplates" class="settings-field settings-field--span settings-model-library__dialog-field">
                   <span class="settings-model-library__field-head">
-                    <span class="settings-field__label">常见模板</span>
-                    <span class="settings-model-library__field-badge settings-model-library__field-badge--optional">快捷带入</span>
+                    <span class="settings-field__label">模板</span>
+                    <span class="settings-model-library__field-badge settings-model-library__field-badge--optional">可选</span>
                   </span>
                   <div class="settings-model-library__template-list">
                     <button
-                      v-for="template in PROVIDER_TEMPLATES"
+                      v-for="template in visibleProviderTemplates"
                       :key="`create-${template.key}`"
                       class="settings-model-library__template-chip"
                       type="button"
@@ -1328,7 +1384,7 @@ watch(
                       class="settings-input"
                       :type="showCreateApiKey ? 'text' : 'password'"
                       maxlength="240"
-                      placeholder="可选；如果填写了 Base URL，建议这里同步填写"
+                      placeholder="可选；填了 Base URL 建议一起填"
                       @focus="setActiveCreateField('apiKey')"
                       @click="setActiveCreateField('apiKey')"
                     />
@@ -1336,6 +1392,9 @@ watch(
                       {{ showCreateApiKey ? "隐藏" : "显示" }}
                     </button>
                   </div>
+                  <p v-if="activeCreateField === 'apiKey'" class="settings-model-library__field-help">
+                    {{ resolveActiveFieldHint('apiKey') }}
+                  </p>
                 </label>
               </div>
             </section>
@@ -1347,7 +1406,7 @@ watch(
                   <h5 class="settings-model-library__group-title">能力选项</h5>
                 </div>
                 <p class="settings-model-library__group-note">
-                  {{ createDraft.type === "text" ? "文本模型可指定兼容接口模式。" : "语音模型可指定音色和输出格式，建议优先选 WAV。"}}
+                  {{ createDraft.type === "text" ? "文本模型可选接口模式。" : "语音模型可选音色和格式。"}}
                 </p>
               </div>
 
@@ -1454,7 +1513,7 @@ watch(
                   <p class="settings-model-library__group-eyebrow">Notes</p>
                   <h5 class="settings-model-library__group-title">备注</h5>
                 </div>
-                <p class="settings-model-library__group-note">用一行短备注记录“适合做什么”或“使用限制”，后面筛选和维护会更省事。</p>
+                <p class="settings-model-library__group-note">可选，写一句用途即可。</p>
               </div>
 
               <div class="settings-form settings-model-library__dialog-form">
@@ -1501,28 +1560,6 @@ watch(
                 </label>
               </div>
             </section>
-          </div>
-
-          <aside class="settings-model-library__dialog-aside">
-            <section class="settings-model-library__focus-card">
-              <p class="settings-model-library__focus-eyebrow">字段提示</p>
-              <h6 class="settings-model-library__focus-title">
-                {{ activeCreateField ? "正在填写 " : "点击任一字段" }}{{ activeCreateField ? `「${resolveFieldDisplayName(activeCreateField)}」` : "" }}
-              </h6>
-              <p class="settings-model-library__focus-text">
-                {{ resolveActiveFieldHint(activeCreateField) || "左侧输入框支持最近填写提示。点击某个字段后，这里会显示更明确的填写建议。" }}
-              </p>
-            </section>
-
-            <section class="settings-model-library__focus-card">
-              <p class="settings-model-library__focus-eyebrow">填写规则</p>
-              <ul class="settings-model-library__focus-list">
-                <li>`模型名` 和 `模型类型` 是必填项。</li>
-                <li>`Provider / Base URL / API Key / 备注` 都是选填项，但 `Base URL` 单独填写不会生效。</li>
-                <li>本地记忆只保留非敏感字段，`API Key` 不会加入建议列表。</li>
-              </ul>
-            </section>
-          </aside>
         </div>
 
         <p
@@ -1541,10 +1578,17 @@ watch(
           <button class="settings-model-library__action" type="button" :disabled="draftTestStatus.status === 'loading'" @click="handleTestCreateDraft">
             {{ draftTestStatus.status === "loading" ? "测试中..." : "先测试这条模型" }}
           </button>
-          <button class="btn-cartoon btn-cartoon--mint" type="button" data-modal-primary="true" :disabled="!canSubmitCreate" @click="commitCreateModel">
+          <button
+            class="btn-cartoon btn-cartoon--mint"
+            type="button"
+            data-modal-primary="true"
+            :disabled="!canSubmitCreate"
+            :title="createSubmitBlockReason || (isEditingModel ? '保存这条模型' : '把这条模型加入当前草稿')"
+            @click="commitCreateModel"
+          >
             {{ isEditingModel ? "保存模型" : "添加模型" }}
           </button>
-          <button class="btn-cartoon" type="button" @click="closeCreateModal">取消</button>
+          <button class="btn-cartoon settings-model-library__modal-cancel" type="button" @click="closeCreateModal">取消</button>
         </div>
       </div>
     </ModalDialog>
@@ -1640,7 +1684,7 @@ watch(
 }
 
 .settings-model-library__draft-test-status {
-  padding: 14px 16px;
+  padding: 12px 14px;
   border: 1px solid rgba(36, 50, 74, 0.08);
   border-radius: 18px;
   background: linear-gradient(180deg, rgba(247, 251, 255, 0.92) 0%, rgba(242, 247, 252, 0.88) 100%);
@@ -1661,7 +1705,7 @@ watch(
 .settings-model-library__item-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
 }
 
 .settings-model-library__item-copy {
@@ -1714,6 +1758,7 @@ watch(
 .settings-model-library__template-chip {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   min-height: 34px;
   padding: 6px 12px;
   border: 1px solid rgba(36, 50, 74, 0.1);
@@ -1721,7 +1766,7 @@ watch(
   background: rgba(247, 251, 255, 0.88);
   color: var(--color-ink-soft, #5b6984);
   font: inherit;
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   font-weight: 700;
 }
 
@@ -1819,12 +1864,6 @@ watch(
   line-height: 1.02;
 }
 
-.settings-model-library__dialog .modal-dialog__text {
-  max-width: 62ch;
-  font-size: 0.94rem;
-  line-height: 1.6;
-}
-
 .settings-model-library__dialog .modal-dialog__close {
   min-height: 44px;
   padding: 10px 18px;
@@ -1845,33 +1884,51 @@ watch(
 
 .settings-model-library__modal-body {
   display: grid;
-  gap: 18px;
+  gap: 12px;
 }
 
-.settings-model-library__memory-banner,
-.settings-model-library__group,
-.settings-model-library__focus-card {
-  padding: 20px;
-  border: 1px solid rgba(36, 50, 74, 0.09);
-  border-radius: 22px;
-  background: linear-gradient(180deg, rgba(249, 252, 255, 0.98) 0%, rgba(244, 248, 252, 0.94) 100%);
+.settings-model-library__inline-banner {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(36, 50, 74, 0.08);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(248, 251, 253, 0.94) 0%, rgba(244, 248, 251, 0.9) 100%);
+  color: var(--color-ink-soft, #5b6984);
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+.settings-model-library__group {
+  padding: 16px;
+  border: 1px solid rgba(36, 50, 74, 0.07);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(250, 252, 255, 0.98) 0%, rgba(246, 249, 252, 0.94) 100%);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.78),
-    0 18px 32px -34px rgba(36, 50, 74, 0.34);
+    0 12px 20px -30px rgba(36, 50, 74, 0.22);
 }
 
 .settings-model-library__memory-banner {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
-  border-color: rgba(124, 216, 184, 0.28);
-  background: linear-gradient(180deg, rgba(243, 252, 248, 0.98) 0%, rgba(250, 255, 252, 0.92) 100%);
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(124, 216, 184, 0.18);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(246, 251, 249, 0.96) 0%, rgba(250, 253, 252, 0.92) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.76),
+    0 10px 18px -28px rgba(36, 50, 74, 0.22);
 }
 
-.settings-model-library__memory-copy {
-  display: grid;
-  gap: 6px;
+.settings-model-library__memory-inline {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  min-width: 0;
+  margin: 0;
 }
 
 .settings-model-library__memory-eyebrow,
@@ -1879,9 +1936,9 @@ watch(
 .settings-model-library__focus-eyebrow {
   margin: 0;
   color: var(--color-ink-soft, #5b6984);
-  font-size: 0.76rem;
+  font-size: 0.68rem;
   font-weight: 800;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
@@ -1894,40 +1951,41 @@ watch(
   line-height: 1.55;
 }
 
-.settings-model-library__dialog-shell {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 260px;
-  gap: 18px;
-  align-items: start;
+.settings-model-library__memory-text {
+  min-width: 0;
+  font-size: 0.88rem;
 }
 
-.settings-model-library__dialog-main,
-.settings-model-library__dialog-aside {
+.settings-model-library__dialog-main {
   display: grid;
-  gap: 14px;
+  gap: 10px;
 }
 
 .settings-model-library__group {
   display: grid;
-  gap: 16px;
+  gap: 12px;
   min-width: 0;
 }
 
 .settings-model-library__group-head {
   display: grid;
-  gap: 6px;
+  gap: 4px;
 }
 
-.settings-model-library__group-title,
-.settings-model-library__focus-title {
+.settings-model-library__group-title {
   margin: 0;
   color: var(--color-ink, #24324a);
-  font-size: 1.02rem;
-  line-height: 1.3;
+  font-size: 0.95rem;
+  line-height: 1.25;
+}
+
+.settings-model-library__group-note,
+.settings-model-library__field-help {
+  font-size: 0.84rem;
 }
 
 .settings-model-library__dialog-form {
-  gap: 14px 16px;
+  gap: 10px 12px;
   align-items: start;
 }
 
@@ -1937,7 +1995,7 @@ watch(
 
 .settings-model-library__dialog-field {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
   align-content: start;
 }
@@ -1952,10 +2010,10 @@ watch(
 .settings-model-library__field-badge {
   display: inline-flex;
   align-items: center;
-  min-height: 24px;
-  padding: 4px 10px;
+  min-height: 22px;
+  padding: 3px 9px;
   border-radius: 999px;
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-weight: 800;
   letter-spacing: 0.02em;
 }
@@ -2006,7 +2064,7 @@ watch(
 }
 
 .settings-model-library__inline-note {
-  padding: 14px 16px;
+  padding: 12px 14px;
   border: 1px solid rgba(36, 50, 74, 0.1);
   border-radius: 18px;
   background: linear-gradient(180deg, rgba(247, 250, 253, 0.9) 0%, rgba(255, 255, 255, 0.84) 100%);
@@ -2014,18 +2072,18 @@ watch(
 
 .settings-model-library__suggestions {
   display: grid;
-  gap: 12px;
-  padding-top: 2px;
+  gap: 10px;
+  padding-top: 0;
 }
 
 .settings-model-library__suggestion-group {
   display: grid;
-  gap: 6px;
+  gap: 5px;
 }
 
 .settings-model-library__suggestion-group-title {
   color: var(--color-ink-soft, #5b6984);
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   font-weight: 800;
   letter-spacing: 0.06em;
 }
@@ -2033,20 +2091,20 @@ watch(
 .settings-model-library__suggestion-group-items {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 7px;
 }
 
 .settings-model-library__suggestion-chip {
   display: inline-flex;
   align-items: center;
-  min-height: 32px;
-  padding: 6px 12px;
+  min-height: 30px;
+  padding: 5px 11px;
   border: 1px solid rgba(124, 216, 184, 0.2);
   border-radius: 999px;
   background: rgba(243, 250, 247, 0.94);
   color: var(--color-ink, #24324a);
   font: inherit;
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   font-weight: 700;
   cursor: pointer;
   transition:
@@ -2069,50 +2127,10 @@ watch(
   color: var(--color-ink, #24324a);
 }
 
-.settings-model-library__focus-card {
-  display: grid;
-  gap: 10px;
-  position: sticky;
-  top: 0;
-  padding: 16px 17px;
-  align-content: start;
-  border-color: rgba(36, 50, 74, 0.08);
-}
-
-.settings-model-library__focus-card:first-child {
-  background: linear-gradient(180deg, rgba(242, 250, 247, 0.98) 0%, rgba(247, 252, 250, 0.94) 100%);
-  border-color: rgba(124, 216, 184, 0.22);
-}
-
-.settings-model-library__focus-card:last-child {
-  background: linear-gradient(180deg, rgba(247, 250, 254, 0.98) 0%, rgba(242, 247, 252, 0.94) 100%);
-}
-
-@media (max-width: 1280px) {
-  .settings-model-library__dialog-shell {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .settings-model-library__dialog-aside {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
 @media (max-width: 900px) {
-  .settings-model-library__dialog-form--tts,
-  .settings-model-library__dialog-aside {
+  .settings-model-library__dialog-form--tts {
     grid-template-columns: minmax(0, 1fr);
   }
-}
-
-.settings-model-library__focus-list {
-  padding-left: 18px;
-  font-size: 0.86rem;
-  line-height: 1.6;
-}
-
-.settings-model-library__focus-list li + li {
-  margin-top: 6px;
 }
 
 .settings-model-library__modal-actions {
@@ -2122,11 +2140,11 @@ watch(
   align-items: center;
   justify-content: flex-end;
   flex-wrap: wrap;
-  gap: 10px;
-  padding: 14px 0 2px;
-  border-top: 1px solid rgba(36, 50, 74, 0.08);
-  background: linear-gradient(180deg, rgba(244, 248, 252, 0) 0%, rgba(244, 248, 252, 0.92) 18%, rgba(244, 248, 252, 0.98) 100%);
-  backdrop-filter: blur(6px);
+  gap: 8px;
+  padding: 10px 0 2px;
+  border-top: 1px solid rgba(36, 50, 74, 0.06);
+  background: linear-gradient(180deg, rgba(246, 249, 252, 0) 0%, rgba(246, 249, 252, 0.88) 20%, rgba(246, 249, 252, 0.96) 100%);
+  backdrop-filter: blur(4px);
 }
 
 .settings-model-library__modal-actions .settings-model-library__action:first-child {
@@ -2135,7 +2153,37 @@ watch(
 
 .settings-model-library__modal-actions .btn-cartoon,
 .settings-model-library__modal-actions .settings-model-library__action {
-  min-height: 42px;
+  min-height: 40px;
+}
+
+.settings-model-library__modal-actions .settings-model-library__action {
+  min-height: 34px;
+  padding: 6px 12px;
+  border-color: rgba(36, 50, 74, 0.08);
+  background: rgba(248, 251, 255, 0.72);
+  color: var(--color-ink-soft, #5b6984);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.settings-model-library__modal-actions .btn-cartoon:disabled {
+  opacity: 0.58;
+  box-shadow: 2px 2px 0px rgba(36, 50, 74, 0.18);
+}
+
+.settings-model-library__modal-cancel {
+  border-color: rgba(36, 50, 74, 0.1);
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--color-ink-soft, #5b6984);
+  box-shadow: 2px 2px 0px rgba(36, 50, 74, 0.16);
+}
+
+.settings-model-library__modal-cancel:hover {
+  background: rgba(250, 252, 255, 0.9);
+}
+
+.settings-model-library__modal-actions .btn-cartoon--mint {
+  box-shadow: 3px 3px 0px rgba(36, 50, 74, 0.2);
 }
 
 .settings-model-library__template-list {
@@ -2146,8 +2194,7 @@ watch(
   background: rgba(250, 252, 255, 0.92);
 }
 
-.settings-model-library__memory-banner .settings-model-library__action,
-.settings-model-library__modal-actions .settings-model-library__action {
+.settings-model-library__memory-banner .settings-model-library__action {
   background: rgba(248, 251, 255, 0.96);
 }
 
@@ -2195,10 +2242,6 @@ watch(
   .settings-model-library__memory-banner {
     align-items: flex-start;
     flex-direction: column;
-  }
-
-  .settings-model-library__focus-card {
-    position: static;
   }
 
   .settings-model-library__modal-actions {

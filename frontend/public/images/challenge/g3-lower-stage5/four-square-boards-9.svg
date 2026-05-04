@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <defs>
+    <linearGradient id="panel" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="100%" stop-color="#EFF7FF" />
+    </linearGradient>
+  </defs>
+  <rect width="480" height="280" rx="28" fill="#EFF7FF" />
+  <rect x="32" y="24" width="416" height="232" rx="28" fill="url(#panel)" stroke="#CFE2F7" />
+  <rect x="32" y="24" width="416" height="44" rx="28" fill="#2C7BE5" />
+  <text x="52" y="52" font-size="22" font-weight="800" fill="#FFFFFF">展板面积</text>
+  <text x="52" y="88" font-size="15" font-weight="600" fill="#58718D">一共有 4 块同样大的正方形展板</text>
+  
+        <rect x="120" y="108" width="60" height="60" rx="6" fill="#E9F4FF" stroke="#2C7BE5" stroke-width="3" />
+        <rect x="194" y="108" width="60" height="60" rx="6" fill="#E9F4FF" stroke="#2C7BE5" stroke-width="3" />
+        <rect x="120" y="182" width="60" height="60" rx="6" fill="#E9F4FF" stroke="#2C7BE5" stroke-width="3" />
+        <rect x="194" y="182" width="60" height="60" rx="6" fill="#E9F4FF" stroke="#2C7BE5" stroke-width="3" />
+        <text x="286" y="146" font-size="18" font-weight="700" fill="#2C7BE5">每块边长 9 分米</text>
+        <text x="286" y="176" font-size="16" font-weight="600" fill="#5B7087">先算一块，再看 4 块。</text>
+      
+</svg>

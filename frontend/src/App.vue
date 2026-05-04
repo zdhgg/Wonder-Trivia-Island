@@ -218,24 +218,12 @@ export default {
               </div>
             </div>
 
-            <div class="challenge-node__scene">
+            <div class="challenge-node__body">
               <span class="challenge-node__glyph">{{ stage.glyph }}</span>
-              <span class="challenge-node__chapter">{{ stage.chapterLabel }}</span>
-            </div>
-
-            <strong class="challenge-node__title">{{ stage.title }}</strong>
-
-            <div class="challenge-node__stars" aria-hidden="true">
-              <span
-                v-for="previewStar in stage.previewStars"
-                :key="`${stage.id}-star-${previewStar.id}`"
-                :class="[
-                  'challenge-node__star',
-                  { 'challenge-node__star--filled': previewStar.filled }
-                ]"
-              >
-                {{ previewStar.filled ? "★" : "☆" }}
-              </span>
+              <div class="challenge-node__copy">
+                <span class="challenge-node__chapter">{{ stage.chapterLabel }}</span>
+                <strong class="challenge-node__title">{{ stage.title }}</strong>
+              </div>
             </div>
 
             <span :class="['challenge-node__status', `challenge-node__status--${stage.coverageTone}`]">
@@ -251,62 +239,53 @@ export default {
             <span class="challenge-launchbar__meta">
               {{ currentChallengeStage.questionCount }} 题 · {{ currentChallengeStage.timeLimitLabel }} · 过关线 {{ currentChallengeStage.passAccuracy }}%
             </span>
-            <div class="challenge-launchbar__chips" aria-label="关卡任务">
+            <div class="challenge-launchbar__highlights" aria-label="关卡重点">
               <span class="challenge-launchbar__chip">
                 {{ currentChallengeChapterLabel }}
               </span>
               <span class="challenge-launchbar__chip">
                 {{ currentChallengeRouteTitle }}
               </span>
-              <span class="challenge-launchbar__chip">
-                共 {{ challengeChapterOptions.length }} 个章节
-              </span>
-              <span class="challenge-launchbar__chip">
-                目标 {{ currentChallengeStage.missionLabel }}
-              </span>
-              <span v-if="currentChallengeStage.knowledgeTag" class="challenge-launchbar__chip">
-                标签 {{ currentChallengeStage.knowledgeTag }}
-              </span>
-              <span v-if="currentChallengeRouteFocus" class="challenge-launchbar__chip">
-                {{ currentChallengeRouteFocus }}
-              </span>
-              <span :class="['challenge-launchbar__chip', { 'challenge-launchbar__chip--earned': currentChallengeStage.rewardEarned }]">
-                {{ currentChallengeStage.rewardEarned ? "已收藏" : "奖励" }} {{ currentChallengeStage.rewardGlyph }}
-                {{ currentChallengeStage.rewardLabel }}
-              </span>
-              <span class="challenge-launchbar__chip">
-                {{ challengeRewardProgressLabel }}
-              </span>
-              <span class="challenge-launchbar__chip">
-                {{ challengeAchievementProgressLabel }}
-              </span>
               <span :class="['challenge-launchbar__chip', `challenge-launchbar__chip--coverage-${currentChallengeStage.coverageTone}`]">
-                覆盖 {{ currentChallengeStage.coverageLabel }}
-              </span>
-              <span class="challenge-launchbar__chip">
-                专属题 {{ currentChallengeStage.coverageCount }}/{{ currentChallengeStage.coverageRequiredCount }}
-              </span>
-              <span class="challenge-launchbar__chip">
-                {{ challengeCoverageSummaryLabel }}
+                {{ currentChallengeStage.coverageLabel }} · {{ currentChallengeStage.coverageCount }}/{{ currentChallengeStage.coverageRequiredCount }}
               </span>
             </div>
             <span :class="['challenge-launchbar__note', `challenge-launchbar__note--${currentChallengeStage.coverageTone}`]">
               {{ currentChallengeStage.coverageHint }}
             </span>
+            <details class="challenge-launchbar__details">
+              <summary class="challenge-launchbar__details-toggle">更多信息</summary>
+              <div class="challenge-launchbar__chips" aria-label="关卡更多信息">
+                <span class="challenge-launchbar__chip">
+                  目标 {{ currentChallengeStage.missionLabel }}
+                </span>
+                <span class="challenge-launchbar__chip">
+                  共 {{ challengeChapterOptions.length }} 个章节
+                </span>
+                <span v-if="currentChallengeStage.knowledgeTag" class="challenge-launchbar__chip">
+                  标签 {{ currentChallengeStage.knowledgeTag }}
+                </span>
+                <span v-if="currentChallengeRouteFocus" class="challenge-launchbar__chip">
+                  {{ currentChallengeRouteFocus }}
+                </span>
+                <span :class="['challenge-launchbar__chip', { 'challenge-launchbar__chip--earned': currentChallengeStage.rewardEarned }]">
+                  {{ currentChallengeStage.rewardEarned ? "已收藏" : "奖励" }} {{ currentChallengeStage.rewardGlyph }}
+                  {{ currentChallengeStage.rewardLabel }}
+                </span>
+                <span class="challenge-launchbar__chip">
+                  {{ challengeRewardProgressLabel }}
+                </span>
+                <span class="challenge-launchbar__chip">
+                  {{ challengeAchievementProgressLabel }}
+                </span>
+                <span class="challenge-launchbar__chip">
+                  {{ challengeCoverageSummaryLabel }}
+                </span>
+              </div>
+            </details>
           </div>
 
           <div class="challenge-launchbar__actions">
-            <button
-              v-if="shouldShowChallengeCatalogShortcut"
-              class="btn-cartoon btn-cartoon--pink"
-              type="button"
-              @click="openCatalogForCurrentChallengeStage"
-            >
-              去补本关题目
-            </button>
-            <button class="btn-cartoon" type="button" @click="openQuizSettings">
-              改题库范围
-            </button>
             <button
               class="btn-cartoon btn-cartoon--yellow challenge-launchbar__start"
               type="button"
@@ -315,52 +294,74 @@ export default {
             >
               {{ challengeLaunchLabel }}
             </button>
+
+            <div class="challenge-launchbar__subactions">
+              <button
+                v-if="shouldShowChallengeCatalogShortcut"
+                class="challenge-launchbar__subaction challenge-launchbar__subaction--accent"
+                type="button"
+                @click="openCatalogForCurrentChallengeStage"
+              >
+                补本关题目
+              </button>
+              <button class="challenge-launchbar__subaction" type="button" @click="openQuizSettings">
+                调整题库
+              </button>
+            </div>
           </div>
         </div>
 
         <section v-if="challengeAchievements.length" class="challenge-achievements" aria-label="章节成就">
-          <div class="challenge-achievements__header">
-            <div class="challenge-achievements__copy">
-              <p class="challenge-achievements__eyebrow">Achievement Board</p>
-              <h3 class="challenge-achievements__title">章节成就</h3>
-              <p class="challenge-achievements__text">当前章节的通关、收藏、满星和节奏记录都会在这里点亮。</p>
-            </div>
-
-            <div class="challenge-achievements__summary">
-              <strong class="challenge-achievements__summary-value">{{ challengeAchievementCount }}</strong>
-              <span class="challenge-achievements__summary-label">/ {{ challengeAchievements.length }} 已解锁</span>
-            </div>
-          </div>
-
-          <div class="challenge-achievements__grid">
-            <article
-              v-for="achievement in challengeAchievements"
-              :key="achievement.id"
-              :class="[
-                'challenge-achievement-card',
-                {
-                  'challenge-achievement-card--unlocked': achievement.isUnlocked,
-                  'challenge-achievement-card--fresh': achievement.fresh
-                }
-              ]"
-            >
-              <div class="challenge-achievement-card__topline">
-                <span class="challenge-achievement-card__glyph">{{ achievement.glyph }}</span>
-                <span
-                  :class="[
-                    'challenge-achievement-card__status',
-                    `challenge-achievement-card__status--${achievement.fresh ? 'fresh' : achievement.isUnlocked ? 'unlocked' : 'locked'}`
-                  ]"
-                >
-                  {{ achievement.fresh ? "新解锁" : achievement.isUnlocked ? "已达成" : "进行中" }}
+          <details class="challenge-achievements__details" :open="challengeFreshAchievementCount > 0">
+            <summary class="challenge-achievements__summary">
+              <div class="challenge-achievements__summary-main">
+                <strong class="challenge-achievements__summary-title">章节成就</strong>
+                <span class="challenge-achievements__summary-caption">
+                  {{ challengeAchievementCount }} / {{ challengeAchievements.length }} 已解锁
                 </span>
               </div>
+              <div class="challenge-achievements__summary-side">
+                <span v-if="challengeFreshAchievementCount > 0" class="challenge-achievements__fresh">
+                  新解锁 {{ challengeFreshAchievementCount }}
+                </span>
+                <span class="challenge-achievements__summary-action">
+                  {{ challengeFreshAchievementCount > 0 ? "查看新成就" : "查看详情" }}
+                </span>
+              </div>
+            </summary>
 
-              <strong class="challenge-achievement-card__title">{{ achievement.name }}</strong>
-              <p class="challenge-achievement-card__summary">{{ achievement.summary }}</p>
-              <span class="challenge-achievement-card__progress">{{ achievement.progressText }}</span>
-            </article>
-          </div>
+            <p class="challenge-achievements__text">当前章节的通关、收藏、满星和节奏记录都会在这里点亮。</p>
+
+            <div class="challenge-achievements__grid">
+              <article
+                v-for="achievement in challengeAchievements"
+                :key="achievement.id"
+                :class="[
+                  'challenge-achievement-card',
+                  {
+                    'challenge-achievement-card--unlocked': achievement.isUnlocked,
+                    'challenge-achievement-card--fresh': achievement.fresh
+                  }
+                ]"
+              >
+                <div class="challenge-achievement-card__topline">
+                  <span class="challenge-achievement-card__glyph">{{ achievement.glyph }}</span>
+                  <span
+                    :class="[
+                      'challenge-achievement-card__status',
+                      `challenge-achievement-card__status--${achievement.fresh ? 'fresh' : achievement.isUnlocked ? 'unlocked' : 'locked'}`
+                    ]"
+                  >
+                    {{ achievement.fresh ? "新解锁" : achievement.isUnlocked ? "已达成" : "进行中" }}
+                  </span>
+                </div>
+
+                <strong class="challenge-achievement-card__title">{{ achievement.name }}</strong>
+                <p class="challenge-achievement-card__summary">{{ achievement.summary }}</p>
+                <span class="challenge-achievement-card__progress">{{ achievement.progressText }}</span>
+              </article>
+            </div>
+          </details>
         </section>
 
         <section

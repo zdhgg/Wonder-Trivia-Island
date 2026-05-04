@@ -304,7 +304,11 @@ export async function generateHomeWelcomeMessage({
     throw error;
   }
 
-  if (!payload?.data || typeof payload?.data?.bubbleText !== "string") {
+  if (
+    !payload?.data ||
+    typeof payload?.data?.bubbleText !== "string" ||
+    (payload?.data?.title != null && typeof payload.data.title !== "string")
+  ) {
     throw new Error("AI 首页欢迎语结果格式不正确。");
   }
 
