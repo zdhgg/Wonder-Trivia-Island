@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
+  <rect width="480" height="280" rx="28" fill="#f8fbff"/>
+  <ellipse cx="178" cy="172" rx="42" ry="48" fill="#d9822b"/>
+  <circle cx="178" cy="108" r="30" fill="#e89235"/>
+  <path d="M160 78q8-24 18 0q8-24 18 0q7-18 14 2" fill="#d7352a"/>
+  <path d="M208 110l34 12l-34 13z" fill="#f4b542"/>
+  <circle cx="169" cy="104" r="6" fill="#24324a"/>
+  <path d="M132 162q-45-34-26-72q42 10 48 56" fill="none" stroke="#24324a" stroke-width="11" stroke-linecap="round"/>
+  <path d="M136 170q-54-15-52-58q44 0 66 41" fill="none" stroke="#4f6f52" stroke-width="10" stroke-linecap="round"/>
+  <path d="M165 218l-14 22m42-22l14 22" stroke="#a85f1f" stroke-width="7" stroke-linecap="round"/>
+  <text x="320" y="132" font-size="34" font-family="Arial" font-weight="700" fill="#42506a">谁的尾巴弯？</text>
+</svg>

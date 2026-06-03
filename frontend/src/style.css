@@ -243,6 +243,22 @@ select {
   min-width: 64px;
 }
 
+.site-nav__quick-button--audio {
+  min-width: 64px;
+}
+
+.site-nav__quick-button--audio.site-nav__quick-button--muted {
+  color: #ff6b6b;
+  border-color: rgba(255, 107, 107, 0.22);
+  background: rgba(255, 107, 107, 0.06);
+}
+
+.site-nav__quick-button--audio.site-nav__quick-button--muted:hover {
+  background: rgba(255, 107, 107, 0.12);
+  border-color: rgba(255, 107, 107, 0.38);
+  color: #ff4747;
+}
+
 .manage-entry-modal {
   width: min(760px, 100%);
 }
@@ -908,15 +924,6 @@ select {
   gap: 14px;
 }
 
-.challenge-map .challenge-route {
-  min-height: 252px;
-  padding-bottom: 34px;
-}
-
-.challenge-map .challenge-node {
-  min-height: 164px;
-}
-
 .challenge-launchbar {
   display: flex;
   flex-wrap: wrap;
@@ -930,6 +937,56 @@ select {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.72),
     0 18px 26px -28px rgba(36, 50, 74, 0.24);
+  transition: all 0.3s ease;
+}
+
+.challenge-launchbar--locked {
+  background: rgba(245, 248, 252, 0.95);
+  border-color: rgba(164, 179, 198, 0.38);
+  box-shadow: 0 16px 24px -20px rgba(36, 50, 74, 0.14);
+}
+
+.challenge-launchbar__locked-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 18px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #fff3cd 0%, #ffeeba 100%);
+  border: 1.5px solid rgba(222, 170, 12, 0.18);
+  color: #856404;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  box-shadow: 0 4px 12px rgba(222, 170, 12, 0.08);
+  animation: slide-in-banner 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.challenge-launchbar__locked-banner-icon {
+  font-size: 1.25rem;
+  animation: wiggle-lock 2.5s ease-in-out infinite;
+}
+
+.challenge-launchbar__locked-banner-content {
+  flex: 1;
+}
+
+@keyframes slide-in-banner {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes wiggle-lock {
+  0%, 100% { transform: rotate(0deg); }
+  10%, 30% { transform: rotate(-10deg); }
+  20%, 40% { transform: rotate(10deg); }
+  50% { transform: rotate(0deg); }
 }
 
 .challenge-launchbar__selection {
@@ -1423,27 +1480,46 @@ select {
   position: relative;
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 10px;
-  min-height: 286px;
-  padding: 26px 14px 48px;
-  border: 1.5px solid rgba(36, 50, 74, 0.1);
-  border-radius: 30px;
+  gap: 16px;
+  min-height: 480px;
+  padding: 34px 20px 220px;
+  border: 3px solid #b3e6fc;
+  border-radius: 40px;
   background:
-    radial-gradient(circle at top left, rgba(255, 255, 255, 0.88) 0%, rgba(255, 255, 255, 0) 28%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.72) 0%, rgba(245, 249, 252, 0.72) 100%);
+    radial-gradient(circle at 15% 20%, rgba(124, 216, 184, 0.45) 0%, transparent 45%),
+    radial-gradient(circle at 85% 80%, rgba(255, 231, 156, 0.5) 0%, transparent 45%),
+    radial-gradient(circle at 50% 50%, rgba(173, 235, 255, 0.6) 0%, transparent 70%),
+    linear-gradient(135deg, #e6f7ff 0%, #bce6fc 50%, #85d1f8 100%);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.72),
-    0 24px 30px -30px rgba(36, 50, 74, 0.28);
+    inset 0 4px 20px rgba(255, 255, 255, 0.95),
+    0 30px 60px -25px rgba(36, 50, 74, 0.26);
+}
+
+.challenge-route::after {
+  content: "🌴  🏝️  ⛵  🌊  🐚  🐙";
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 1.8rem;
+  letter-spacing: 48px;
+  opacity: 0.82;
+  pointer-events: none;
+  filter: drop-shadow(0 4px 6px rgba(36, 50, 74, 0.16));
 }
 
 .challenge-route__rail {
   position: absolute;
-  top: 118px;
-  left: 52px;
-  right: 52px;
-  height: 8px;
+  top: 190px;
+  left: 64px;
+  right: 64px;
+  height: 18px;
   border-radius: 999px;
-  background: linear-gradient(90deg, rgba(91, 105, 132, 0.12) 0%, rgba(91, 105, 132, 0.06) 100%);
+  background: repeating-linear-gradient(90deg, #fcebc2 0px, #fcebc2 14px, #e9c97b 14px, #e9c97b 28px);
+  border: 3px solid rgba(255, 255, 255, 0.95);
+  box-shadow:
+    0 6px 12px rgba(36, 50, 74, 0.16),
+    inset 0 2px 4px rgba(0, 0, 0, 0.08);
   overflow: hidden;
 }
 
@@ -1452,8 +1528,8 @@ select {
   width: var(--challenge-route-progress, 0%);
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, rgba(124, 216, 184, 0.92) 0%, rgba(173, 235, 255, 0.95) 55%, rgba(255, 231, 156, 0.96) 100%);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.34);
+  background: linear-gradient(90deg, #5cdcb0 0%, #3cd6ff 50%, #ffcf4d 100%);
+  box-shadow: 0 0 16px rgba(92, 220, 176, 0.8);
 }
 
 .challenge-node,
@@ -1520,29 +1596,45 @@ select {
   gap: 12px;
   align-content: start;
   min-height: 164px;
-  padding: 14px 13px 13px;
-  border: 1.5px solid rgba(36, 50, 74, 0.12);
-  border-radius: 26px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(248, 251, 253, 0.92) 100%);
+  padding: 16px 14px 14px;
+  border: 3px solid rgba(36, 50, 74, 0.15);
+  border-radius: 30px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.99) 0%, rgba(248, 251, 253, 0.96) 100%);
   color: var(--color-ink);
   text-align: left;
   box-shadow:
-    0 24px 30px -30px rgba(36, 50, 74, 0.34),
-    inset 0 1px 0 rgba(255, 255, 255, 0.76);
+    0px 8px 0px rgba(36, 50, 74, 0.1),
+    0px 20px 30px -15px rgba(36, 50, 74, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85);
   cursor: pointer;
   transform: translateY(var(--challenge-node-offset, 0px));
   transition:
-    transform 180ms ease,
-    border-color 180ms ease,
-    box-shadow 180ms ease,
-    background-color 180ms ease;
+    transform 320ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    border-color 240ms ease,
+    box-shadow 240ms ease,
+    background-color 240ms ease;
+
+  /* Living floating island chain effect */
+  animation: float-island-gentle 4.2s ease-in-out infinite;
 }
 
+/* Stagger the ocean wave bobbing so it feels natural and organic */
+.challenge-node:nth-child(7n+1) { animation-delay: 0s; animation-duration: 4.8s; }
+.challenge-node:nth-child(7n+2) { animation-delay: -0.8s; animation-duration: 4.2s; }
+.challenge-node:nth-child(7n+3) { animation-delay: -1.6s; animation-duration: 4.6s; }
+.challenge-node:nth-child(7n+4) { animation-delay: -2.4s; animation-duration: 3.9s; }
+.challenge-node:nth-child(7n+5) { animation-delay: -3.2s; animation-duration: 4.4s; }
+.challenge-node:nth-child(7n+6) { animation-delay: -4.0s; animation-duration: 4.1s; }
+.challenge-node:nth-child(7n+7) { animation-delay: -4.8s; animation-duration: 4.5s; }
+
 .challenge-node:hover:not(:disabled) {
-  transform: translateY(calc(var(--challenge-node-offset, 0px) - 4px));
+  animation-play-state: paused !important;
+  transform: translateY(calc(var(--challenge-node-offset, 0px) - 10px)) scale(1.03);
+  border-color: var(--challenge-accent-strong);
   box-shadow:
-    0 30px 38px -30px rgba(36, 50, 74, 0.4),
-    inset 0 1px 0 rgba(255, 255, 255, 0.84);
+    0px 14px 0px rgba(36, 50, 74, 0.14),
+    0px 30px 42px -12px rgba(36, 50, 74, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
 }
 
 .challenge-node:focus-visible {
@@ -1573,26 +1665,63 @@ select {
 }
 
 .challenge-node--current {
-  border-color: rgba(255, 184, 42, 0.7);
+  border-color: #ffb82a;
   box-shadow:
-    0 34px 42px -32px rgba(36, 50, 74, 0.42),
-    0 0 0 2px rgba(255, 231, 156, 0.42),
-    inset 0 1px 0 rgba(255, 255, 255, 0.82);
+    0px 8px 0px #e09618,
+    0px 20px 32px -12px rgba(255, 184, 42, 0.38),
+    0px 0px 0px 4px rgba(255, 231, 156, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.88);
+  animation: float-island-active 3.2s ease-in-out infinite;
+}
+
+.challenge-node--current:hover {
+  animation-play-state: paused !important;
+  transform: translateY(calc(var(--challenge-node-offset, 0px) - 10px)) scale(1.03);
+  box-shadow:
+    0px 14px 0px #e09618,
+    0px 30px 42px -12px rgba(255, 184, 42, 0.44),
+    0px 0px 0px 4px rgba(255, 231, 156, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+}
+
+@keyframes float-island-gentle {
+  0%, 100% {
+    transform: translateY(var(--challenge-node-offset, 0px));
+  }
+  50% {
+    transform: translateY(calc(var(--challenge-node-offset, 0px) - 5px));
+  }
+}
+
+@keyframes float-island-active {
+  0%, 100% {
+    transform: translateY(var(--challenge-node-offset, 0px));
+  }
+  50% {
+    transform: translateY(calc(var(--challenge-node-offset, 0px) - 8px));
+  }
 }
 
 .challenge-node--completed {
-  border-color: rgba(124, 216, 184, 0.56);
+  border-color: rgba(124, 216, 184, 0.64);
 }
 
 .challenge-node--perfect {
-  border-color: rgba(255, 184, 42, 0.78);
+  border-color: rgba(255, 184, 42, 0.84);
 }
 
 .challenge-node--locked {
-  background: rgba(255, 255, 255, 0.6);
-  color: var(--color-ink-soft);
-  opacity: 0.76;
+  background: rgba(255, 255, 255, 0.52) !important;
+  border-color: rgba(91, 105, 132, 0.12) !important;
+  color: #6c7d93;
+  opacity: 0.82;
+  backdrop-filter: blur(4px);
   box-shadow: none;
+  animation: none !important; /* Locked nodes do not float to emphasize rigid lock state */
+}
+
+.challenge-node--locked:hover {
+  transform: translateY(calc(var(--challenge-node-offset, 0px) - 2px)) scale(1.01) !important;
 }
 
 .challenge-node__top,
@@ -2521,6 +2650,23 @@ select {
   background: var(--color-pink);
 }
 
+.btn-cartoon--locked {
+  background: #d5dde6;
+  color: #7b8ea5;
+  border-color: #a4b3c6;
+  box-shadow: 4px 4px 0px #adbccf;
+  cursor: not-allowed !important;
+}
+
+.btn-cartoon--locked:hover {
+  transform: none !important;
+}
+
+.btn-cartoon--locked:active {
+  transform: none !important;
+  box-shadow: 4px 4px 0px #adbccf !important;
+}
+
 .btn-cartoon--loading {
   position: relative;
   cursor: wait;
@@ -2869,4 +3015,533 @@ select {
     transform: none;
     animation: none;
   }
+}
+
+/* Compact Adventure Bar for Kids Focus Mode */
+.quiz-workspace__adventure-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 20px;
+  border: 1.5px solid rgba(36, 50, 74, 0.08);
+  border-radius: 26px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.94) 0%, rgba(246, 250, 252, 0.88) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.8),
+    0 10px 20px -15px rgba(36, 50, 74, 0.15);
+  margin-bottom: 12px;
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.adventure-bar__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.adventure-bar__icon {
+  font-size: 1.25rem;
+  animation: ornament-twinkle 2s infinite ease-in-out;
+}
+
+.adventure-bar__heading {
+  font-family: "ZCOOL KuaiLe", "Baloo 2", "Trebuchet MS", sans-serif;
+  font-size: 1.2rem;
+  color: var(--color-ink);
+  letter-spacing: 0.02em;
+}
+
+.adventure-bar__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.quiz-workspace__adventure-bar .btn-cartoon--back {
+  padding: 6px 14px !important;
+  font-size: 0.85rem !important;
+  min-height: 38px !important;
+  width: auto !important;
+}
+
+.quiz-workspace__adventure-bar .btn-cartoon--quiet {
+  padding: 6px 14px !important;
+  font-size: 0.85rem !important;
+  min-height: 38px !important;
+  width: auto !important;
+}
+
+@media (max-width: 720px) {
+  .quiz-workspace__adventure-bar {
+    flex-direction: row;
+    padding: 8px 12px;
+    border-radius: 20px;
+  }
+
+  .adventure-bar__heading {
+    font-size: 0.98rem;
+  }
+
+  .quiz-workspace__adventure-bar .btn-cartoon--back,
+  .quiz-workspace__adventure-bar .btn-cartoon--quiet {
+    padding: 4px 10px !important;
+    font-size: 0.78rem !important;
+    min-height: 32px !important;
+  }
+}
+
+/* ==========================================================================
+   🧭 奇妙知识岛 · 选关全屏及浮空/弹窗组件样式
+   ========================================================================== */
+
+/* 🧭 选关顶部工具栏 */
+.challenge-route__header-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 6px 12px 14px;
+  box-sizing: border-box;
+  border-bottom: 2px dashed rgba(36, 50, 74, 0.08);
+  margin-bottom: 8px;
+}
+
+.challenge-route__title-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.challenge-route__badge-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 12px;
+  background: linear-gradient(135deg, #ff7b7b 0%, #ff4b4b 100%);
+  color: #ffffff;
+  font-family: "ZCOOL KuaiLe", "Baloo 2", sans-serif;
+  font-size: 0.88rem;
+  font-weight: bold;
+  border-radius: 12px;
+  box-shadow: 0 4px 10px rgba(255, 75, 75, 0.25);
+  border: 2px solid #ffffff;
+}
+
+.challenge-route__adventure-title {
+  font-family: "ZCOOL KuaiLe", "Baloo 2", sans-serif;
+  font-size: 1.45rem;
+  color: #2c3e50;
+  margin: 0;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.challenge-route__grade-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  background: rgba(44, 62, 80, 0.06);
+  color: #5c6c7c;
+  font-size: 0.82rem;
+  font-weight: 800;
+  border-radius: 8px;
+  margin-left: 4px;
+}
+
+.btn-cartoon--world-map {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0%, rgba(240, 245, 250, 0.9) 100%) !important;
+  color: #4a5c6f !important;
+  border: 2px solid rgba(44, 62, 80, 0.15) !important;
+  box-shadow: 0 4px 8px rgba(36, 50, 74, 0.08), inset 0 -2px 0 rgba(36, 50, 74, 0.04) !important;
+  font-size: 0.9rem !important;
+  padding: 6px 14px !important;
+  min-height: 36px !important;
+}
+.btn-cartoon--world-map:hover {
+  background: #ffffff !important;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 12px rgba(36, 50, 74, 0.12), inset 0 -2px 0 rgba(36, 50, 74, 0.04) !important;
+}
+
+.challenge-route__actions-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* 🎒 浮动探险背包按钮 */
+.btn-cartoon--backpack-float {
+  background: linear-gradient(135deg, #ff9f43 0%, #ff6b6b 100%) !important;
+  color: #ffffff !important;
+  font-family: "ZCOOL KuaiLe", "Baloo 2", "Trebuchet MS", sans-serif !important;
+  font-size: 1.15rem !important;
+  font-weight: bold !important;
+  padding: 10px 24px !important;
+  border-radius: 999px !important;
+  border: 3px solid #2c3e50 !important;
+  box-shadow: 0 6px 0 #2c3e50, 0 10px 20px rgba(255, 107, 107, 0.45) !important;
+  transition: all 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  cursor: pointer !important;
+  min-height: 48px !important;
+  width: auto !important;
+}
+
+.btn-cartoon--backpack-float:hover:not(:disabled) {
+  transform: translateY(-4px) !important;
+  box-shadow: 0 10px 0 #2c3e50, 0 16px 26px rgba(255, 107, 107, 0.55) !important;
+}
+
+.btn-cartoon--backpack-float:active:not(:disabled) {
+  transform: translateY(4px) !important;
+  box-shadow: 0 2px 0 #2c3e50, 0 4px 10px rgba(255, 107, 107, 0.25) !important;
+}
+
+/* ⚙️ 浮动关卡设置按钮 */
+.btn-cartoon--settings-float {
+  background: linear-gradient(135deg, #a8c0ff 0%, #3f2b96 100%) !important;
+  color: #ffffff !important;
+  font-family: "ZCOOL KuaiLe", "Baloo 2", "Trebuchet MS", sans-serif !important;
+  font-size: 1rem !important;
+  font-weight: bold !important;
+  padding: 8px 20px !important;
+  border-radius: 999px !important;
+  border: 3px solid #2c3e50 !important;
+  box-shadow: 0 5px 0 #2c3e50, 0 8px 16px rgba(63, 43, 150, 0.35) !important;
+  transition: all 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  cursor: pointer !important;
+  min-height: 42px !important;
+  width: auto !important;
+}
+
+.btn-cartoon--settings-float:hover:not(:disabled) {
+  transform: translateY(-3px) !important;
+  box-shadow: 0 8px 0 #2c3e50, 0 12px 22px rgba(63, 43, 150, 0.45) !important;
+}
+
+.btn-cartoon--settings-float:active:not(:disabled) {
+  transform: translateY(3px) !important;
+  box-shadow: 0 2px 0 #2c3e50, 0 4px 8px rgba(63, 43, 150, 0.2) !important;
+}
+
+/* 🌀 模态弹窗遮罩 (高质感模糊磨砂) */
+.adventure-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(36, 50, 74, 0.52);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2500;
+}
+
+/* 🏠 模态弹窗卡片 */
+.adventure-modal-card {
+  background: #ffffff;
+  border-radius: 28px;
+  padding: 36px;
+  max-width: 520px;
+  width: 90%;
+  position: relative;
+  box-sizing: border-box;
+  display: block;
+}
+
+.adventure-modal-card--cartoon {
+  border: 5px solid #2c3e50 !important;
+  box-shadow: 0 12px 0 #2c3e50, 0 24px 38px rgba(36, 50, 74, 0.25) !important;
+}
+
+.adventure-modal-card--backpack {
+  max-width: 860px !important;
+  width: 95%;
+}
+
+/* 关闭按钮 */
+.adventure-modal-close {
+  position: absolute;
+  top: 14px;
+  right: 18px;
+  font-size: 2.2rem;
+  font-weight: 300;
+  color: #a5b1c2;
+  background: none;
+  border: none;
+  cursor: pointer;
+  line-height: 1;
+  transition: color 0.15s ease;
+}
+
+.adventure-modal-close:hover {
+  color: #ff6b6b;
+}
+
+/* 头部样式 */
+.adventure-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.adventure-modal-icon {
+  font-size: 2.6rem;
+  display: inline-block;
+}
+
+.adventure-modal-card--cartoon .adventure-modal-icon {
+  animation: wiggle-lock 1.5s infinite ease-in-out;
+}
+
+.adventure-modal-title {
+  font-family: "ZCOOL KuaiLe", "Baloo 2", "Trebuchet MS", sans-serif;
+  font-size: 1.65rem;
+  color: var(--color-ink);
+  margin: 0;
+}
+
+/* 内容样式 */
+.adventure-modal-text {
+  font-size: 1.15rem;
+  color: var(--color-ink-soft);
+  line-height: 1.6;
+  margin: 0 0 22px 0;
+}
+
+.adventure-modal-info {
+  background: #f7fafe;
+  border: 3px dashed #d1e2f2;
+  border-radius: 20px;
+  padding: 20px;
+  margin-bottom: 26px;
+  box-sizing: border-box;
+}
+
+.info-row {
+  font-size: 1.05rem;
+  color: var(--color-ink);
+  margin-bottom: 10px;
+  line-height: 1.4;
+}
+
+.info-row:last-child {
+  margin-bottom: 0;
+}
+
+.info-row strong {
+  color: #2c3e50;
+}
+
+.reward-glyph {
+  font-size: 1.3rem;
+  margin-right: 2px;
+}
+
+.adventure-modal-footer {
+  display: flex;
+  justify-content: center;
+}
+
+.modal-confirm-btn {
+  width: 240px !important;
+  text-align: center;
+  justify-content: center;
+}
+
+/* 🎒 背包专属样式 */
+.backpack-progress-section {
+  background: linear-gradient(135deg, #fffbeb 0%, #fff3e0 100%);
+  border: 3px solid #ffe082;
+  border-radius: 22px;
+  padding: 18px 24px;
+  margin-bottom: 24px;
+  box-sizing: border-box;
+}
+
+.progress-info {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  font-size: 1.08rem;
+  color: #5d4037;
+  font-family: "ZCOOL KuaiLe", "Baloo 2", sans-serif;
+}
+
+.progress-bar-container {
+  width: 100%;
+  height: 18px;
+  background: #e0e0e0;
+  border-radius: 999px;
+  overflow: hidden;
+  border: 2px solid #5d4037;
+  box-sizing: border-box;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #ffb300 0%, #ff8f00 100%);
+  border-radius: 999px;
+  transition: width 0.4s cubic-bezier(0.175, 0.885, 0.32, 1);
+}
+
+.backpack-achievements-list {
+  max-height: 420px;
+  overflow-y: auto;
+  padding-right: 8px;
+  margin-right: -8px;
+}
+
+/* 自定义滚动条 */
+.backpack-achievements-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.backpack-achievements-list::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 10px;
+}
+
+.backpack-achievements-list::-webkit-scrollbar-thumb {
+  background: #ffb300;
+  border-radius: 10px;
+}
+
+.backpack-achievements-list::-webkit-scrollbar-thumb:hover {
+  background: #ff8f00;
+}
+
+/* 🎬 高度抗锯齿弹性动画 */
+.animate-fade-in {
+  animation: fade-in 0.22s ease-out forwards;
+}
+
+.animate-pop-in {
+  animation: pop-in 0.34s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.85) translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* ==========================================================================
+   🗺️ 世界大地图视图 (World Map)
+   ========================================================================== */
+.challenge-world-map {
+  padding: 16px 24px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.challenge-world__continents {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 24px;
+  padding: 16px 8px 60px;
+}
+
+.challenge-world-card {
+  position: relative;
+  background: linear-gradient(145deg, rgba(255,255,255,0.95) 0%, rgba(248,252,255,0.85) 100%);
+  border: 3px solid rgba(255, 255, 255, 0.8);
+  border-radius: 24px;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  cursor: pointer;
+  box-shadow: 0 10px 25px rgba(36, 50, 74, 0.08), inset 0 2px 0 rgba(255, 255, 255, 1);
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  backdrop-filter: blur(10px);
+}
+
+.challenge-world-card:hover {
+  transform: translateY(-8px) scale(1.02);
+  box-shadow: 0 15px 35px rgba(36, 50, 74, 0.15), inset 0 2px 0 rgba(255, 255, 255, 1);
+  border-color: #74b9ff;
+}
+
+.challenge-world-card__icon {
+  font-size: 3.2rem;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.15));
+}
+
+.challenge-world-card__content {
+  flex: 1;
+}
+
+.challenge-world-card__title {
+  font-family: "ZCOOL KuaiLe", "Baloo 2", sans-serif;
+  font-size: 1.4rem;
+  color: #2c3e50;
+  margin: 0 0 4px 0;
+  line-height: 1.25;
+  display: flex;
+  flex-direction: column;
+}
+
+.challenge-world-card__island-name {
+  font-size: 1.35rem;
+  color: #2d3436;
+  font-weight: 850;
+}
+
+.challenge-world-card__theme-title {
+  font-size: 0.95rem;
+  color: #7f8c8d;
+  font-weight: normal;
+  margin-top: 2px;
+  font-family: var(--font-primary), sans-serif;
+}
+
+.challenge-world-card__grade-tag {
+  display: inline-block;
+  font-size: 0.75rem;
+  background: rgba(116, 185, 255, 0.15);
+  color: #0984e3;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-weight: bold;
+  margin-bottom: 8px;
+}
+
+.challenge-world-card__stats {
+  font-size: 0.9rem;
+  color: #5c6c7c;
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+
+.challenge-world-card__progress-bar {
+  width: 100%;
+  height: 8px;
+  background: rgba(44, 62, 80, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.challenge-world-card__progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #ff9f43, #ff6b6b);
+  border-radius: 4px;
+  transition: width 0.6s ease-out;
 }

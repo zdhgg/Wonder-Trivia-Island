@@ -51,12 +51,8 @@ export function createHomeSelections({
     homeChallengeGrade.value = rememberedChallengeChapter.grade;
     homeChallengeSemester.value = rememberedChallengeChapter.semester || homeSemesterOptions.value[0];
 
-    if (
-      selectedGrade.value === DEFAULT_QUIZ_SETTINGS.selectedGrade &&
-      selectedChallengeChapterId.value === defaultChallengeChapterId
-    ) {
-      applyProfileDefaultsToHome();
-    }
+    // Always sync challenge grade and all home selections with settings profile by default!
+    applyProfileDefaultsToHome();
   }
 
   function applyProfileDefaultsToHome(profileSettings = getProfileSettings()) {

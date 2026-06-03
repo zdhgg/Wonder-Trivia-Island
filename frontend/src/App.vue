@@ -4,6 +4,8 @@ import PracticeHomeView from "./views/PracticeHomeView.vue";
 import { useSettingsCenter } from "./composables/useSettingsCenter";
 import { useToolsCenter } from "./composables/useToolsCenter";
 import { useTriviaApp } from "./composables/useTriviaApp";
+import { useQuizStore } from "./stores/useQuizStore";
+import { useAudioStore } from "./stores/useAudioStore";
 
 const QuizSettingsModal = defineAsyncComponent(() => import("./components/QuizSettingsModal.vue"));
 const KnowledgeStudyView = defineAsyncComponent(() => import("./views/KnowledgeStudyView.vue"));
@@ -30,6 +32,39 @@ export default {
     const toolsCenter = useToolsCenter(app);
     const isImmersiveView = computed(() => app.currentView.value === app.VIEW_MODE.STUDY_PLAYER);
 
+    const quizStore = useQuizStore();
+    const isQuizActive = computed(() => {
+      return app.currentView.value === app.VIEW_MODE.QUIZ &&
+             app.questions.value.length > 0 &&
+             quizStore.currentQuestionIndex < app.questions.value.length;
+    });
+
+    const audioStore = useAudioStore();
+    const isMuted = computed(() => {
+      return audioStore.masterVolume <= 0 || (!audioStore.musicEnabled && !audioStore.sfxEnabled);
+    });
+
+    const globalStarsEarned = computed(() => {
+      if (!app.challengeWorldData.value) return 0;
+      return app.challengeWorldData.value.reduce((sum, chapter) => sum + (chapter.starsEarned || 0), 0);
+    });
+
+    async function toggleGlobalMute() {
+      const currentlyMuted = isMuted.value;
+      if (currentlyMuted) {
+        audioStore.setMasterVolume(1);
+        audioStore.setMusicEnabled(true);
+        audioStore.setSfxEnabled(true);
+        if (typeof app.ensureAudioReady === "function") {
+          await app.ensureAudioReady();
+        }
+      } else {
+        audioStore.setMasterVolume(0);
+        audioStore.setMusicEnabled(false);
+        audioStore.setSfxEnabled(false);
+      }
+    }
+
     function handleHomeNavigation() {
       if (!settingsCenter.confirmLeaveSettings({ targetLabel: "首页" })) {
         return;
@@ -51,6 +86,10 @@ export default {
       ...settingsCenter,
       ...toolsCenter,
       isImmersiveView,
+      isQuizActive,
+      isMuted,
+      globalStarsEarned,
+      toggleGlobalMute,
       handleHomeNavigation,
       openToolsWorkspace
     };
@@ -75,6 +114,16 @@ export default {
         </button>
 
         <div class="site-nav__tools" aria-label="快捷入口">
+          <!-- 🔊 Persistent Voice/Audio Controller 🔊 -->
+          <button
+            :class="['site-nav__quick-button', 'site-nav__quick-button--audio', { 'site-nav__quick-button--muted': isMuted }]"
+            type="button"
+            :title="isMuted ? '开启声音' : '静音'"
+            @click="toggleGlobalMute"
+          >
+            {{ isMuted ? "🔇 静音" : "🔊 声音" }}
+          </button>
+
           <button
             v-if="currentView !== VIEW_MODE.HOME"
             class="site-nav__quick-button"
@@ -184,7 +233,68 @@ export default {
         @import-backup="importBackup"
       />
 
+      <section v-else-if="currentView === VIEW_MODE.CHALLENGE_WORLD" class="challenge-panel challenge-world-map">
+        <!-- 🧭 Top World Toolbar -->
+        <div class="challenge-route__header-toolbar">
+          <div class="challenge-route__title-group">
+            <span class="challenge-route__badge-tag" style="background: linear-gradient(135deg, #74b9ff 0%, #0984e3 100%);">🗺️ 大世界</span>
+            <h3 class="challenge-route__adventure-title">奇妙世界大地图</h3>
+          </div>
+
+          <div class="challenge-route__actions-group">
+            <button class="btn-cartoon btn-cartoon--settings-float" type="button" @click="openSettingsView">
+              ⚙️ 系统设置
+            </button>
+          </div>
+        </div>
+
+        <section class="challenge-world__continents">
+          <article
+            v-for="chapter in challengeWorldData"
+            :key="chapter.id"
+            class="challenge-world-card"
+            @click="openChallengeView({ nextChallengeChapterId: chapter.id })"
+          >
+            <div class="challenge-world-card__icon">{{ chapter.emoji || '🏝️' }}</div>
+            <div class="challenge-world-card__content">
+              <h4 class="challenge-world-card__title">
+                <span class="challenge-world-card__island-name">{{ chapter.islandName || '未知岛' }}</span>
+                <span class="challenge-world-card__theme-title">{{ chapter.themeTitle || '未知区' }}</span>
+              </h4>
+              <div class="challenge-world-card__grade-tag">{{ chapter.grade }} · {{ chapter.semester }}</div>
+              <div class="challenge-world-card__stats">
+                <span class="challenge-world-card__progress">🌟 {{ chapter.starsEarned }} / {{ chapter.totalStars }}</span>
+              </div>
+              <div class="challenge-world-card__progress-bar">
+                <div class="challenge-world-card__progress-fill" :style="{ width: chapter.progressPercent + '%' }"></div>
+              </div>
+            </div>
+          </article>
+        </section>
+      </section>
+
       <section v-else-if="currentView === VIEW_MODE.CHALLENGE" class="challenge-panel challenge-map">
+        <!-- 🧭 Top Adventure Toolbar -->
+        <div class="challenge-route__header-toolbar">
+          <div class="challenge-route__title-group">
+            <button class="btn-cartoon btn-cartoon--ghost btn-cartoon--world-map" type="button" @click="openChallengeWorld" title="返回大地图">
+              🗺️ 世界大地图
+            </button>
+            <span class="challenge-route__badge-tag">🌋 主线探险</span>
+            <h3 class="challenge-route__adventure-title">奇妙海岛闯关</h3>
+            <span class="challenge-route__grade-badge">{{ homeChallengeGrade }} · {{ homeChallengeSemester }}</span>
+          </div>
+
+          <div class="challenge-route__actions-group">
+            <button class="btn-cartoon btn-cartoon--settings-float" type="button" @click="openQuizSettings">
+              ⚙️ 关卡设置
+            </button>
+            <button v-if="challengeAchievements.length" class="btn-cartoon btn-cartoon--backpack-float" type="button" @click="openBackpack">
+              🎒 我的探险背包
+            </button>
+          </div>
+        </div>
+
         <section class="challenge-route" aria-label="闯关地图">
           <div class="challenge-route__rail" aria-hidden="true">
             <span class="challenge-route__rail-progress" :style="challengeRouteProgressStyle"></span>
@@ -196,7 +306,7 @@ export default {
             :class="getChallengeStageClass(stage)"
             :style="{ '--challenge-node-offset': stage.routeOffset }"
             type="button"
-            :disabled="!stage.isUnlocked || isLoading"
+            :disabled="isLoading"
             @click="selectChallengeStage(stage.id)"
           >
             <span class="challenge-node__halo" aria-hidden="true"></span>
@@ -205,7 +315,7 @@ export default {
               <span class="challenge-node__index">第 {{ stage.order }} 站</span>
               <div class="challenge-node__top-badges">
                 <span :class="['challenge-node__badge', `challenge-node__badge--${stage.stateTone}`]">
-                  {{ stage.stateLabel }}
+                  {{ stage.isUnlocked ? "" : "🔒 " }}{{ stage.stateLabel }}
                 </span>
                 <span
                   v-if="stage.rewardEarned"
@@ -232,137 +342,86 @@ export default {
           </button>
         </section>
 
-        <div v-if="currentChallengeStage" class="challenge-launchbar">
-          <div class="challenge-launchbar__selection">
-            <span class="challenge-launchbar__label">当前关卡</span>
-            <strong class="challenge-launchbar__title">{{ currentStageLabel }}</strong>
-            <span class="challenge-launchbar__meta">
-              {{ currentChallengeStage.questionCount }} 题 · {{ currentChallengeStage.timeLimitLabel }} · 过关线 {{ currentChallengeStage.passAccuracy }}%
-            </span>
-            <div class="challenge-launchbar__highlights" aria-label="关卡重点">
-              <span class="challenge-launchbar__chip">
-                {{ currentChallengeChapterLabel }}
-              </span>
-              <span class="challenge-launchbar__chip">
-                {{ currentChallengeRouteTitle }}
-              </span>
-              <span :class="['challenge-launchbar__chip', `challenge-launchbar__chip--coverage-${currentChallengeStage.coverageTone}`]">
-                {{ currentChallengeStage.coverageLabel }} · {{ currentChallengeStage.coverageCount }}/{{ currentChallengeStage.coverageRequiredCount }}
-              </span>
+        <!-- 🔒 Locked Stage Modal 🔒 -->
+        <div v-if="isLockedStageModalOpen && currentChallengeStage" class="adventure-modal-overlay animate-fade-in" @click.self="closeLockedStageModal">
+          <div class="adventure-modal-card adventure-modal-card--cartoon animate-pop-in">
+            <button class="adventure-modal-close" type="button" @click="closeLockedStageModal">×</button>
+            <div class="adventure-modal-header">
+              <span class="adventure-modal-icon">🔒</span>
+              <h3 class="adventure-modal-title">这一站被浓雾笼罩着呢！</h3>
             </div>
-            <span :class="['challenge-launchbar__note', `challenge-launchbar__note--${currentChallengeStage.coverageTone}`]">
-              {{ currentChallengeStage.coverageHint }}
-            </span>
-            <details class="challenge-launchbar__details">
-              <summary class="challenge-launchbar__details-toggle">更多信息</summary>
-              <div class="challenge-launchbar__chips" aria-label="关卡更多信息">
-                <span class="challenge-launchbar__chip">
-                  目标 {{ currentChallengeStage.missionLabel }}
-                </span>
-                <span class="challenge-launchbar__chip">
-                  共 {{ challengeChapterOptions.length }} 个章节
-                </span>
-                <span v-if="currentChallengeStage.knowledgeTag" class="challenge-launchbar__chip">
-                  标签 {{ currentChallengeStage.knowledgeTag }}
-                </span>
-                <span v-if="currentChallengeRouteFocus" class="challenge-launchbar__chip">
-                  {{ currentChallengeRouteFocus }}
-                </span>
-                <span :class="['challenge-launchbar__chip', { 'challenge-launchbar__chip--earned': currentChallengeStage.rewardEarned }]">
-                  {{ currentChallengeStage.rewardEarned ? "已收藏" : "奖励" }} {{ currentChallengeStage.rewardGlyph }}
-                  {{ currentChallengeStage.rewardLabel }}
-                </span>
-                <span class="challenge-launchbar__chip">
-                  {{ challengeRewardProgressLabel }}
-                </span>
-                <span class="challenge-launchbar__chip">
-                  {{ challengeAchievementProgressLabel }}
-                </span>
-                <span class="challenge-launchbar__chip">
-                  {{ challengeCoverageSummaryLabel }}
-                </span>
+            <div class="adventure-modal-body">
+              <p class="adventure-modal-text">请先通关前面的关卡，这里的神秘面纱就会揭开哦~</p>
+              <div class="adventure-modal-info">
+                <div class="info-row"><strong>挑战关卡：</strong>第 {{ currentChallengeStage.order }} 关 · {{ currentChallengeStage.title }}</div>
+                <div class="info-row"><strong>关卡要求：</strong>{{ currentChallengeStage.questionCount }} 题 · {{ currentChallengeStage.timeLimitLabel }} · 过关线 {{ currentChallengeStage.passAccuracy }}%</div>
+                <div class="info-row" v-if="currentChallengeStage.rewardLabel">
+                  <strong>通关奖励：</strong><span class="reward-glyph">{{ currentChallengeStage.rewardGlyph }}</span> {{ currentChallengeStage.rewardLabel }}
+                </div>
               </div>
-            </details>
-          </div>
-
-          <div class="challenge-launchbar__actions">
-            <button
-              class="btn-cartoon btn-cartoon--yellow challenge-launchbar__start"
-              type="button"
-              :disabled="isLoading"
-              @click="openQuizView"
-            >
-              {{ challengeLaunchLabel }}
-            </button>
-
-            <div class="challenge-launchbar__subactions">
-              <button
-                v-if="shouldShowChallengeCatalogShortcut"
-                class="challenge-launchbar__subaction challenge-launchbar__subaction--accent"
-                type="button"
-                @click="openCatalogForCurrentChallengeStage"
-              >
-                补本关题目
-              </button>
-              <button class="challenge-launchbar__subaction" type="button" @click="openQuizSettings">
-                调整题库
+            </div>
+            <div class="adventure-modal-footer">
+              <button class="btn-cartoon btn-cartoon--yellow modal-confirm-btn" type="button" @click="closeLockedStageModal">
+                好哒，我去闯关！
               </button>
             </div>
           </div>
         </div>
 
-        <section v-if="challengeAchievements.length" class="challenge-achievements" aria-label="章节成就">
-          <details class="challenge-achievements__details" :open="challengeFreshAchievementCount > 0">
-            <summary class="challenge-achievements__summary">
-              <div class="challenge-achievements__summary-main">
-                <strong class="challenge-achievements__summary-title">章节成就</strong>
-                <span class="challenge-achievements__summary-caption">
-                  {{ challengeAchievementCount }} / {{ challengeAchievements.length }} 已解锁
-                </span>
+        <!-- 🎒 Achievements Backpack Modal 🎒 -->
+        <div v-if="isBackpackOpen" class="adventure-modal-overlay animate-fade-in" @click.self="closeBackpack">
+          <div class="adventure-modal-card adventure-modal-card--cartoon adventure-modal-card--backpack animate-pop-in">
+            <button class="adventure-modal-close" type="button" @click="closeBackpack">×</button>
+            <div class="adventure-modal-header">
+              <span class="adventure-modal-icon">🎒</span>
+              <h3 class="adventure-modal-title">我的探险背包</h3>
+            </div>
+            <div class="adventure-modal-body">
+              <!-- Backpack overall progress bar -->
+              <div class="backpack-progress-section">
+                <div class="progress-info">
+                  <strong>海岛总进度：</strong>
+                  <span>已解锁 {{ challengeAchievementCount }} / {{ challengeAchievements.length }} 个成就</span>
+                </div>
+                <div class="progress-bar-container">
+                  <div class="progress-bar-fill" :style="{ width: (challengeAchievementCount / challengeAchievements.length * 100) + '%' }"></div>
+                </div>
               </div>
-              <div class="challenge-achievements__summary-side">
-                <span v-if="challengeFreshAchievementCount > 0" class="challenge-achievements__fresh">
-                  新解锁 {{ challengeFreshAchievementCount }}
-                </span>
-                <span class="challenge-achievements__summary-action">
-                  {{ challengeFreshAchievementCount > 0 ? "查看新成就" : "查看详情" }}
-                </span>
-              </div>
-            </summary>
 
-            <p class="challenge-achievements__text">当前章节的通关、收藏、满星和节奏记录都会在这里点亮。</p>
-
-            <div class="challenge-achievements__grid">
-              <article
-                v-for="achievement in challengeAchievements"
-                :key="achievement.id"
-                :class="[
-                  'challenge-achievement-card',
-                  {
-                    'challenge-achievement-card--unlocked': achievement.isUnlocked,
-                    'challenge-achievement-card--fresh': achievement.fresh
-                  }
-                ]"
-              >
-                <div class="challenge-achievement-card__topline">
-                  <span class="challenge-achievement-card__glyph">{{ achievement.glyph }}</span>
-                  <span
+              <!-- Achievements Grid -->
+              <div class="backpack-achievements-list">
+                <div class="challenge-achievements__grid">
+                  <article
+                    v-for="achievement in challengeAchievements"
+                    :key="achievement.id"
                     :class="[
-                      'challenge-achievement-card__status',
-                      `challenge-achievement-card__status--${achievement.fresh ? 'fresh' : achievement.isUnlocked ? 'unlocked' : 'locked'}`
+                      'challenge-achievement-card',
+                      {
+                        'challenge-achievement-card--unlocked': achievement.isUnlocked,
+                        'challenge-achievement-card--fresh': achievement.fresh
+                      }
                     ]"
                   >
-                    {{ achievement.fresh ? "新解锁" : achievement.isUnlocked ? "已达成" : "进行中" }}
-                  </span>
+                    <div class="challenge-achievement-card__topline">
+                      <span class="challenge-achievement-card__glyph">{{ achievement.glyph }}</span>
+                      <span
+                        :class="[
+                          'challenge-achievement-card__status',
+                          `challenge-achievement-card__status--${achievement.fresh ? 'fresh' : achievement.isUnlocked ? 'unlocked' : 'locked'}`
+                        ]"
+                      >
+                        {{ achievement.fresh ? "新解锁" : achievement.isUnlocked ? "已达成" : "进行中" }}
+                      </span>
+                    </div>
+                    <strong class="challenge-achievement-card__title">{{ achievement.name }}</strong>
+                    <p class="challenge-achievement-card__summary">{{ achievement.summary }}</p>
+                    <span class="challenge-achievement-card__progress">{{ achievement.progressText }}</span>
+                  </article>
                 </div>
-
-                <strong class="challenge-achievement-card__title">{{ achievement.name }}</strong>
-                <p class="challenge-achievement-card__summary">{{ achievement.summary }}</p>
-                <span class="challenge-achievement-card__progress">{{ achievement.progressText }}</span>
-              </article>
+              </div>
             </div>
-          </details>
-        </section>
+          </div>
+        </div>
 
         <section
           v-if="challengeToast"
@@ -374,8 +433,34 @@ export default {
         </section>
       </section>
 
-      <section v-else class="quiz-workspace">
-        <section class="quiz-workspace__summary">
+      <section v-else class="quiz-workspace" :class="{ 'quiz-workspace--active': isQuizActive }">
+        <!-- Compact Adventure Bar during active play to reduce clutter and cognitive load -->
+        <section v-if="isQuizActive" class="quiz-workspace__adventure-bar">
+          <button
+            class="btn-cartoon btn-cartoon--pink btn-cartoon--back"
+            type="button"
+            @click="isChallengeMode ? openChallengeView() : openHomeView()"
+          >
+            🔙 返回{{ isChallengeMode ? "地图" : "首页" }}
+          </button>
+          <div class="adventure-bar__title">
+            <span class="adventure-bar__icon">🌟</span>
+            <strong class="adventure-bar__heading">{{ isChallengeMode ? currentStageLabel : "自由探索挑战" }}</strong>
+          </div>
+          <div id="adventure-bar-actions" class="adventure-bar__actions">
+            <button
+              class="btn-cartoon btn-cartoon--mint btn-cartoon--quiet"
+              type="button"
+              :disabled="isLoading"
+              @click="loadQuestions"
+            >
+              🔄 重开
+            </button>
+          </div>
+        </section>
+
+        <!-- Standard header shown only when quiz is not active (idle, finished, or loading) -->
+        <section v-else class="quiz-workspace__summary">
           <div class="quiz-workspace__summary-copy">
             <div class="quiz-workspace__summary-topline">
               <p class="quiz-workspace__summary-eyebrow">练习台</p>
@@ -502,6 +587,7 @@ export default {
             :stage-title="isChallengeMode ? currentStage.title : ''"
             :challenge-stage="isChallengeMode ? currentStage : null"
             :challenge-result="latestChallengeOutcome"
+            :global-stars-earned="globalStarsEarned"
             @question-resolved="handleQuizQuestionResolved"
             @finished="handleQuizFinished"
             @restart="handleQuizRestart"

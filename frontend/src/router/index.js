@@ -9,6 +9,7 @@ const RoutePlaceholder = {
 
 export const APP_ROUTE_NAME = Object.freeze({
   HOME: "home",
+  CHALLENGE_WORLD: "challenge-world",
   CHALLENGE: "challenge",
   QUIZ: "quiz",
   STUDY: "study",
@@ -24,6 +25,11 @@ const router = createRouter({
     {
       path: "/",
       name: APP_ROUTE_NAME.HOME,
+      component: RoutePlaceholder
+    },
+    {
+      path: "/challenge/world",
+      name: APP_ROUTE_NAME.CHALLENGE_WORLD,
       component: RoutePlaceholder
     },
     {

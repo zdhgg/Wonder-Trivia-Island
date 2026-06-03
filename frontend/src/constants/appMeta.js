@@ -1,14 +1,28 @@
 export const APP_META = Object.freeze({
   productName: "奇妙知识岛",
-  version: "1.2.0",
-  releaseTag: "v1.2.0",
-  releaseLabel: "1.2 欢迎语与题库扩展版",
-  releasedAt: "2026-05-04",
+  version: "1.3.0",
+  releaseTag: "v1.3.0",
+  releaseLabel: "1.3 闯关世界与答题体验升级版",
+  releasedAt: "2026-06-03",
   repositoryUrl: "https://github.com/zdhgg/Wonder-Trivia-Island",
-  releaseUrl: "https://github.com/zdhgg/Wonder-Trivia-Island/releases/tag/v1.2.0",
+  releaseUrl: "https://github.com/zdhgg/Wonder-Trivia-Island/releases/tag/v1.3.0",
   architectureSummary: "Vue 3 + Vite 8 · Node.js 24 + Express 5 · SQLite",
   dataModeLabel: "单学习档案 · 本机优先",
   changelog: Object.freeze([
+    Object.freeze({
+      version: "1.3.0",
+      tag: "v1.3.0",
+      date: "2026-06-03",
+      channel: "正式版",
+      title: "闯关世界地图、气球答题和结算体验升级",
+      summary: "重做答题冒险的关卡入口、年级主题、答题反馈与结算卡，并修正一年级《比尾巴》题目事实。",
+      highlights: Object.freeze([
+        "新增闯关世界大地图，按年级分册展示岛屿进度和星星收集状态。",
+        "答题页改为年级主题化体验，一二三年级支持更轻量的气球选项与关卡进度动效。",
+        "结算卡、顶部冒险栏、静音入口和背景音乐整体升级，减少答题时的界面干扰。",
+        "修正一年级《比尾巴》题目为公鸡尾巴弯，并补充对应 SVG 资产和回归测试。"
+      ])
+    }),
     Object.freeze({
       version: "1.2.0",
       tag: "v1.2.0",

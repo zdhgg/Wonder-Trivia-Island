@@ -368,84 +368,120 @@ export const CHALLENGE_CHAPTERS = Object.freeze([
       grade: "一年级",
       semester: "上册",
       label: "一年级上册",
-      shortLabel: "一年级上"
+      shortLabel: "一年级上",
+      islandName: "涠洲岛",
+      themeTitle: "启蒙火山滩",
+      emoji: "🌋"
     }),
     Object.freeze({
       id: "chapter-grade-1-lower",
       grade: "一年级",
       semester: "下册",
       label: "一年级下册",
-      shortLabel: "一年级下"
+      shortLabel: "一年级下",
+      islandName: "涠洲岛",
+      themeTitle: "斑斓贝壳湾",
+      emoji: "🐚"
     }),
     Object.freeze({
       id: "chapter-grade-2-upper",
       grade: "二年级",
       semester: "上册",
       label: "二年级上册",
-      shortLabel: "二年级上"
+      shortLabel: "二年级上",
+      islandName: "鼓浪屿",
+      themeTitle: "琴鸣踏浪屿",
+      emoji: "🎹"
     }),
     Object.freeze({
       id: "chapter-grade-2-lower",
       grade: "二年级",
       semester: "下册",
       label: "二年级下册",
-      shortLabel: "二年级下"
+      shortLabel: "二年级下",
+      islandName: "鼓浪屿",
+      themeTitle: "浪花阳光滩",
+      emoji: "🎵"
     }),
     Object.freeze({
       id: "chapter-grade-3-upper",
       grade: "三年级",
       semester: "上册",
       label: "三年级上册",
-      shortLabel: "三年级上"
+      shortLabel: "三年级上",
+      islandName: "桃花岛",
+      themeTitle: "翠竹听风谷",
+      emoji: "🎋"
     }),
     Object.freeze({
       id: "chapter-grade-3-lower",
       grade: "三年级",
       semester: "下册",
       label: "三年级下册",
-      shortLabel: "三年级下"
+      shortLabel: "三年级下",
+      islandName: "桃花岛",
+      themeTitle: "碧海桃花林",
+      emoji: "🌸"
     }),
     Object.freeze({
       id: "chapter-grade-4-upper",
       grade: "四年级",
       semester: "上册",
       label: "四年级上册",
-      shortLabel: "四年级上"
+      shortLabel: "四年级上",
+      islandName: "东极岛",
+      themeTitle: "朝阳破晓崖",
+      emoji: "🌅"
     }),
     Object.freeze({
       id: "chapter-grade-4-lower",
       grade: "四年级",
       semester: "下册",
       label: "四年级下册",
-      shortLabel: "四年级下"
+      shortLabel: "四年级下",
+      islandName: "东极岛",
+      themeTitle: "蔚蓝风车坡",
+      emoji: "💨"
     }),
     Object.freeze({
       id: "chapter-grade-5-upper",
       grade: "五年级",
       semester: "上册",
       label: "五年级上册",
-      shortLabel: "五年级上"
+      shortLabel: "五年级上",
+      islandName: "普陀岛",
+      themeTitle: "紫竹听潮礁",
+      emoji: "📿"
     }),
     Object.freeze({
       id: "chapter-grade-5-lower",
       grade: "五年级",
       semester: "下册",
       label: "五年级下册",
-      shortLabel: "五年级下"
+      shortLabel: "五年级下",
+      islandName: "普陀岛",
+      themeTitle: "磐石观海角",
+      emoji: "⛰️"
     }),
     Object.freeze({
       id: "chapter-grade-6-upper",
       grade: "六年级",
       semester: "上册",
       label: "六年级上册",
-      shortLabel: "六年级上"
+      shortLabel: "六年级上",
+      islandName: "西沙群岛",
+      themeTitle: "翡翠珊瑚礁",
+      emoji: "🐠"
     }),
     Object.freeze({
       id: "chapter-grade-6-lower",
       grade: "六年级",
       semester: "下册",
       label: "六年级下册",
-      shortLabel: "六年级下"
+      shortLabel: "六年级下",
+      islandName: "西沙群岛",
+      themeTitle: "荣耀碧波塔",
+      emoji: "👑"
     })
   ]);
 

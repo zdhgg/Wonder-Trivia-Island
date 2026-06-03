@@ -105,11 +105,11 @@ const panelClass = computed(() => [
   --welcome-button-active-accent: rgba(86, 173, 255, 0.42);
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(180px, 240px);
+  grid-template-columns: minmax(0, 1.2fr) minmax(140px, 180px);
   gap: 18px;
   align-items: center;
   overflow: hidden;
-  padding: 24px 28px;
+  padding: 14px 24px;
   border: 1.5px solid rgba(36, 50, 74, 0.1);
   border-radius: 30px;
   background:
@@ -253,19 +253,19 @@ const panelClass = computed(() => [
   margin: 0;
   color: var(--color-ink);
   font-family: "ZCOOL KuaiLe", "Baloo 2", "Trebuchet MS", sans-serif;
-  font-size: clamp(1.9rem, 3vw, 2.6rem);
-  line-height: 1.06;
-  max-width: 14ch;
+  font-size: clamp(1.5rem, 2.4vw, 2.0rem);
+  line-height: 1.08;
+  max-width: 16ch;
   text-wrap: balance;
 }
 
 .home-welcome__summary {
   margin: 0;
-  max-width: 40ch;
+  max-width: 45ch;
   color: color-mix(in srgb, var(--color-ink-soft) 92%, white);
-  font-size: 1rem;
+  font-size: 0.92rem;
   font-weight: 700;
-  line-height: 1.56;
+  line-height: 1.45;
 }
 
 .home-welcome__actions {
@@ -333,44 +333,44 @@ const panelClass = computed(() => [
 }
 
 .home-welcome__mascot :deep(.owl-mascot) {
-  width: min(100%, 220px);
+  width: min(100%, 150px);
 }
 
 .home-welcome__mascot :deep(.owl-mascot__stage) {
-  min-height: 196px;
-  padding: 2px 0 8px;
+  min-height: 130px;
+  padding: 2px 0 4px;
 }
 
 .home-welcome__mascot :deep(.owl-mascot__backdrop) {
-  inset: 20px 14px 36px;
+  inset: 12px 10px 24px;
 }
 
 .home-welcome__mascot :deep(.owl-mascot__halo) {
-  width: 188px;
-  height: 152px;
+  width: 128px;
+  height: 104px;
 }
 
 .home-welcome__mascot :deep(.owl-mascot__figure) {
-  width: 128px;
-  min-height: 118px;
-  transform: translateY(-14px);
+  width: 84px;
+  min-height: 78px;
+  transform: translateY(-8px);
 }
 
 .home-welcome__mascot :deep(.owl-mascot__asset) {
-  font-size: 4.15rem;
+  font-size: 2.8rem;
 }
 
 .home-welcome__mascot :deep(.owl-mascot__perch) {
-  bottom: 36px;
-  width: 122px;
+  bottom: 24px;
+  width: 80px;
 }
 
 .home-welcome__mascot :deep(.owl-mascot__cloud--left) {
-  left: 18px;
+  left: 10px;
 }
 
 .home-welcome__mascot :deep(.owl-mascot__cloud--right) {
-  right: 18px;
+  right: 10px;
 }
 
 @media (max-width: 900px) {

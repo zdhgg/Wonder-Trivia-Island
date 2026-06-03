@@ -93,17 +93,7 @@ const emit = defineEmits([
   "play-welcome-voice"
 ]);
 
-const pickerMode = ref("");
 const semesterEnabledGrades = new Set(["一年级", "二年级", "三年级", "四年级", "五年级", "六年级"]);
-
-const isPickerOpen = computed({
-  get: () => Boolean(pickerMode.value),
-  set: (nextValue) => {
-    if (!nextValue) {
-      pickerMode.value = "";
-    }
-  }
-});
 
 const shouldShowChallengeSemester = computed(() => semesterEnabledGrades.has(challengeGrade.value));
 const shouldShowGradePracticeSemester = computed(() => semesterEnabledGrades.has(gradePracticeGrade.value));
@@ -121,7 +111,7 @@ const gradeSelectionLabel = computed(() =>
   shouldShowGradePracticeSemester.value ? `${gradePracticeGrade.value} · ${gradePracticeSemester.value}` : gradePracticeGrade.value
 );
 const gradeTileHint = computed(() =>
-  shouldShowGradePracticeSemester.value ? `${gradePracticeGrade.value}同步练习` : "跟着年级内容同步练"
+  `当前：${gradeSelectionLabel.value} 同步练`
 );
 const subjectSelectionLabel = computed(() => {
   const segments = [subjectPracticeSubject.value, subjectPracticeGrade.value];
@@ -133,17 +123,9 @@ const subjectSelectionLabel = computed(() => {
   return segments.join(" · ");
 });
 const subjectTileHint = computed(() =>
-  subjectPracticeGrade.value === "全部年级" ? `按${subjectPracticeSubject.value}集中练` : `${subjectPracticeSubject.value}专项练`
+  `当前：${subjectSelectionLabel.value} 专项练`
 );
 const freeTileHint = "不设路线，直接开练";
-const pickerTitle = computed(() => {
-  if (pickerMode.value === "challenge") {
-    return "挑战闯关";
-  }
-
-  return pickerMode.value === "grade" ? "年级同步" : "科目专项";
-});
-const pickerConfirmText = "开始";
 const isKnowledgePickerOpen = ref(false);
 const activeKnowledgeGradeId = ref("");
 
@@ -268,27 +250,15 @@ function handleKnowledgePickerConfirm() {
 }
 
 function openChallengePicker() {
-  pickerMode.value = "challenge";
+  emit("start-challenge");
 }
 
 function openGradePicker() {
-  pickerMode.value = "grade";
+  emit("start-grade-practice");
 }
 
 function openSubjectPicker() {
-  pickerMode.value = "subject";
-}
-
-function handlePickerConfirm() {
-  if (pickerMode.value === "challenge") {
-    emit("start-challenge");
-  } else if (pickerMode.value === "grade") {
-    emit("start-grade-practice");
-  } else if (pickerMode.value === "subject") {
-    emit("start-subject-practice");
-  }
-
-  pickerMode.value = "";
+  emit("start-subject-practice");
 }
 </script>
 
@@ -312,18 +282,17 @@ function handlePickerConfirm() {
       <button
         class="mode-tile mode-tile--challenge"
         type="button"
-        :aria-label="challengeCurrentStageLabel ? `挑战闯关，${challengeTileMeta}，${challengeCurrentStageLabel}` : `挑战闯关，${challengeTileMeta}`"
+        :aria-label="challengeCurrentStageLabel ? `火山闯关，${challengeTileMeta}，${challengeCurrentStageLabel}` : `火山闯关，${challengeTileMeta}`"
         :title="challengeCurrentStageLabel ? `${challengeTileMeta} · ${challengeCurrentStageLabel}` : challengeTileMeta"
         @click="openChallengePicker"
       >
         <span class="mode-tile__art" aria-hidden="true">
           <span class="mode-tile__halo"></span>
-          <span class="mode-tile__planet"></span>
-          <span class="mode-tile__trail"></span>
+          <span class="mode-tile__emoji">🌋</span>
         </span>
         <div class="mode-tile__copy mode-tile__copy--challenge">
-          <span class="mode-tile__badge">推荐入口</span>
-          <span class="mode-tile__title">挑战闯关</span>
+          <span class="mode-tile__badge">主线任务</span>
+          <span class="mode-tile__title">火山闯关</span>
           <span class="mode-tile__hint mode-tile__hint--challenge">{{ challengeTileHint }}</span>
           <span class="mode-tile__meta">{{ challengeTileMeta }}</span>
         </div>
@@ -333,17 +302,16 @@ function handlePickerConfirm() {
       <button
         class="mode-tile mode-tile--grade"
         type="button"
-        :aria-label="`年级同步，${gradeSelectionLabel}`"
+        :aria-label="`智慧森林，${gradeSelectionLabel}`"
         :title="gradeSelectionLabel"
         @click="openGradePicker"
       >
         <span class="mode-tile__art" aria-hidden="true">
           <span class="mode-tile__halo"></span>
-          <span class="mode-tile__planet"></span>
-          <span class="mode-tile__trail"></span>
+          <span class="mode-tile__emoji">🌲</span>
         </span>
         <div class="mode-tile__copy">
-          <span class="mode-tile__title">年级同步</span>
+          <span class="mode-tile__title">智慧森林</span>
           <span class="mode-tile__hint">{{ gradeTileHint }}</span>
         </div>
         <span class="mode-tile__enter" aria-hidden="true"></span>
@@ -352,31 +320,29 @@ function handlePickerConfirm() {
       <button
         class="mode-tile mode-tile--subject"
         type="button"
-        :aria-label="`科目专项，${subjectSelectionLabel}`"
+        :aria-label="`宝藏矿洞，${subjectSelectionLabel}`"
         :title="subjectSelectionLabel"
         @click="openSubjectPicker"
       >
         <span class="mode-tile__art" aria-hidden="true">
           <span class="mode-tile__halo"></span>
-          <span class="mode-tile__planet"></span>
-          <span class="mode-tile__trail"></span>
+          <span class="mode-tile__emoji">💎</span>
         </span>
         <div class="mode-tile__copy">
-          <span class="mode-tile__title">科目专项</span>
+          <span class="mode-tile__title">宝藏矿洞</span>
           <span class="mode-tile__hint">{{ subjectTileHint }}</span>
         </div>
         <span class="mode-tile__enter" aria-hidden="true"></span>
       </button>
 
-      <button class="mode-tile mode-tile--free" type="button" aria-label="自由练习" title="自由练习" @click="$emit('start-free-practice')">
+      <button class="mode-tile mode-tile--free" type="button" aria-label="漂流海滩" title="漂流海滩" @click="$emit('start-free-practice')">
         <span class="mode-tile__art" aria-hidden="true">
           <span class="mode-tile__halo"></span>
-          <span class="mode-tile__planet"></span>
-          <span class="mode-tile__trail"></span>
+          <span class="mode-tile__emoji">⛵</span>
         </span>
         <div class="mode-tile__copy">
-          <span class="mode-tile__title">自由练习</span>
-          <span class="mode-tile__hint">{{ freeTileHint }}</span>
+          <span class="mode-tile__title">漂流海滩</span>
+          <span class="mode-tile__hint">无拘探索自由练</span>
         </div>
         <span class="mode-tile__enter" aria-hidden="true"></span>
       </button>
@@ -420,136 +386,7 @@ function handlePickerConfirm() {
       </button>
     </div>
 
-    <ModalDialog
-      v-model="isPickerOpen"
-      title-id="practice-picker-title"
-      :heading-title="pickerTitle"
-      close-label="关闭模式选择"
-      panel-class="practice-picker-modal"
-      initial-focus-selector="[data-modal-primary]"
-    >
-      <div class="practice-picker">
-        <template v-if="pickerMode === 'challenge'">
-          <div class="practice-picker__group">
-            <div class="practice-picker__choices practice-picker__choices--grades">
-              <button
-                v-for="grade in props.gradeOptions"
-                :key="`challenge-${grade}`"
-                :class="['practice-picker__choice', { 'practice-picker__choice--active': challengeGrade === grade }]"
-                type="button"
-                :aria-pressed="challengeGrade === grade"
-                :data-modal-primary="challengeGrade === grade ? 'true' : null"
-                @click="challengeGrade = grade"
-              >
-                {{ grade }}
-              </button>
-            </div>
-          </div>
 
-          <div v-if="shouldShowChallengeSemester" class="practice-picker__group">
-            <div class="practice-picker__choices practice-picker__choices--compact">
-              <button
-                v-for="semester in props.semesterOptions"
-                :key="`challenge-${semester}`"
-                :class="['practice-picker__choice', { 'practice-picker__choice--active': challengeSemester === semester }]"
-                type="button"
-                :aria-pressed="challengeSemester === semester"
-                @click="challengeSemester = semester"
-              >
-                {{ semester }}
-              </button>
-            </div>
-          </div>
-        </template>
-
-        <template v-else-if="pickerMode === 'grade'">
-          <div class="practice-picker__group">
-            <div class="practice-picker__choices practice-picker__choices--grades">
-              <button
-                v-for="grade in props.gradeOptions"
-                :key="grade"
-                :class="['practice-picker__choice', { 'practice-picker__choice--active': gradePracticeGrade === grade }]"
-                type="button"
-                :aria-pressed="gradePracticeGrade === grade"
-                :data-modal-primary="gradePracticeGrade === grade ? 'true' : null"
-                @click="gradePracticeGrade = grade"
-              >
-                {{ grade }}
-              </button>
-            </div>
-          </div>
-
-          <div v-if="shouldShowGradePracticeSemester" class="practice-picker__group">
-            <div class="practice-picker__choices practice-picker__choices--compact">
-              <button
-                v-for="semester in props.semesterOptions"
-                :key="semester"
-                :class="['practice-picker__choice', { 'practice-picker__choice--active': gradePracticeSemester === semester }]"
-                type="button"
-                :aria-pressed="gradePracticeSemester === semester"
-                @click="gradePracticeSemester = semester"
-              >
-                {{ semester }}
-              </button>
-            </div>
-          </div>
-        </template>
-
-        <template v-else-if="pickerMode === 'subject'">
-          <div class="practice-picker__group">
-            <div class="practice-picker__choices practice-picker__choices--subjects">
-              <button
-                v-for="subject in props.subjectOptions"
-                :key="subject"
-                :class="['practice-picker__choice', { 'practice-picker__choice--active': subjectPracticeSubject === subject }]"
-                type="button"
-                :aria-pressed="subjectPracticeSubject === subject"
-                :data-modal-primary="subjectPracticeSubject === subject ? 'true' : null"
-                @click="subjectPracticeSubject = subject"
-              >
-                {{ subject }}
-              </button>
-            </div>
-          </div>
-
-          <div class="practice-picker__group">
-            <div class="practice-picker__choices practice-picker__choices--compact">
-              <button
-                v-for="grade in props.subjectGradeOptions"
-                :key="grade"
-                :class="['practice-picker__choice', { 'practice-picker__choice--active': subjectPracticeGrade === grade }]"
-                type="button"
-                :aria-pressed="subjectPracticeGrade === grade"
-                @click="subjectPracticeGrade = grade"
-              >
-                {{ grade }}
-              </button>
-            </div>
-          </div>
-
-          <div v-if="shouldShowSubjectPracticeSemester" class="practice-picker__group">
-            <div class="practice-picker__choices practice-picker__choices--compact">
-              <button
-                v-for="semester in props.semesterOptions"
-                :key="semester"
-                :class="['practice-picker__choice', { 'practice-picker__choice--active': subjectPracticeSemester === semester }]"
-                type="button"
-                :aria-pressed="subjectPracticeSemester === semester"
-                @click="subjectPracticeSemester = semester"
-              >
-                {{ semester }}
-              </button>
-            </div>
-          </div>
-        </template>
-
-        <div class="practice-picker__footer">
-          <button class="btn-cartoon btn-cartoon--mint practice-picker__confirm" type="button" @click="handlePickerConfirm">
-            {{ pickerConfirmText }}
-          </button>
-        </div>
-      </div>
-    </ModalDialog>
 
     <ModalDialog
       v-model="isKnowledgePickerOpen"
@@ -638,7 +475,7 @@ function handlePickerConfirm() {
 
 .mode-board__grid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: 14px;
   perspective: 1200px;
 }
@@ -662,11 +499,12 @@ function handlePickerConfirm() {
   width: 100%;
   min-height: 220px;
   padding: 24px;
-  border: 1.5px solid rgba(36, 50, 74, 0.12);
+  border: 2px solid rgba(36, 50, 74, 0.14);
   border-radius: 30px;
   background: linear-gradient(160deg, rgba(255, 255, 255, 0.96) 0%, var(--tile-surface) 100%);
   box-shadow:
-    0 30px 50px -40px rgba(36, 50, 74, 0.48),
+    0px 6px 0px color-mix(in srgb, var(--tile-accent-strong) 24%, rgba(36, 50, 74, 0.12)),
+    0px 16px 32px -16px rgba(36, 50, 74, 0.24),
     inset 0 1px 0 rgba(255, 255, 255, 0.9);
   color: var(--color-ink);
   text-align: left;
@@ -674,22 +512,53 @@ function handlePickerConfirm() {
   display: grid;
   align-items: end;
   transition:
-    transform 160ms ease,
-    border-color 160ms ease,
-    background-color 160ms ease,
-    box-shadow 160ms ease,
-    color 160ms ease,
-    filter 160ms ease;
+    transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    border-color 200ms ease,
+    background-color 200ms ease,
+    box-shadow 200ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    color 200ms ease,
+    filter 200ms ease;
+}
+
+.mode-tile:hover,
+.mode-tile:focus-visible {
+  transform: translateY(-4px);
+  border-color: rgba(36, 50, 74, 0.2);
+  box-shadow:
+    0px 10px 0px color-mix(in srgb, var(--tile-accent-strong) 28%, rgba(36, 50, 74, 0.16)),
+    0px 24px 36px -16px rgba(36, 50, 74, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+}
+
+.mode-tile:active {
+  transform: translateY(4px);
+  box-shadow:
+    0px 2px 0px color-mix(in srgb, var(--tile-accent-strong) 24%, rgba(36, 50, 74, 0.12)),
+    0px 4px 8px -4px rgba(36, 50, 74, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85);
 }
 
 .mode-tile--challenge {
-  grid-column: span 6;
+  grid-column: span 12;
+  min-height: 240px;
 }
 
-.mode-tile--grade,
-.mode-tile--subject,
+.mode-tile--grade {
+  grid-column: span 5;
+  min-height: 176px;
+  padding: 20px;
+  border-radius: 24px;
+}
+
+.mode-tile--subject {
+  grid-column: span 4;
+  min-height: 176px;
+  padding: 20px;
+  border-radius: 24px;
+}
+
 .mode-tile--free {
-  grid-column: span 2;
+  grid-column: span 3;
   min-height: 176px;
   padding: 20px;
   border-radius: 24px;
@@ -728,12 +597,12 @@ function handlePickerConfirm() {
 }
 
 .mode-tile--challenge {
-  --tile-accent: rgba(255, 216, 102, 1);
-  --tile-accent-strong: rgba(255, 168, 32, 0.94);
-  --tile-surface: rgba(255, 248, 223, 0.96);
+  --tile-accent: rgba(255, 120, 80, 1);
+  --tile-accent-strong: rgba(230, 50, 20, 0.94);
+  --tile-surface: rgba(255, 242, 235, 0.96);
   background:
-    radial-gradient(circle at top right, rgba(255, 231, 156, 0.46) 0%, rgba(255, 231, 156, 0) 42%),
-    linear-gradient(180deg, rgba(255, 249, 226, 0.98) 0%, rgba(255, 255, 255, 0.9) 100%);
+    radial-gradient(circle at top right, rgba(255, 180, 150, 0.46) 0%, rgba(255, 180, 150, 0) 42%),
+    linear-gradient(180deg, rgba(255, 244, 235, 0.98) 0%, rgba(255, 255, 255, 0.9) 100%);
 }
 
 .mode-tile__copy {
@@ -764,7 +633,7 @@ function handlePickerConfirm() {
 
 .mode-tile--grade {
   --tile-accent: rgba(124, 216, 184, 1);
-  --tile-accent-strong: rgba(57, 177, 139, 0.92);
+  --tile-accent-strong: rgba(46, 168, 128, 0.92);
   --tile-surface: rgba(240, 255, 248, 0.96);
   background:
     radial-gradient(circle at top right, rgba(184, 242, 223, 0.38) 0%, rgba(184, 242, 223, 0) 42%),
@@ -772,21 +641,21 @@ function handlePickerConfirm() {
 }
 
 .mode-tile--subject {
-  --tile-accent: rgba(120, 198, 255, 1);
-  --tile-accent-strong: rgba(56, 144, 229, 0.92);
-  --tile-surface: rgba(242, 249, 255, 0.96);
+  --tile-accent: rgba(180, 160, 255, 1);
+  --tile-accent-strong: rgba(120, 90, 240, 0.92);
+  --tile-surface: rgba(248, 245, 255, 0.96);
   background:
-    radial-gradient(circle at top right, rgba(173, 235, 255, 0.34) 0%, rgba(173, 235, 255, 0) 42%),
-    linear-gradient(180deg, rgba(245, 251, 255, 0.98) 0%, rgba(255, 255, 255, 0.9) 100%);
+    radial-gradient(circle at top right, rgba(210, 200, 255, 0.34) 0%, rgba(210, 200, 255, 0) 42%),
+    linear-gradient(180deg, rgba(250, 247, 255, 0.98) 0%, rgba(255, 255, 255, 0.9) 100%);
 }
 
 .mode-tile--free {
-  --tile-accent: rgba(255, 166, 204, 1);
-  --tile-accent-strong: rgba(230, 104, 161, 0.9);
-  --tile-surface: rgba(255, 244, 249, 0.96);
+  --tile-accent: rgba(120, 210, 255, 1);
+  --tile-accent-strong: rgba(40, 150, 220, 0.9);
+  --tile-surface: rgba(242, 250, 255, 0.96);
   background:
-    radial-gradient(circle at top right, rgba(255, 195, 218, 0.36) 0%, rgba(255, 195, 218, 0) 42%),
-    linear-gradient(180deg, rgba(255, 248, 251, 0.98) 0%, rgba(255, 255, 255, 0.9) 100%);
+    radial-gradient(circle at top right, rgba(173, 235, 255, 0.36) 0%, rgba(173, 235, 255, 0) 42%),
+    linear-gradient(180deg, rgba(245, 251, 255, 0.98) 0%, rgba(255, 255, 255, 0.9) 100%);
 }
 
 .mode-tile__art {
@@ -798,48 +667,68 @@ function handlePickerConfirm() {
 }
 
 .mode-tile__halo,
-.mode-tile__planet,
-.mode-tile__trail,
+.mode-tile__emoji {
+  position: absolute;
+  top: 24px;
+  right: 28px;
+  font-size: 3.6rem;
+  filter: drop-shadow(0 12px 24px rgba(36, 50, 74, 0.16));
+  transition: transform 300ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  user-select: none;
+}
+
+.mode-tile--grade .mode-tile__emoji,
+.mode-tile--subject .mode-tile__emoji,
+.mode-tile--free .mode-tile__emoji {
+  top: 18px;
+  right: 20px;
+  font-size: 2.8rem;
+}
+
+.mode-tile--challenge .mode-tile__emoji {
+  animation: float-emoji 3.8s ease-in-out infinite;
+}
+
+.mode-tile--grade .mode-tile__emoji {
+  animation: float-emoji 3.4s ease-in-out infinite 0.3s;
+}
+
+.mode-tile--subject .mode-tile__emoji {
+  animation: float-emoji 3.6s ease-in-out infinite 0.6s;
+}
+
+.mode-tile--free .mode-tile__emoji {
+  animation: float-emoji 4.0s ease-in-out infinite 0.9s;
+}
+
+@keyframes float-emoji {
+  0% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-6px) rotate(3deg);
+  }
+  100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+}
+
 .mode-tile__enter {
   position: absolute;
   display: block;
 }
 
 .mode-tile__halo {
-  top: 2px;
-  right: 4px;
-  width: 88px;
-  height: 88px;
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 100px;
+  height: 100px;
   border-radius: 50%;
-  background: radial-gradient(circle, color-mix(in srgb, var(--tile-accent) 34%, white) 0%, rgba(255, 255, 255, 0) 70%);
-  filter: blur(2px);
-  opacity: 0.9;
-}
-
-.mode-tile__planet {
-  top: 16px;
-  right: 20px;
-  width: 54px;
-  height: 54px;
-  border-radius: 50%;
-  background:
-    radial-gradient(circle at 32% 28%, rgba(255, 255, 255, 0.94) 0%, rgba(255, 255, 255, 0.18) 24%, transparent 26%),
-    linear-gradient(145deg, color-mix(in srgb, var(--tile-accent) 82%, white) 0%, var(--tile-accent-strong) 100%);
-  box-shadow:
-    0 18px 24px -18px color-mix(in srgb, var(--tile-accent-strong) 46%, transparent),
-    inset -8px -12px 18px rgba(36, 50, 74, 0.14);
-}
-
-.mode-tile__trail {
-  top: 30px;
-  right: 8px;
-  width: 84px;
-  height: 28px;
-  border: 3px solid color-mix(in srgb, var(--tile-accent) 52%, white);
-  border-left: 0;
-  border-radius: 999px;
-  opacity: 0.88;
-  transform: rotate(-18deg);
+  background: radial-gradient(circle, color-mix(in srgb, var(--tile-accent) 42%, white) 0%, rgba(255, 255, 255, 0) 70%);
+  filter: blur(4px);
+  opacity: 0.8;
+  pointer-events: none;
 }
 
 .mode-tile__enter {
@@ -972,27 +861,10 @@ function handlePickerConfirm() {
 .mode-tile--grade .mode-tile__halo,
 .mode-tile--subject .mode-tile__halo,
 .mode-tile--free .mode-tile__halo {
-  width: 66px;
-  height: 66px;
-}
-
-.mode-tile--grade .mode-tile__planet,
-.mode-tile--subject .mode-tile__planet,
-.mode-tile--free .mode-tile__planet {
-  top: 12px;
-  right: 14px;
-  width: 42px;
-  height: 42px;
-}
-
-.mode-tile--grade .mode-tile__trail,
-.mode-tile--subject .mode-tile__trail,
-.mode-tile--free .mode-tile__trail {
-  top: 24px;
-  right: 4px;
-  width: 62px;
-  height: 22px;
-  border-width: 2.5px;
+  width: 76px;
+  height: 76px;
+  top: -6px;
+  right: -6px;
 }
 
 .mode-tile--grade .mode-tile__enter,
@@ -1091,9 +963,10 @@ function handlePickerConfirm() {
   box-shadow: 0 0 0 3px rgba(124, 216, 184, 0.18);
 }
 
-.mode-tile:hover .mode-tile__art,
-.mode-tile:focus-visible .mode-tile__art {
-  transform: translateY(-4px) rotate(6deg);
+.mode-tile:hover .mode-tile__emoji,
+.mode-tile:focus-visible .mode-tile__emoji {
+  animation-play-state: paused !important;
+  transform: translateY(-6px) scale(1.1) rotate(8deg);
 }
 
 .mode-tile:hover .mode-tile__enter,

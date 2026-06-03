@@ -52,6 +52,8 @@ export function createAppRouting({
 
   function buildRouteLocationForCurrentView() {
     switch (currentView.value) {
+      case VIEW_MODE.CHALLENGE_WORLD:
+        return { name: APP_ROUTE_NAME.CHALLENGE_WORLD };
       case VIEW_MODE.CHALLENGE:
         return { name: APP_ROUTE_NAME.CHALLENGE };
       case VIEW_MODE.QUIZ:
@@ -117,6 +119,10 @@ export function createAppRouting({
     currentView.value = VIEW_MODE.HOME;
   }
 
+  function showChallengeWorldView() {
+    currentView.value = VIEW_MODE.CHALLENGE_WORLD;
+  }
+
   function showChallengeView() {
     currentView.value = VIEW_MODE.CHALLENGE;
   }
@@ -164,6 +170,9 @@ export function createAppRouting({
       isApplyingRouteState = true;
 
       switch (routeName) {
+        case APP_ROUTE_NAME.CHALLENGE_WORLD:
+          currentView.value = VIEW_MODE.CHALLENGE_WORLD;
+          break;
         case APP_ROUTE_NAME.CHALLENGE:
           currentView.value = VIEW_MODE.CHALLENGE;
           break;
@@ -231,6 +240,7 @@ export function createAppRouting({
     buildRouteLocationForCurrentView,
     isSameRouteLocation,
     showHomeView,
+    showChallengeWorldView,
     showChallengeView,
     showQuizView,
     showStudyView,

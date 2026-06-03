@@ -359,6 +359,27 @@ test("semester challenge routes keep balanced chinese and math coverage", () => 
   }
 });
 
+test("grade one challenge facts stay accurate", () => {
+  const expectedFacts = [
+    ["一年级", "上册", "《比尾巴》里，谁的尾巴弯？", "公鸡"],
+    ["一年级", "上册", "11 + 5 = ?", "16"]
+  ];
+
+  for (const [grade, semester, content, expectedAnswerText] of expectedFacts) {
+    const question = questions.find(
+      (candidate) =>
+        candidate.grade === grade &&
+        candidate.semester === semester &&
+        candidate.content === content
+    );
+
+    assert.ok(question, `${grade}-${semester} 缺少题目：${content}`);
+    const correctOption = question.options.find((option) => option.key === question.answer);
+
+    assert.equal(correctOption?.text, expectedAnswerText, `${content} 正确答案应为 ${expectedAnswerText}`);
+  }
+});
+
 test("grade four to six English semester routes include direct question pools", () => {
   const englishTargets = [
     { grade: "四年级", semester: "上册", coreTags: ["课堂用语", "常识词汇", "时间词汇", "句子理解"] },

@@ -1758,7 +1758,7 @@ const gradeOneUpperStageFourChallengeConfigs = [
     ["量词运用", "下面哪个量词最适合“一（ ）白云”？", "朵", ["条", "把", "本"], "白云通常用“朵”来搭配。", 2, "/images/challenge/g1-upper-stage4/one-cloud.svg"],
     ["口语交际", "妈妈递给你水果时，你更合适说什么？", "谢谢妈妈", ["我不要", "快点拿来", "你走开"], "接受别人帮助或关心时，要礼貌表达感谢。", 2, "/images/challenge/g1-upper-stage4/mom-gives-fruit.svg"],
     ["标点符号", "“快来和我一起玩（ ）” 句末更适合填什么标点？", "感叹号", ["句号", "问号", "逗号"], "表示招呼、呼唤时，句末常用感叹号。", 2, "/images/challenge/g1-upper-stage4/come-play-exclamation.svg"],
-    ["课文理解", "《比尾巴》里，谁的尾巴弯？", "猴子", ["兔子", "鸭子", "孔雀"], "课文里说猴子的尾巴弯。", 2, "/images/challenge/g1-upper-stage4/monkey-tail.svg"],
+    ["课文理解", "《比尾巴》里，谁的尾巴弯？", "公鸡", ["猴子", "鸭子", "孔雀"], "课文里说公鸡的尾巴弯。", 2, "/images/challenge/g1-upper-stage4/rooster-tail.svg"],
     ["词语搭配", "下面哪个词最适合填“闪闪的（ ）”？", "星星", ["书包", "尺子", "小路"], "“闪闪的星星”是常见搭配。", 2, "/images/challenge/g1-upper-stage4/shining-stars.svg"]
   ])
 ];

@@ -94,6 +94,7 @@ export function useTriviaApp() {
   const route = useRoute();
   const VIEW_MODE = Object.freeze({
     HOME: "home",
+    CHALLENGE_WORLD: "challenge-world",
     CHALLENGE: "challenge",
     QUIZ: "quiz",
     STUDY: "study",
@@ -478,6 +479,10 @@ export function useTriviaApp() {
 
   const isAudioSettingsOpen = ref(false);
 
+  const isLockedStageModalOpen = ref(false);
+
+  const isBackpackOpen = ref(false);
+
   const adminKey = ref("");
 
   const questionStats = ref(DEFAULT_QUESTION_STATS);
@@ -508,6 +513,7 @@ export function useTriviaApp() {
     normalizeToolSectionId,
     normalizeSettingsSectionId,
     showHomeView,
+    showChallengeWorldView,
     showChallengeView,
     showQuizView,
     showStudyView,
@@ -1381,6 +1387,23 @@ export function useTriviaApp() {
     };
   });
 
+  const challengeWorldData = computed(() => {
+    return CHALLENGE_CHAPTERS.map((chapter) => {
+      const chapterProg = challengeProgressBook.value.chapters[chapter.id] || {};
+      const results = chapterProg.bestResults || {};
+      let starsEarned = 0;
+      for (const result of Object.values(results)) {
+        starsEarned += result.starCount || 0;
+      }
+      return {
+        ...chapter,
+        starsEarned,
+        totalStars: 21,
+        progressPercent: Math.round((starsEarned / 21) * 100)
+      };
+    });
+  });
+
   const challengeStages = computed(() =>
     getChallengeStageList(selectedChallengeChapterId.value).map((stage, index) => {
       const bestResult = challengeProgress.value.bestResults[stage.id] ?? null;
@@ -2041,6 +2064,15 @@ export function useTriviaApp() {
     }
   }
 
+  function openChallengeWorld() {
+    closeQuizSettings();
+    closeAudioSettings();
+    wrongBookFocusTag.value = "";
+    resetQuizPracticeContext();
+    playMode.value = PLAY_MODE.CHALLENGE;
+    showChallengeWorldView();
+  }
+
   function openChallengeView({
     nextStageId = selectedStageId.value,
     nextChallengeChapterId = selectedChallengeChapterId.value,
@@ -2175,6 +2207,18 @@ export function useTriviaApp() {
 
   function closeQuizSettings() {
     isQuizSettingsOpen.value = false;
+  }
+
+  function openBackpack() {
+    isBackpackOpen.value = true;
+  }
+
+  function closeBackpack() {
+    isBackpackOpen.value = false;
+  }
+
+  function closeLockedStageModal() {
+    isLockedStageModalOpen.value = false;
   }
 
   function openAudioSettings() {
@@ -2669,15 +2713,14 @@ export function useTriviaApp() {
 
   function selectChallengeStage(stageId) {
     if (!challengeProgress.value.unlockedStageIds.includes(stageId)) {
+      selectedStageId.value = stageId;
+      isLockedStageModalOpen.value = true;
       return;
     }
 
     selectedStageId.value = stageId;
     clearChallengeOutcome();
-
-    if (isQuizView.value && isChallengeMode.value) {
-      loadQuestions();
-    }
+    openQuizView();
   }
 
   function handleQuizFinished(result) {
@@ -2842,6 +2885,8 @@ export function useTriviaApp() {
     homeWelcomePanel,
     isQuizSettingsOpen,
     isAudioSettingsOpen,
+    isLockedStageModalOpen,
+    isBackpackOpen,
     adminKey,
     activeToolSectionId,
     activeSettingsSectionId,
@@ -2901,6 +2946,8 @@ export function useTriviaApp() {
     homeChallengeChapter,
     homeChallengeLabel,
     homeChallengeRouteTitle,
+    challengeWorldData,
+    challengeStages,
     currentStage,
     currentStageIndex,
     currentStageLabel,
@@ -2973,6 +3020,7 @@ export function useTriviaApp() {
     getChallengeStageClass,
     clearChallengeOutcome,
     openHomeView,
+    openChallengeWorld,
     openChallengeView,
     openQuizView,
     openStudyView,
@@ -2987,6 +3035,9 @@ export function useTriviaApp() {
     normalizeSettingsSectionId,
     openQuizSettings,
     closeQuizSettings,
+    openBackpack,
+    closeBackpack,
+    closeLockedStageModal,
     openAudioSettings,
     closeAudioSettings,
     loadQuestions,

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, ref } from "vue";
+import { computed, ref } from "vue";
 
 const props = defineProps({
   title: {
@@ -65,8 +65,7 @@ const props = defineProps({
 });
 
 const emit = defineEmits(["replay", "next-stage"]);
-const copyState = ref("idle");
-let copyResetTimerId = 0;
+
 const isChallengeMode = computed(() => props.playMode === "challenge");
 const passportTitle = computed(() => {
   if (isChallengeMode.value) {
@@ -203,31 +202,6 @@ const challengeRewardStatus = computed(() => {
 const newAchievements = computed(() =>
   Array.isArray(props.challengeOutcome?.newAchievements) ? props.challengeOutcome.newAchievements : []
 );
-const footerCaption = computed(() => {
-  if (!isChallengeMode.value) {
-    return `本轮共完成 ${props.totalQuestions} 题。`;
-  }
-
-  if (!props.stageTitle) {
-    return props.challengeReady ? "本轮挑战成绩已经生成。" : "挑战成绩正在整理。";
-  }
-
-  if (!props.challengeReady) {
-    return "正在整理关卡成绩。";
-  }
-
-  if (!props.isPassed) {
-    return `${props.stageTitle} 还没通过。`;
-  }
-
-  if (!props.nextStageTitle) {
-    return `${props.stageTitle} 已完成，整条挑战路线已经通关。`;
-  }
-
-  return props.unlockedNextStage
-    ? `${props.stageTitle} 已通关，${props.nextStageTitle} 已解锁。`
-    : `${props.stageTitle} 已通关，可以继续挑战 ${props.nextStageTitle}。`;
-});
 const replayLabel = computed(() => (isChallengeMode.value ? "重玩本关" : "再玩一次"));
 const showNextStageAction = computed(
   () => isChallengeMode.value && props.challengeReady && props.isPassed && Boolean(props.nextStageTitle)
@@ -239,329 +213,78 @@ const nextStageButtonLabel = computed(() => {
 
   return `前往 ${props.nextStageTitle}`;
 });
-const journeyActionLabel = computed(() => (isChallengeMode.value ? "关卡操作" : "继续练习"));
-const isCopyPending = computed(() => copyState.value === "pending");
-const copyButtonLabel = computed(() => {
-  if (copyState.value === "pending") {
-    return "复制中";
-  }
-
-  if (copyState.value === "copied") {
-    return "已复制";
-  }
-
-  if (copyState.value === "unsupported") {
-    return "复制不可用";
-  }
-
-  if (copyState.value === "failed") {
-    return "重试复制";
-  }
-
-  return "复制成绩卡";
-});
-const copyStatusText = computed(() => {
-  if (copyState.value === "pending") {
-    return "正在复制成绩卡文本。";
-  }
-
-  if (copyState.value === "copied") {
-    return "成绩卡文本已复制，可直接粘贴分享。";
-  }
-
-  if (copyState.value === "failed") {
-    return "复制失败，请检查浏览器权限后重试。";
-  }
-
-  if (copyState.value === "unsupported") {
-    return "当前环境不支持自动复制，请手动选择文本分享。";
-  }
-
-  return "可复制为文本成绩卡，适合直接粘贴分享。";
-});
-
-const shareText = computed(() => {
-  const lines = [
-    "奇妙知识岛 Wonder Trivia Island",
-    `${props.title}`,
-    `总得分：${props.score} 分`,
-    `答对：${props.correctCount} 题 / 答错：${props.wrongCount} 题`,
-    `正确率：${props.accuracyPercent}%`,
-    `总题数：${props.totalQuestions} 题`,
-    props.summary
-  ];
-
-  if (isChallengeMode.value) {
-    if (props.stageTitle) {
-      lines.splice(2, 0, `挑战关卡：${props.stageTitle}`);
-    }
-
-    lines.push(
-      `关卡结果：${
-        !props.challengeReady ? "结算中" : props.isPassed ? `${props.starCount} 星过关` : "未过关"
-      }`
-    );
-
-    if (props.nextStageTitle && props.isPassed) {
-      lines.push(`下一关：${props.nextStageTitle}`);
-    }
-
-    if (props.challengeOutcome?.rewardName) {
-      lines.push(`航海收藏：${props.challengeOutcome.rewardName}`);
-    }
-
-    if (newAchievements.value.length > 0) {
-      lines.push(`新成就：${newAchievements.value.map((achievement) => achievement.name).join("、")}`);
-    }
-  }
-
-  return lines.join("\n");
-});
-
-function clearCopyResetTimer() {
-  if (!copyResetTimerId) {
-    return;
-  }
-
-  window.clearTimeout(copyResetTimerId);
-  copyResetTimerId = 0;
-}
-
-function scheduleCopyReset() {
-  clearCopyResetTimer();
-  copyResetTimerId = window.setTimeout(() => {
-    copyState.value = "idle";
-    copyResetTimerId = 0;
-  }, 1600);
-}
-
-function fallbackCopyText(text) {
-  if (typeof document === "undefined" || typeof document.execCommand !== "function") {
-    return "unsupported";
-  }
-
-  const textarea = document.createElement("textarea");
-  textarea.value = text;
-  textarea.setAttribute("readonly", "");
-  textarea.style.position = "fixed";
-  textarea.style.top = "-9999px";
-  textarea.style.opacity = "0";
-  document.body.appendChild(textarea);
-  textarea.select();
-  textarea.setSelectionRange(0, textarea.value.length);
-
-  try {
-    return document.execCommand("copy") ? "success" : "failed";
-  } catch {
-    return "failed";
-  } finally {
-    document.body.removeChild(textarea);
-  }
-}
-
-async function writeShareText(text) {
-  if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-    try {
-      await navigator.clipboard.writeText(text);
-      return "success";
-    } catch {
-      return fallbackCopyText(text);
-    }
-  }
-
-  return fallbackCopyText(text);
-}
-
-async function copySummary() {
-  if (isCopyPending.value) {
-    return;
-  }
-
-  clearCopyResetTimer();
-  copyState.value = "pending";
-
-  const copyResult = await writeShareText(shareText.value);
-
-  if (copyResult === "success") {
-    copyState.value = "copied";
-    scheduleCopyReset();
-    return;
-  }
-
-  copyState.value = copyResult === "unsupported" ? "unsupported" : "failed";
-}
-
-onBeforeUnmount(() => {
-  clearCopyResetTimer();
-});
 </script>
 
 <template>
-  <section class="result-score-card">
-    <div class="result-score-card__decor" aria-hidden="true">
-      <span class="result-score-card__spark result-score-card__spark--1">✦</span>
-      <span class="result-score-card__spark result-score-card__spark--2">✦</span>
-      <span class="result-score-card__leaf result-score-card__leaf--1"></span>
-      <span class="result-score-card__leaf result-score-card__leaf--2"></span>
-      <div v-if="showCelebration" class="result-score-card__celebration">
+  <section class="result-bento">
+    <div class="result-bento__decor" aria-hidden="true">
+      <span class="decor-spark spark-1">✦</span>
+      <span class="decor-spark spark-2">✦</span>
+      <div v-if="showCelebration" class="celebration-container">
         <span
           v-for="burst in celebrationBursts"
           :key="burst.id"
-          :class="['result-score-card__burst', burst.className]"
+          :class="['burst', burst.className]"
         >
           {{ burst.symbol }}
         </span>
       </div>
     </div>
 
-    <div class="result-score-card__hero">
-      <div class="result-score-card__header">
-        <span class="result-score-card__brand">Wonder Trivia Island</span>
-        <p class="result-score-card__passport">{{ passportLabel }}</p>
-        <h3 class="result-score-card__title">{{ title }}</h3>
-        <p class="result-score-card__summary">{{ summary }}</p>
-      </div>
-
-      <div class="result-score-card__seal" aria-label="本轮正确率">
-        <span class="result-score-card__seal-label">正确率</span>
-        <strong class="result-score-card__seal-value">{{ accuracyPercent }}%</strong>
-        <span class="result-score-card__seal-caption">{{ passportTitle }}</span>
-      </div>
-    </div>
-
-    <div
-      v-if="isChallengeMode"
-      :class="[
-        'result-score-card__challenge-banner',
-        { 'result-score-card__challenge-banner--passed': isPassed, 'result-score-card__challenge-banner--retry': !isPassed }
-      ]"
-    >
-      <div class="result-score-card__challenge-head">
-        <div class="result-score-card__challenge-copy">
-          <div class="result-score-card__challenge-topline">
-            <span class="result-score-card__challenge-chip">{{ stageTitle || "挑战关卡" }}</span>
-            <p
-              v-if="unlockCalloutText"
-              :class="[
-                'result-score-card__unlock-callout',
-                { 'result-score-card__unlock-callout--fresh': unlockedNextStage }
-              ]"
-            >
-              {{ unlockCalloutText }}
-            </p>
-          </div>
-          <strong class="result-score-card__challenge-value">{{ challengeStatusText }}</strong>
-          <span class="result-score-card__challenge-note">{{ challengeStatusNote }}</span>
+    <div class="bento-grid">
+      <!-- Hero Card -->
+      <div class="bento-card bento-card--hero" :class="{'is-passed': isPassed && isChallengeMode}">
+        <div class="hero-content">
+          <span class="brand-chip">Wonder Trivia Island</span>
+          <p class="passport-label">{{ passportLabel }}</p>
+          <h3 class="hero-title">{{ title }}</h3>
+          <p class="hero-summary">{{ summary }}</p>
+          <p v-if="unlockCalloutText" class="unlock-callout">{{ unlockCalloutText }}</p>
         </div>
 
-        <div class="result-score-card__challenge-progress">
-          <span class="result-score-card__challenge-progress-label">关卡星级</span>
-          <div class="result-score-card__star-strip" aria-label="关卡星级">
-            <span
-              v-for="star in challengeStars"
-              :key="star.id"
-              :class="['result-score-card__star', { 'result-score-card__star--filled': star.filled }]"
-            >
+        <div v-if="isChallengeMode" class="hero-status">
+          <div class="star-display">
+            <span v-for="star in challengeStars" :key="star.id" :class="['star', { 'star--filled': star.filled }]">
               {{ star.filled ? "★" : "☆" }}
             </span>
           </div>
-          <span class="result-score-card__star-summary">{{ challengeStarSummary }}</span>
+          <p class="status-text">{{ challengeStatusText }}</p>
+          <p class="status-note">{{ challengeStatusNote }}</p>
         </div>
       </div>
 
-      <div
-        v-if="challengeMissionLabel || challengeRewardStatus || newAchievements.length > 0"
-        class="result-score-card__challenge-collection"
-        aria-label="关卡任务与收藏"
-      >
-        <div v-if="challengeMissionLabel" class="result-score-card__challenge-collection-item">
-          <span class="result-score-card__challenge-collection-label">本关目标</span>
-          <strong class="result-score-card__challenge-collection-value">{{ challengeMissionLabel }}</strong>
-          <span class="result-score-card__challenge-collection-note">{{ challengeMissionStatus }}</span>
-        </div>
-        <div v-if="challengeRewardStatus" class="result-score-card__challenge-collection-item">
-          <span class="result-score-card__challenge-collection-label">航海收藏</span>
-          <strong class="result-score-card__challenge-collection-value">
-            {{ challengeOutcome?.rewardGlyph }} {{ challengeOutcome?.rewardName }}
-          </strong>
-          <span class="result-score-card__challenge-collection-note">{{ challengeRewardStatus }}</span>
-        </div>
-        <div v-if="newAchievements.length > 0" class="result-score-card__challenge-collection-item">
-          <span class="result-score-card__challenge-collection-label">本次成就</span>
-          <strong class="result-score-card__challenge-collection-value">
-            {{ newAchievements.map((achievement) => `${achievement.glyph} ${achievement.name}`).join(" · ") }}
-          </strong>
-          <span class="result-score-card__challenge-collection-note">这次新点亮了 {{ newAchievements.length }} 项章节成就。</span>
-        </div>
-      </div>
-    </div>
-
-    <div class="result-score-card__grid">
-      <div class="result-score-card__item result-score-card__item--primary">
-        <span class="result-score-card__label">总得分</span>
-        <strong class="result-score-card__value">{{ score }} 分</strong>
-      </div>
-      <div class="result-score-card__item">
-        <span class="result-score-card__label">答对题数</span>
-        <strong class="result-score-card__value">{{ correctCount }} 题</strong>
-      </div>
-      <div class="result-score-card__item">
-        <span class="result-score-card__label">答错题数</span>
-        <strong class="result-score-card__value">{{ wrongCount }} 题</strong>
-      </div>
-      <div class="result-score-card__item">
-        <span class="result-score-card__label">正确率</span>
-        <strong class="result-score-card__value">{{ accuracyPercent }}%</strong>
-      </div>
-    </div>
-
-    <div class="result-score-card__footer">
-      <div class="result-score-card__footer-copy">
-        <p class="result-score-card__caption">{{ footerCaption }}</p>
-        <p
-          :class="['result-score-card__copy-note', `result-score-card__copy-note--${copyState}`]"
-          role="status"
-          aria-live="polite"
-          aria-atomic="true"
-        >
-          {{ copyStatusText }}
-        </p>
-      </div>
-
-      <div class="result-score-card__footer-actions">
-        <div class="result-score-card__action-cluster">
-          <span class="result-score-card__action-label">分享成绩</span>
-          <div class="result-score-card__utility-actions">
-            <button
-              class="btn-cartoon result-score-card__action-button"
-              type="button"
-              :disabled="isCopyPending"
-              @click="copySummary"
-            >
-              {{ copyButtonLabel }}
-            </button>
+      <!-- Rewards Card -->
+      <div v-if="isChallengeMode && (challengeMissionLabel || challengeRewardStatus || newAchievements.length > 0)" class="bento-card bento-card--rewards">
+        <div class="rewards-grid">
+          <div v-if="challengeMissionLabel" class="reward-item">
+            <span class="reward-label">本关目标</span>
+            <strong class="reward-value">{{ challengeMissionLabel }}</strong>
+            <span class="reward-note">{{ challengeMissionStatus }}</span>
+          </div>
+          <div v-if="challengeRewardStatus" class="reward-item">
+            <span class="reward-label">航海收藏</span>
+            <strong class="reward-value">{{ challengeOutcome?.rewardGlyph }} {{ challengeOutcome?.rewardName }}</strong>
+            <span class="reward-note">{{ challengeRewardStatus }}</span>
+          </div>
+          <div v-if="newAchievements.length > 0" class="reward-item">
+            <span class="reward-label">本次成就</span>
+            <strong class="reward-value">{{ newAchievements.map((a) => `${a.glyph} ${a.name}`).join(" · ") }}</strong>
           </div>
         </div>
+      </div>
 
-        <div class="result-score-card__action-cluster result-score-card__action-cluster--journey">
-          <span class="result-score-card__action-label">{{ journeyActionLabel }}</span>
-          <div class="result-score-card__journey-actions">
-            <button
-              class="btn-cartoon btn-cartoon--yellow result-score-card__action-button"
-              type="button"
-              @click="emit('replay')"
-            >
-              {{ replayLabel }}
-            </button>
-            <button
-              v-if="showNextStageAction"
-              class="btn-cartoon btn-cartoon--mint result-score-card__action-button"
-              type="button"
-              @click="emit('next-stage')"
-            >
-              {{ nextStageButtonLabel }}
-            </button>
-          </div>
+    </div>
+
+    <!-- Footer Actions -->
+    <div class="result-footer">
+      <div class="footer-actions">
+        <div class="primary-actions">
+          <button class="btn-cartoon btn-cartoon--yellow result-action-btn" @click="emit('replay')">
+            {{ replayLabel }}
+          </button>
+          <button v-if="showNextStageAction" class="btn-cartoon btn-cartoon--mint result-action-btn" @click="emit('next-stage')">
+            {{ nextStageButtonLabel }}
+          </button>
         </div>
       </div>
     </div>
@@ -569,550 +292,349 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.result-score-card {
+.result-bento {
   position: relative;
   overflow: hidden;
   padding: 24px;
-  border: 1.5px solid rgba(36, 50, 74, 0.14);
-  border-radius: 28px;
-  background:
-    radial-gradient(circle at top right, rgba(255, 231, 156, 0.28) 0%, rgba(255, 231, 156, 0) 24%),
-    radial-gradient(circle at bottom left, rgba(184, 242, 223, 0.24) 0%, rgba(184, 242, 223, 0) 28%),
-    linear-gradient(180deg, rgba(251, 254, 255, 0.97) 0%, rgba(244, 249, 252, 0.92) 100%);
-  box-shadow: 0 26px 40px -32px rgba(36, 50, 74, 0.38);
+  background: transparent;
   text-align: left;
 }
 
-.result-score-card__decor,
-.result-score-card__hero,
-.result-score-card__challenge-banner,
-.result-score-card__grid,
-.result-score-card__footer {
-  position: relative;
-  z-index: 1;
-}
-
-.result-score-card__decor {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-.result-score-card__spark,
-.result-score-card__leaf {
-  position: absolute;
-}
-
-.result-score-card__spark {
-  color: rgba(255, 184, 42, 0.58);
-  line-height: 1;
-}
-
-.result-score-card__spark--1 {
-  top: 22px;
-  right: 28px;
-  font-size: 1rem;
-}
-
-.result-score-card__spark--2 {
-  left: 16px;
-  bottom: 112px;
-  font-size: 0.88rem;
-}
-
-.result-score-card__celebration {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-.result-score-card__burst {
-  position: absolute;
-  color: rgba(255, 184, 42, 0.72);
-  line-height: 1;
-  animation: result-score-card-burst-float 1.6s ease-out both;
-}
-
-.result-score-card__burst--1 {
-  top: 18px;
-  left: 20px;
-  font-size: 0.94rem;
-}
-
-.result-score-card__burst--2 {
-  top: 52px;
-  right: 44px;
-  font-size: 1.1rem;
-  animation-delay: 90ms;
-}
-
-.result-score-card__burst--3 {
-  top: 110px;
-  left: 12%;
-  font-size: 0.82rem;
-  animation-delay: 180ms;
-}
-
-.result-score-card__burst--4 {
-  right: 16%;
-  bottom: 132px;
-  font-size: 0.94rem;
-  animation-delay: 260ms;
-}
-
-.result-score-card__burst--5 {
-  left: 24%;
-  bottom: 48px;
-  font-size: 0.88rem;
-  animation-delay: 340ms;
-}
-
-.result-score-card__burst--6 {
-  right: 22px;
-  bottom: 28px;
-  font-size: 0.98rem;
-  animation-delay: 420ms;
-}
-
-.result-score-card__leaf {
-  width: 28px;
-  height: 12px;
-  border-radius: 88% 12% 78% 22%;
-  background: linear-gradient(135deg, rgba(124, 216, 184, 0.74) 0%, rgba(184, 242, 223, 0.46) 100%);
-  opacity: 0.6;
-}
-
-.result-score-card__leaf--1 {
-  top: 66px;
-  right: 108px;
-  transform: rotate(-28deg);
-}
-
-.result-score-card__leaf--2 {
-  left: 28px;
-  bottom: 54px;
-  transform: rotate(18deg);
-}
-
-.result-score-card__hero {
+.bento-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 132px;
-  gap: 18px;
-  align-items: start;
-}
-
-.result-score-card__header {
-  min-width: 0;
-}
-
-.result-score-card__brand,
-.result-score-card__challenge-chip,
-.result-score-card__unlock-callout {
-  display: inline-flex;
-  align-items: center;
-  width: fit-content;
-  min-height: 34px;
-  padding: 6px 12px;
-  border: 1px solid rgba(36, 50, 74, 0.14);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.9);
-  color: var(--color-ink, #24324a);
-  font-size: 0.84rem;
-}
-
-.result-score-card__brand {
-  background: rgba(255, 231, 238, 0.86);
-}
-
-.result-score-card__passport {
-  margin: 12px 0 0;
-  color: var(--color-ink-soft, #5b6984);
-  font-size: 0.8rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.result-score-card__title {
-  margin: 8px 0 10px;
-  font-family: "ZCOOL KuaiLe", "Baloo 2", "Trebuchet MS", sans-serif;
-  font-size: clamp(1.7rem, 3vw, 2.45rem);
-  line-height: 1.08;
-  color: var(--color-ink, #24324a);
-}
-
-.result-score-card__summary,
-.result-score-card__caption {
-  margin: 0;
-  color: var(--color-ink-soft, #5b6984);
-  font-size: 0.98rem;
-  line-height: 1.55;
-}
-
-.result-score-card__seal {
-  display: grid;
-  align-content: center;
-  justify-items: center;
-  min-height: 132px;
-  padding: 16px 12px;
-  border: 1px solid rgba(36, 50, 74, 0.12);
-  border-radius: 24px;
-  background: linear-gradient(180deg, rgba(255, 249, 225, 0.96) 0%, rgba(255, 255, 255, 0.94) 100%);
-  text-align: center;
-}
-
-.result-score-card__seal-label,
-.result-score-card__seal-caption {
-  color: var(--color-ink-soft, #5b6984);
-  font-size: 0.8rem;
-}
-
-.result-score-card__seal-value {
-  margin: 6px 0;
-  color: var(--color-ink, #24324a);
-  font-size: 2rem;
-  line-height: 1;
-}
-
-.result-score-card__challenge-banner {
-  display: grid;
-  gap: 14px;
-  margin-top: 20px;
-  padding: 16px 18px;
-  border: 1px solid rgba(36, 50, 74, 0.12);
-  border-radius: 22px;
-  background: rgba(255, 255, 255, 0.86);
-}
-
-.result-score-card__challenge-banner--passed {
-  background: linear-gradient(180deg, rgba(242, 253, 249, 0.96) 0%, rgba(255, 255, 255, 0.92) 100%);
-}
-
-.result-score-card__challenge-banner--retry {
-  background: linear-gradient(180deg, rgba(255, 241, 245, 0.96) 0%, rgba(255, 255, 255, 0.92) 100%);
-}
-
-.result-score-card__challenge-chip {
-  background: rgba(248, 251, 253, 0.96);
-}
-
-.result-score-card__challenge-head {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
   gap: 16px;
-  align-items: start;
+  position: relative;
+  z-index: 2;
 }
 
-.result-score-card__challenge-copy {
-  display: grid;
-  gap: 8px;
-  min-width: 0;
+/* Base Card Style */
+.bento-card {
+  border-radius: 24px;
+  padding: 20px 24px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 12px 24px rgba(36, 50, 74, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  animation: bento-pop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
 }
 
-.result-score-card__challenge-topline {
+.bento-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 32px rgba(36, 50, 74, 0.1), inset 0 1px 0 rgba(255, 255, 255, 1);
+}
+
+@keyframes bento-pop {
+  0% { opacity: 0; transform: translateY(20px) scale(0.95); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Hero Card */
+.bento-card--hero {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  justify-content: space-between;
   align-items: center;
+  gap: 24px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(244,249,252,0.9) 100%);
 }
 
-.result-score-card__challenge-value {
+.bento-card--hero.is-passed {
+  background: linear-gradient(135deg, rgba(242, 253, 249, 0.95) 0%, rgba(255, 255, 255, 0.9) 100%);
+  border-color: rgba(184, 242, 223, 0.6);
+}
+
+.hero-content {
+  flex: 1;
+  min-width: 240px;
+}
+
+.brand-chip {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 12px;
+  background: rgba(255, 231, 238, 0.86);
+  color: #a23b56;
+  font-size: 0.75rem;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+.passport-label {
+  color: var(--color-ink-soft, #5b6984);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  margin: 0 0 4px 0;
+}
+
+.hero-title {
+  font-family: "ZCOOL KuaiLe", "Baloo 2", sans-serif;
+  font-size: clamp(1.8rem, 4vw, 2.6rem);
   color: var(--color-ink, #24324a);
-  font-size: 1.16rem;
-  line-height: 1.24;
-}
-
-.result-score-card__challenge-note {
-  color: var(--color-ink-soft, #5b6984);
-  font-size: 0.94rem;
-  line-height: 1.5;
-}
-
-.result-score-card__star-strip {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-
-.result-score-card__challenge-progress {
-  display: grid;
-  gap: 8px;
-  justify-items: end;
-  min-width: 160px;
-}
-
-.result-score-card__challenge-progress-label {
-  color: var(--color-ink-soft, #5b6984);
-  font-size: 0.76rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.result-score-card__star {
-  color: rgba(91, 105, 132, 0.42);
-  font-size: 1.45rem;
-  line-height: 1;
-  transform: translateY(0) scale(1);
-}
-
-.result-score-card__star--filled {
-  color: #d79716;
-  animation: result-score-card-star-pop 420ms ease both;
-}
-
-.result-score-card__star:nth-child(2).result-score-card__star--filled {
-  animation-delay: 80ms;
-}
-
-.result-score-card__star:nth-child(3).result-score-card__star--filled {
-  animation-delay: 160ms;
-}
-
-.result-score-card__star-summary {
-  color: var(--color-ink-soft, #5b6984);
-  font-size: 0.9rem;
-  line-height: 1.45;
-}
-
-.result-score-card__unlock-callout {
-  margin: 0;
-}
-
-.result-score-card__unlock-callout--fresh {
-  background: rgba(255, 244, 208, 0.96);
-  animation: result-score-card-unlock-pulse 1.8s ease-in-out infinite;
-}
-
-.result-score-card__challenge-collection {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 12px;
-  margin-top: 14px;
-}
-
-.result-score-card__challenge-collection-item {
-  display: grid;
-  gap: 4px;
-  padding: 14px 16px;
-  border: 1px solid rgba(36, 50, 74, 0.1);
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.76);
-}
-
-.result-score-card__challenge-collection-label {
-  color: var(--color-ink-soft, #5b6984);
-  font-size: 0.76rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.result-score-card__challenge-collection-value {
-  color: var(--color-ink, #24324a);
-  font-size: 1rem;
-  line-height: 1.35;
-}
-
-.result-score-card__challenge-collection-note {
-  color: var(--color-ink-soft, #5b6984);
-  font-size: 0.88rem;
-  line-height: 1.45;
-}
-
-.result-score-card__grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  margin-top: 20px;
-}
-
-.result-score-card__item {
-  padding: 18px;
-  border: 1px solid rgba(36, 50, 74, 0.12);
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.88);
-}
-
-.result-score-card__item--primary {
-  background: linear-gradient(180deg, rgba(242, 253, 249, 0.98) 0%, rgba(255, 255, 255, 0.92) 100%);
-}
-
-.result-score-card__label {
-  display: block;
-  margin-bottom: 8px;
-  color: var(--color-ink-soft, #5b6984);
-  font-size: 0.9rem;
-}
-
-.result-score-card__value {
-  display: block;
-  color: var(--color-ink, #24324a);
-  font-size: 1.45rem;
+  margin: 0 0 8px 0;
   line-height: 1.1;
 }
 
-.result-score-card__footer {
-  display: grid;
-  gap: 14px;
-  margin-top: 20px;
-  padding-top: 18px;
-  border-top: 1px solid rgba(36, 50, 74, 0.08);
-}
-
-.result-score-card__footer-copy {
-  display: grid;
-  gap: 8px;
-}
-
-.result-score-card__copy-note {
-  margin: 0;
+.hero-summary {
   color: var(--color-ink-soft, #5b6984);
-  font-size: 0.86rem;
+  font-size: 0.95rem;
   line-height: 1.5;
+  margin: 0;
 }
 
-.result-score-card__copy-note--copied {
-  color: #1f6b51;
+.unlock-callout {
+  display: inline-block;
+  margin-top: 12px;
+  padding: 6px 14px;
+  background: rgba(255, 244, 208, 0.9);
+  border-radius: 12px;
+  color: #b77211;
+  font-weight: 700;
+  font-size: 0.85rem;
+  animation: unlock-pulse 2s infinite;
 }
 
-.result-score-card__copy-note--failed,
-.result-score-card__copy-note--unsupported {
-  color: #9e3b57;
+@keyframes unlock-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 184, 42, 0.2); }
+  50% { box-shadow: 0 0 0 6px rgba(255, 184, 42, 0); }
 }
 
-.result-score-card__footer-actions {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 12px 14px;
-  align-items: start;
+.hero-status {
+  text-align: center;
+  padding: 16px 24px;
+  background: rgba(255,255,255,0.6);
+  border-radius: 20px;
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);
 }
 
-.result-score-card__action-cluster {
-  display: grid;
-  gap: 8px;
-  align-content: start;
-}
-
-.result-score-card__action-cluster--journey {
-  justify-items: end;
-}
-
-.result-score-card__action-label {
-  color: var(--color-ink-soft, #5b6984);
-  font-size: 0.76rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.result-score-card__utility-actions,
-.result-score-card__journey-actions {
+.star-display {
   display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.star {
+  font-size: 2rem;
+  color: rgba(36,50,74,0.1);
+  line-height: 1;
+}
+
+.star--filled {
+  color: #f59e0b;
+  animation: star-pop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+}
+
+.star:nth-child(2).star--filled { animation-delay: 0.1s; }
+.star:nth-child(3).star--filled { animation-delay: 0.2s; }
+
+@keyframes star-pop {
+  0% { transform: scale(0) rotate(-15deg); opacity: 0; }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
+.status-text {
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: var(--color-ink, #24324a);
+  margin: 0 0 4px 0;
+}
+
+.status-note {
+  font-size: 0.8rem;
+  color: var(--color-ink-soft, #5b6984);
+  margin: 0;
+}
+
+/* Rewards Card */
+.bento-card--rewards {
+  background: linear-gradient(135deg, rgba(255, 249, 225, 0.9) 0%, rgba(255, 255, 255, 0.9) 100%);
+  animation-delay: 0.1s;
+}
+
+.rewards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.reward-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.reward-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--color-ink-soft, #5b6984);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.reward-value {
+  font-size: 1.1rem;
+  color: var(--color-ink, #24324a);
+  font-weight: 800;
+}
+
+.reward-note {
+  font-size: 0.85rem;
+  color: var(--color-ink-soft, #5b6984);
+}
+
+/* Stats Grid */
+.bento-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.bento-card--stat {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  padding: 24px 16px;
+  animation-delay: 0.2s;
+}
+
+.bento-card--primary-stat {
+  background: linear-gradient(135deg, var(--quiz-theme-accent-warm-soft) 0%, #fff 100%);
+  border-color: rgba(255, 174, 66, 0.3);
+}
+
+.bento-stats .bento-card:nth-child(2) { animation-delay: 0.25s; }
+.bento-stats .bento-card:nth-child(3) { animation-delay: 0.3s; }
+
+.stat-label {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--color-ink-soft, #5b6984);
+  margin-bottom: 8px;
+}
+
+.stat-value {
+  font-size: 2rem;
+  font-weight: 900;
+  color: var(--color-ink, #24324a);
+  font-family: "Baloo 2", sans-serif;
+  line-height: 1;
+}
+
+.stat-value small {
+  font-size: 1rem;
+  font-weight: 700;
+  margin-left: 4px;
+}
+
+/* Footer Actions */
+.result-footer {
+  margin-top: 24px;
+  display: grid;
+  gap: 16px;
+  position: relative;
+  z-index: 2;
+  animation: bento-pop 0.5s ease both;
+  animation-delay: 0.4s;
+}
+
+.footer-copy-section {
+  text-align: center;
+}
+
+.footer-caption {
+  color: var(--color-ink, #24324a);
+  font-weight: 700;
+  margin: 0 0 4px 0;
+}
+
+.copy-note {
+  color: var(--color-ink-soft, #5b6984);
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.copy-note--copied { color: #1f6b51; }
+.copy-note--failed, .copy-note--unsupported { color: #9e3b57; }
+
+.footer-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   flex-wrap: wrap;
+  gap: 16px;
+}
+
+.primary-actions {
+  display: flex;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
-.result-score-card__journey-actions {
-  justify-content: flex-end;
+.result-action-btn {
+  min-width: 140px;
+  padding: 12px 24px;
+  font-size: 1rem;
 }
 
-.result-score-card__action-button {
-  min-width: 132px;
+/* Decorations */
+.result-bento__decor {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
 }
 
-@keyframes result-score-card-star-pop {
-  0% {
-    opacity: 0;
-    transform: translateY(8px) scale(0.72);
-  }
-
-  65% {
-    opacity: 1;
-    transform: translateY(-2px) scale(1.08);
-  }
-
-  100% {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
+.decor-spark {
+  position: absolute;
+  color: rgba(255, 184, 42, 0.6);
+  font-size: 1.2rem;
 }
 
-@keyframes result-score-card-unlock-pulse {
-  0%,
-  100% {
-    box-shadow: 0 0 0 0 rgba(255, 184, 42, 0.1);
-  }
+.spark-1 { top: 10%; right: 5%; }
+.spark-2 { bottom: 20%; left: 5%; font-size: 0.9rem; }
 
-  50% {
-    box-shadow: 0 0 0 8px rgba(255, 184, 42, 0);
-  }
+.celebration-container {
+  position: absolute;
+  inset: 0;
 }
 
-@keyframes result-score-card-burst-float {
-  0% {
-    opacity: 0;
-    transform: translateY(12px) scale(0.74) rotate(-10deg);
-  }
-
-  30% {
-    opacity: 1;
-  }
-
-  100% {
-    opacity: 0;
-    transform: translateY(-18px) scale(1.04) rotate(12deg);
-  }
+.burst {
+  position: absolute;
+  color: rgba(255, 184, 42, 0.8);
+  animation: burst-float 2s ease-out both;
 }
 
-@media (max-width: 720px) {
-  .result-score-card {
-    padding: 20px;
-    border-radius: 24px;
-  }
+.result-score-card__burst--1 { top: 5%; left: 15%; font-size: 1rem; }
+.result-score-card__burst--2 { top: 15%; right: 10%; font-size: 1.2rem; animation-delay: 0.1s; }
+.result-score-card__burst--3 { bottom: 40%; left: 8%; font-size: 0.9rem; animation-delay: 0.2s; }
+.result-score-card__burst--4 { bottom: 10%; right: 15%; font-size: 1.1rem; animation-delay: 0.3s; }
 
-  .result-score-card__hero {
-    grid-template-columns: 1fr;
-  }
+@keyframes burst-float {
+  0% { transform: translateY(20px) scale(0.5); opacity: 0; }
+  20% { opacity: 1; }
+  100% { transform: translateY(-40px) scale(1.2) rotate(20deg); opacity: 0; }
+}
 
-  .result-score-card__seal {
-    min-height: 118px;
-    max-width: 190px;
-  }
-
-  .result-score-card__challenge-head,
-  .result-score-card__footer-actions {
-    grid-template-columns: 1fr;
-  }
-
-  .result-score-card__challenge-progress,
-  .result-score-card__challenge-collection,
-  .result-score-card__action-cluster--journey,
-  .result-score-card__journey-actions {
-    justify-items: start;
-    justify-content: flex-start;
-  }
-
-  .result-score-card__challenge-collection {
-    grid-template-columns: 1fr;
-  }
-
-  .result-score-card__grid {
-    grid-template-columns: 1fr;
-  }
-
-  .result-score-card__utility-actions,
-  .result-score-card__journey-actions {
-    flex-direction: column;
-  }
-
-  .result-score-card__action-button {
+@media (max-width: 640px) {
+  .hero-status {
     width: 100%;
   }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .result-score-card__burst,
-  .result-score-card__star--filled,
-  .result-score-card__unlock-callout--fresh {
-    animation: none;
+  .bento-stats {
+    grid-template-columns: 1fr;
+  }
+  .footer-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .primary-actions {
+    flex-direction: column;
+  }
+  .result-action-btn {
+    width: 100%;
   }
 }
 </style>
