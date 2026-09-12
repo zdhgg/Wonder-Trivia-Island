@@ -466,6 +466,70 @@ test("grade four to six previously thin route tags now have at least three direc
   }
 });
 
+// 专项强化（家长按薄弱点开练）依赖“家长口语 → 题库题型”的别名映射。
+// 这里把前端 studyWeakPoints.js 里每个专项的标签都按真实种子题校验一遍，
+// 任何一条指向空题池都会在这里失败，避免家长点进去开出空场。
+test("weak point practice entries all resolve to real questions", () => {
+  const weakPointTargets = [
+    // 二年级数学
+    ["数学", "二年级", "乘法"],
+    ["数学", "二年级", "除法"],
+    ["数学", "二年级", "两步计算"],
+    ["数学", "二年级", "时间认识"],
+    ["数学", "二年级", "长度和质量单位"],
+    ["数学", "二年级", "图表分析"],
+    ["数学", "二年级", "大小比较"],
+    // 二年级语文
+    ["语文", "二年级", "词语"],
+    ["语文", "二年级", "句子"],
+    ["语文", "二年级", "标点符号"],
+    ["语文", "二年级", "顺序理解"],
+    ["语文", "二年级", "通知理解"],
+    ["语文", "二年级", "图表阅读"],
+    ["语文", "二年级", "课文理解"],
+    ["语文", "二年级", "关联词"]
+  ];
+
+  for (const [subject, grade, knowledgeTag] of weakPointTargets) {
+    const searchTerms = getKnowledgeTagSearchTerms(knowledgeTag);
+    const matchedCount = questions.filter(
+      (question) =>
+        question.subject === subject &&
+        question.grade === grade &&
+        (searchTerms.includes(String(question.knowledgeTag || "").trim()) ||
+          searchTerms.includes(String(question.type || "").trim()))
+    ).length;
+
+    assert.ok(
+      matchedCount >= 3,
+      `专项“${grade}${subject} · ${knowledgeTag}”应至少有 3 道匹配题，当前只有 ${matchedCount} 题。`
+    );
+  }
+});
+
+// 家长用老师的话搜索时不该落空：这些说法必须能展开成别名。
+test("parent-facing weak point wording expands into question type aliases", () => {
+  const parentPhrases = [
+    "乘法",
+    "乘法口诀",
+    "乘数位置关系",
+    "几个几",
+    "除法",
+    "有余数除法",
+    "两步计算",
+    "时间认识",
+    "长度和质量单位",
+    "大小比较"
+  ];
+
+  for (const phrase of parentPhrases) {
+    const terms = getKnowledgeTagSearchTerms(phrase);
+
+    assert.ok(terms.length > 1, `“${phrase}”应展开出别名，实际只有 ${JSON.stringify(terms)}。`);
+    assert.ok(terms.includes(phrase), `“${phrase}”的展开结果应保留原词。`);
+  }
+});
+
 test("high priority low-supply route tags now have at least three matched questions", () => {
   const targets = [
     ["语文", "四年级", "上册", "近义词辨析"],
@@ -1557,7 +1621,7 @@ test("question review speech can use Xiaomi MiMo chat completions audio mode", a
   assert.equal(speechBuffer.toString(), "fake-mimo-review-wav");
 });
 
-test("question routes can generate home welcome text with an explicit time cue", async () => {
+test("question routes separate the welcome title, action hint, and spoken time cue", async () => {
   const homeWelcomeParseCalls = [];
 
   setOpenAIHomeWelcomeClientFactoryForTesting(() => ({
@@ -1571,7 +1635,7 @@ test("question routes can generate home welcome text with an explicit time cue",
             tone: "warm",
             title: "傍晚快来挑战吧！",
             bubbleText: "傍晚了，小岛还亮着呢。",
-            speechText: "今天想做什么都可以，不着急。"
+            speechText: "猫头鹰把路线图准备好了，今天想去哪座岛看看？"
           }
         };
       }
@@ -1612,16 +1676,15 @@ test("question routes can generate home welcome text with an explicit time cue",
 
   const payload = await readJson(response);
   assert.equal(payload.data.tone, "warm");
-  assert.ok(payload.data.title.includes("傍晚"));
-  assert.ok(!payload.data.title.includes("挑战"));
-  assert.ok(payload.data.bubbleText.includes("傍晚"));
+  assert.equal(payload.data.title, "小心心，欢迎回来");
+  assert.ok(!payload.data.bubbleText.includes("傍晚"));
   assert.ok(payload.data.speechText.includes("傍晚"));
   assert.notEqual(payload.data.title, payload.data.bubbleText);
   assert.equal(payload.meta.model, "gpt-5.4-mini");
   assert.equal(homeWelcomeParseCalls.length, 1);
-  assert.ok(homeWelcomeParseCalls[0].instructions.includes("title 用在首页大标题"));
-  assert.ok(homeWelcomeParseCalls[0].instructions.includes("必须显式带上给定的时段词"));
-  assert.ok(homeWelcomeParseCalls[0].instructions.includes("傍晚"));
+  assert.ok(homeWelcomeParseCalls[0].instructions.includes("三者必须各司其职"));
+  assert.ok(homeWelcomeParseCalls[0].instructions.includes("时段只在 speechText 中自然出现一次"));
+  assert.ok(homeWelcomeParseCalls[0].instructions.includes("speechText 可用的时段问候是：傍晚了"));
   assert.ok(homeWelcomeParseCalls[0].input.includes("时段关键词：傍晚"));
 });
 

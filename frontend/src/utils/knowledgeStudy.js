@@ -388,6 +388,23 @@ export function buildKnowledgeStudyCard(summary = {}, options = {}) {
   };
 }
 
+// 整册地图/小站列表共用的站点状态：当前在看 > 待回看 > 已连 > 新站
+export function getMapModuleStatus(module, currentLessonId = "") {
+  if (String(currentLessonId || "").trim() === String(module?.id || "")) {
+    return { label: "当前在看", tone: "current" };
+  }
+
+  if (Number(module?.dueCount || 0) > 0) {
+    return { label: `回看 ${module.dueCount}`, tone: "alert" };
+  }
+
+  if (Number(module?.matchedCount || 0) > 0) {
+    return { label: `已连 ${module.matchedCount}`, tone: "calm" };
+  }
+
+  return { label: "新站", tone: "planned" };
+}
+
 export function buildSystematicKnowledgeSections(studyKnowledgeSummaries = []) {
   const summaryMap = new Map(
     studyKnowledgeSummaries.map((summary) => [normalizeText(summary.label), summary]).filter((entry) => entry[0])
@@ -1007,6 +1024,7 @@ function buildSystematicModuleCard(section, subjectSection, module, moduleIndex,
     primaryGrade: section.grade,
     primarySemester: section.semester,
     isSystematic: true,
+    knowledgeTags: [...module.knowledgeTags],
     matchedCount,
     pendingCount,
     dueCount,
@@ -1089,4 +1107,21 @@ export function buildSystematicKnowledgeCards(studyKnowledgeSummaries = []) {
       })
     )
   );
+}
+
+// 学科视觉主题（整册地图/小站列表共用）
+export const SUBJECT_THEME_MAP = Object.freeze({
+  语文: { theme: "chinese", glyph: "文" },
+  数学: { theme: "math", glyph: "数" },
+  英语: { theme: "english", glyph: "E" },
+  科学: { theme: "science", glyph: "科" },
+  道德与法治: { theme: "civic", glyph: "品" }
+});
+
+export function getSubjectTheme(subject) {
+  return SUBJECT_THEME_MAP[subject]?.theme || "general";
+}
+
+export function getSubjectGlyph(subject) {
+  return SUBJECT_THEME_MAP[subject]?.glyph || "学";
 }

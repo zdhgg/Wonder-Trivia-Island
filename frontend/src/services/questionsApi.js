@@ -6,6 +6,7 @@ export async function fetchRandomQuestions({
   count = 3,
   difficulty = "",
   allowSemesterFallback = false,
+  allowKnowledgeTagFallback = true,
   signal
 } = {}) {
   const searchParams = new URLSearchParams();
@@ -34,6 +35,11 @@ export async function fetchRandomQuestions({
 
   if (allowSemesterFallback) {
     searchParams.set("allowSemesterFallback", "1");
+  }
+
+  // 专项强化传入 false，表示题目不够时也不拿无关题补位。
+  if (!allowKnowledgeTagFallback) {
+    searchParams.set("allowKnowledgeTagFallback", "0");
   }
 
   const response = await fetch(`/api/questions/random${searchParams.toString() ? `?${searchParams.toString()}` : ""}`, {

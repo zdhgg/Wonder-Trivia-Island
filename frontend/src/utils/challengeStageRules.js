@@ -36,7 +36,7 @@ export function getLongestCorrectStreak(questionResults = []) {
   return longestStreak;
 }
 
-export function getFinalSprintWindow(stage, totalQuestions = 0) {
+export function getFinalSprintWindow(stage, totalQuestions = undefined) {
   const mission = stage?.mission;
   const questionTotal = toPositiveInt(totalQuestions, toPositiveInt(stage?.questionCount, 0));
   const finalSprintSize = toPositiveInt(mission?.windowSize, 0);
@@ -51,7 +51,7 @@ export function getFinalSprintWindow(stage, totalQuestions = 0) {
   };
 }
 
-export function getFinalSprintCorrectCount(stage, questionResults = [], totalQuestions = 0) {
+export function getFinalSprintCorrectCount(stage, questionResults = [], totalQuestions = undefined) {
   const sprintWindow = getFinalSprintWindow(stage, totalQuestions);
 
   if (!sprintWindow) {
@@ -63,7 +63,7 @@ export function getFinalSprintCorrectCount(stage, questionResults = [], totalQue
     .filter((result) => result === "correct").length;
 }
 
-export function getEffectiveChallengeTimeLimitSeconds(stage, baseTimeLimitSeconds = 0, currentQuestionIndex = 0, totalQuestions = 0) {
+export function getEffectiveChallengeTimeLimitSeconds(stage, baseTimeLimitSeconds = 0, currentQuestionIndex = 0, totalQuestions = undefined) {
   const baseTimeLimit = toPositiveInt(baseTimeLimitSeconds, 0);
   const mission = stage?.mission;
   const sprintWindow = getFinalSprintWindow(stage, totalQuestions);

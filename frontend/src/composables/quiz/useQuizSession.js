@@ -67,6 +67,7 @@ export function createQuizSession({
 
   const isChallengeMode = computed(() => playMode.value === PLAY_MODE.CHALLENGE);
   const isKnowledgePractice = computed(() => quizPracticeContext.value.source === QUIZ_PRACTICE_SOURCE.KNOWLEDGE);
+  const isWeakPointPractice = computed(() => quizPracticeContext.value.source === QUIZ_PRACTICE_SOURCE.WEAK_POINT);
   const isWrongBookPractice = computed(() => quizPracticeContext.value.source === QUIZ_PRACTICE_SOURCE.WRONG_BOOK);
 
   let currentController = null;
@@ -192,6 +193,8 @@ export function createQuizSession({
         count: getActiveQuestionCountValue(),
         difficulty: getActiveDifficultyValue(),
         allowSemesterFallback: !isChallengeMode.value && Boolean(semester),
+        // 专项强化只练选中的那一类，题目不够时也不拿无关题凑数。
+        allowKnowledgeTagFallback: !isWeakPointPractice.value,
         signal: controller.signal
       });
 
@@ -270,6 +273,7 @@ export function createQuizSession({
     quizPracticeContext,
     isChallengeMode,
     isKnowledgePractice,
+    isWeakPointPractice,
     isWrongBookPractice,
     enableQuizSessionPersistence,
     persistQuizSession,

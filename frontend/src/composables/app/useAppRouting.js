@@ -17,8 +17,39 @@ export function createAppRouting({
   const currentView = ref(VIEW_MODE.HOME);
   const studyInitialGradeFilter = ref("");
   const selectedStudyLessonId = ref("");
+  // 最后学习的小站：进入讲堂播放器时写入 localStorage，供首页“继续学习”恢复
+  const STUDY_LAST_LESSON_STORAGE_KEY = "wonder-trivia-island.study.last-lesson-id";
+  const lastStudyLessonId = ref(readLastStudyLessonId());
   const activeToolSectionId = ref(TOOL_DEFAULT_SECTION_ID);
   const activeSettingsSectionId = ref(SETTINGS_DEFAULT_SECTION_ID);
+
+  function readLastStudyLessonId() {
+    if (typeof window === "undefined") {
+      return "";
+    }
+
+    try {
+      return String(window.localStorage.getItem(STUDY_LAST_LESSON_STORAGE_KEY) || "").trim();
+    } catch {
+      return "";
+    }
+  }
+
+  function persistLastStudyLessonId(lessonId) {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    try {
+      if (lessonId) {
+        window.localStorage.setItem(STUDY_LAST_LESSON_STORAGE_KEY, lessonId);
+      }
+    } catch {
+      // 存储失败不影响主流程，仅失去“继续学习”记忆
+    }
+
+    lastStudyLessonId.value = lessonId;
+  }
 
   let isApplyingRouteState = false;
 
@@ -60,6 +91,8 @@ export function createAppRouting({
         return { name: APP_ROUTE_NAME.QUIZ };
       case VIEW_MODE.STUDY:
         return { name: APP_ROUTE_NAME.STUDY };
+      case VIEW_MODE.STUDY_MAP:
+        return { name: APP_ROUTE_NAME.STUDY_MAP };
       case VIEW_MODE.STUDY_PLAYER:
         return {
           name: APP_ROUTE_NAME.STUDY_PLAYER,
@@ -136,8 +169,14 @@ export function createAppRouting({
     currentView.value = VIEW_MODE.STUDY;
   }
 
+  function showStudyMapView() {
+    currentView.value = VIEW_MODE.STUDY_MAP;
+  }
+
   function showStudyLessonPlayerView(lessonId) {
-    selectedStudyLessonId.value = String(lessonId || "").trim();
+    const normalizedLessonId = String(lessonId || "").trim();
+    selectedStudyLessonId.value = normalizedLessonId;
+    persistLastStudyLessonId(normalizedLessonId);
     currentView.value = VIEW_MODE.STUDY_PLAYER;
   }
 
@@ -181,6 +220,9 @@ export function createAppRouting({
           break;
         case APP_ROUTE_NAME.STUDY:
           currentView.value = VIEW_MODE.STUDY;
+          break;
+        case APP_ROUTE_NAME.STUDY_MAP:
+          currentView.value = VIEW_MODE.STUDY_MAP;
           break;
         case APP_ROUTE_NAME.STUDY_PLAYER:
           selectedStudyLessonId.value = String(routeLessonId || "").trim();
@@ -233,6 +275,7 @@ export function createAppRouting({
     currentView,
     studyInitialGradeFilter,
     selectedStudyLessonId,
+    lastStudyLessonId,
     activeToolSectionId,
     activeSettingsSectionId,
     normalizeToolSectionId,
@@ -244,6 +287,7 @@ export function createAppRouting({
     showChallengeView,
     showQuizView,
     showStudyView,
+    showStudyMapView,
     showStudyLessonPlayerView,
     closeStudyLessonPlayerView,
     showWrongBookView,

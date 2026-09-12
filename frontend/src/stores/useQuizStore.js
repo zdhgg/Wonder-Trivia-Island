@@ -32,7 +32,7 @@ export const useQuizStore = defineStore("quiz", {
       this.answerState = ANSWER_STATUS.WAITING;
     },
 
-    submitAnswer(isCorrect, points = 10) {
+    submitAnswer(isCorrect, points = 10, wrongPenalty = 0) {
       if (!this.isWaiting) {
         return;
       }
@@ -45,6 +45,7 @@ export const useQuizStore = defineStore("quiz", {
       }
 
       this.consecutiveCorrectCount = 0;
+      this.currentScore = Math.max(0, this.currentScore - Math.max(0, Number(wrongPenalty) || 0));
       this.answerState = ANSWER_STATUS.WRONG;
     },
 
@@ -54,4 +55,3 @@ export const useQuizStore = defineStore("quiz", {
     }
   }
 });
-

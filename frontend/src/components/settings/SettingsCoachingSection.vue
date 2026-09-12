@@ -27,10 +27,6 @@ defineProps({
   aiReviewLengthOptions: {
     type: Array,
     default: () => []
-  },
-  homeWelcomeVoiceModeOptions: {
-    type: Array,
-    default: () => []
   }
 });
 
@@ -79,16 +75,6 @@ const emit = defineEmits(["save"]);
     </div>
 
     <div class="settings-form">
-      <label class="settings-field settings-field--span">
-        <span class="settings-field__label">首页欢迎语音</span>
-        <select v-model="coachingDraft.homeWelcomeVoiceMode" class="quiz-toolbar__select">
-          <option v-for="option in homeWelcomeVoiceModeOptions" :key="option.value" :value="option.value">
-            {{ option.label }}
-          </option>
-        </select>
-        <span class="settings-field__hint">默认点按播放；如果开启自动播报，也只在当天首次进入首页时尝试一次。</span>
-      </label>
-
       <label class="settings-field">
         <span class="settings-field__label">自动继续延时</span>
         <select v-model="coachingDraft.autoAdvanceDelayMs" class="quiz-toolbar__select">

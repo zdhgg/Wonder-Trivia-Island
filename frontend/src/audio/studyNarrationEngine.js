@@ -17,7 +17,7 @@ function classifyPlayFailure(error) {
 }
 
 export async function playStudyNarration(src, options = {}) {
-  const { volume = 1, onEnded, onError } = options;
+  const { volume = 1, onEnded, onError, onStarted } = options;
 
   stopStudyNarration();
 
@@ -50,6 +50,24 @@ export async function playStudyNarration(src, options = {}) {
 
   activeAudio = audio;
   activeSource = src;
+
+  // 开讲时把语音时长报给调用方，供动画时间轴与讲解节奏对齐
+  const reportStarted = () => {
+    if (activeAudio !== audio) {
+      return;
+    }
+
+    const durationMs =
+      Number.isFinite(audio.duration) && audio.duration > 0 ? Math.round(audio.duration * 1000) : 0;
+
+    onStarted?.({ durationMs });
+  };
+
+  if (Number.isFinite(audio.duration) && audio.duration > 0) {
+    reportStarted();
+  } else {
+    audio.addEventListener("loadedmetadata", reportStarted, { once: true });
+  }
 
   try {
     await audio.play();

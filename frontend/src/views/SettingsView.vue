@@ -20,15 +20,11 @@ const props = defineProps({
   },
   activeSectionId: {
     type: String,
-    default: "settings-overview"
-  },
-  returnLabel: {
-    type: String,
-    default: "首页"
+    default: "settings-profile"
   }
 });
 
-const emit = defineEmits(["back", "profile-saved", "export-backup", "import-backup", "pending-state-change", "update:activeSectionId"]);
+const emit = defineEmits(["profile-saved", "export-backup", "import-backup", "pending-state-change", "update:activeSectionId"]);
 
 const settingsStore = useSettingsStore();
 settingsStore.hydrate();
@@ -52,23 +48,12 @@ const activeSectionModel = computed({
   set: (value) => emit("update:activeSectionId", getSettingsSectionById(resolveSectionId(value)).id)
 });
 
-const accountSummary = computed(() => `${profile.value.displayName} · ${profile.value.grade} · ${profile.value.semester}`);
 const latestLog = computed(() => activityLogs.value[0] ?? null);
 const dirtySectionItems = computed(() =>
   quickLinks.filter((item) => item.dirtyKey && sectionDirtyState.value[item.dirtyKey])
 );
 const dirtySectionCount = computed(() => dirtySectionItems.value.length);
 const hasPendingChanges = computed(() => dirtySectionCount.value > 0);
-const pendingSectionSummary = computed(() =>
-  dirtySectionItems.value.map((item) => item.label).join("、")
-);
-const latestActivityText = computed(() => {
-  if (hasPendingChanges.value) {
-    return `还有 ${pendingSectionSummary.value} 未保存。切换页面前，先处理这些分区更稳。`;
-  }
-
-  return props.backupStatusMessage || latestLog.value?.detail || latestLog.value?.title || "设置按分区保存到本机。";
-});
 const pageStatusLabel = computed(() => {
   if (props.isBackupBusy) {
     return "处理中";
@@ -80,12 +65,6 @@ const pageStatusLabel = computed(() => {
 
   return "本机已保存";
 });
-const aiModelLabel = computed(() => settingsStore.aiConfigurationSummary);
-const coachSummary = computed(() => {
-  const modeText = coachingPreferences.value.autoAdvanceOnCorrect ? "答对自动继续" : "答对停留看反馈";
-  const reviewText = coachingPreferences.value.autoPlayAiReviewOnWrong ? "答错自动播报" : "答错手动播报";
-  return `${modeText} · ${reviewText}`;
-});
 const settingsUpdatedLabel = computed(() =>
   formatTimestamp(
     latestLog.value?.createdAt ||
@@ -94,9 +73,8 @@ const settingsUpdatedLabel = computed(() =>
       profile.value.updatedAt
   )
 );
-const summaryStats = computed(() => props.backupStats.slice(0, 4));
 const activeSectionLabel = computed(
-  () => getSettingsSectionById(activeSectionModel.value)?.navLabel || quickLinks[0]?.label || "概览"
+  () => getSettingsSectionById(activeSectionModel.value)?.navLabel || quickLinks[0]?.label || "学习档案"
 );
 
 function resolveSectionId(href = "") {
@@ -175,27 +153,11 @@ watch(
 <template>
   <section class="settings-page">
     <header class="settings-page__hero">
-      <div class="settings-page__hero-copy">
-        <p class="settings-page__eyebrow">Preferences</p>
-        <div class="settings-page__hero-topline">
-          <div class="settings-page__hero-main">
-            <h1 class="settings-page__title">设置</h1>
-            <p class="settings-page__summary">账户档案、AI、声音、备份和日志都放在一个完整页面里处理。</p>
-          </div>
-
-          <div class="settings-page__hero-actions">
-            <button class="settings-page__back-button" type="button" @click="$emit('back')">
-              返回{{ returnLabel }}
-            </button>
-          </div>
-        </div>
-
-        <div class="settings-page__hero-chips" aria-label="设置页摘要">
-          <span class="settings-page__hero-chip">{{ accountSummary }}</span>
-          <span class="settings-page__hero-chip">AI：{{ aiModelLabel }}</span>
-          <span class="settings-page__hero-chip">陪练：{{ coachSummary }}</span>
-          <span class="settings-page__hero-chip">{{ pageStatusLabel }} · {{ settingsUpdatedLabel }}</span>
-        </div>
+      <div class="settings-page__hero-topline">
+        <h1 class="settings-page__title">设置</h1>
+        <span :class="['settings-page__status-pill', { 'settings-page__status-pill--warning': hasPendingChanges }]">
+          {{ pageStatusLabel }}<template v-if="!hasPendingChanges"> · {{ settingsUpdatedLabel }}</template>
+        </span>
       </div>
     </header>
 
@@ -224,28 +186,11 @@ watch(
             </a>
           </nav>
         </section>
-
-        <section class="settings-page__rail-card">
-          <p class="settings-page__rail-eyebrow">Status</p>
-          <h2 class="settings-page__rail-title">本页按分区保存</h2>
-          <p class="settings-page__rail-text">
-            档案、AI、陪练和声音会分别保存到本机。备份恢复和日志清理这类操作会单独确认。
-          </p>
-          <p :class="['settings-page__status', { 'settings-page__status--warning': hasPendingChanges }]">{{ latestActivityText }}</p>
-
-          <div v-if="summaryStats.length" class="settings-page__stats">
-            <article v-for="item in summaryStats" :key="item.label" class="settings-page__stat">
-              <span class="settings-page__stat-label">{{ item.label }}</span>
-              <strong class="settings-page__stat-value">{{ item.value }}</strong>
-            </article>
-          </div>
-        </section>
       </aside>
 
       <div class="settings-page__content">
         <SettingsCenterPanel
           :active-section-id="activeSectionModel"
-          :show-hero="false"
           :backup-status-message="backupStatusMessage"
           :is-backup-busy="isBackupBusy"
           :backup-stats="backupStats"
@@ -263,15 +208,15 @@ watch(
 <style scoped>
 .settings-page {
   display: grid;
-  gap: 22px;
+  gap: 18px;
 }
 
 .settings-page__hero {
   position: relative;
   overflow: hidden;
-  padding: 24px 26px;
+  padding: 12px 18px;
   border: 1px solid rgba(36, 50, 74, 0.1);
-  border-radius: 32px;
+  border-radius: 22px;
   background:
     radial-gradient(circle at top right, rgba(173, 235, 255, 0.16) 0%, rgba(173, 235, 255, 0) 34%),
     linear-gradient(180deg, rgba(251, 254, 255, 0.96) 0%, rgba(248, 251, 253, 0.92) 100%);
@@ -280,27 +225,41 @@ watch(
     inset 0 1px 0 rgba(255, 255, 255, 0.84);
 }
 
-.settings-page__hero::after {
-  content: "";
-  position: absolute;
-  top: -34px;
-  right: -26px;
-  width: 136px;
-  height: 136px;
-  border-radius: 34px;
-  border: 1px solid rgba(255, 255, 255, 0.58);
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.72) 0%, rgba(255, 255, 255, 0.08) 100%);
-  transform: rotate(14deg);
+.settings-page__hero-topline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
-.settings-page__hero-copy {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  gap: 16px;
+.settings-page__title {
+  margin: 0;
+  color: var(--color-ink, #24324a);
+  font-family: "ZCOOL KuaiLe", "Baloo 2", "Trebuchet MS", sans-serif;
+  font-size: 1.35rem;
+  line-height: 1.1;
 }
 
-.settings-page__eyebrow,
+.settings-page__status-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 5px 12px;
+  border: 1px solid rgba(36, 50, 74, 0.1);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--color-ink-soft, #5b6984);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.settings-page__status-pill--warning {
+  border-color: rgba(255, 186, 82, 0.32);
+  background: rgba(255, 248, 229, 0.92);
+  color: #7b5a28;
+}
+
 .settings-page__rail-eyebrow {
   margin: 0;
   color: var(--color-ink-soft, #5b6984);
@@ -310,86 +269,6 @@ watch(
   text-transform: uppercase;
 }
 
-.settings-page__hero-topline {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.settings-page__hero-main {
-  display: grid;
-  gap: 8px;
-}
-
-.settings-page__title {
-  margin: 0;
-  color: var(--color-ink, #24324a);
-  font-family: "ZCOOL KuaiLe", "Baloo 2", "Trebuchet MS", sans-serif;
-  font-size: clamp(2rem, 4vw, 2.8rem);
-  line-height: 1.02;
-}
-
-.settings-page__summary,
-.settings-page__rail-text,
-.settings-page__status {
-  margin: 0;
-  color: var(--color-ink-soft, #5b6984);
-  font-size: 0.96rem;
-  line-height: 1.6;
-}
-
-.settings-page__hero-actions {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.settings-page__back-button {
-  min-height: 42px;
-  padding: 10px 16px;
-  border: 1px solid rgba(36, 50, 74, 0.12);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.92);
-  color: var(--color-ink, #24324a);
-  font: inherit;
-  font-weight: 800;
-  cursor: pointer;
-  transition:
-    transform 160ms ease,
-    border-color 160ms ease,
-    box-shadow 160ms ease,
-    background-color 160ms ease;
-}
-
-.settings-page__back-button:hover,
-.settings-page__back-button:focus-visible {
-  border-color: rgba(124, 216, 184, 0.42);
-  background: rgba(247, 252, 249, 0.98);
-  box-shadow: 0 16px 24px -24px rgba(36, 50, 74, 0.42);
-  transform: translateY(-1px);
-  outline: none;
-}
-
-.settings-page__hero-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.settings-page__hero-chip {
-  display: inline-flex;
-  align-items: center;
-  min-height: 36px;
-  padding: 8px 12px;
-  border: 1px solid rgba(36, 50, 74, 0.1);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.88);
-  color: var(--color-ink, #24324a);
-  font-size: 0.86rem;
-  font-weight: 700;
-}
-
 .settings-page__layout {
   display: grid;
   grid-template-columns: 248px minmax(0, 1fr);
@@ -397,9 +276,26 @@ watch(
   align-items: start;
 }
 
+/* 桌面两栏：框架一屏，左导航与右内容各自内部滚动 */
+@media (min-width: 1081px) {
+  .settings-page__layout {
+    height: calc(100dvh - 216px);
+    align-items: stretch;
+  }
+
+  .settings-page__rail {
+    align-self: stretch;
+    overflow-y: auto;
+    align-content: start;
+  }
+
+  .settings-page__content {
+    height: 100%;
+    overflow-y: auto;
+  }
+}
+
 .settings-page__rail {
-  position: sticky;
-  top: 20px;
   display: grid;
   gap: 16px;
 }
@@ -490,47 +386,6 @@ watch(
   flex-shrink: 0;
 }
 
-.settings-page__status {
-  padding: 10px 12px;
-  border: 1px solid rgba(36, 50, 74, 0.08);
-  border-radius: 16px;
-  background: rgba(247, 251, 255, 0.86);
-}
-
-.settings-page__status--warning {
-  border-color: rgba(255, 186, 82, 0.24);
-  background: rgba(255, 248, 229, 0.9);
-  color: #7b5a28;
-}
-
-.settings-page__stats {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.settings-page__stat {
-  display: grid;
-  gap: 4px;
-  min-height: 78px;
-  padding: 12px;
-  border: 1px solid rgba(36, 50, 74, 0.08);
-  border-radius: 18px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9) 0%, rgba(248, 251, 253, 0.84) 100%);
-}
-
-.settings-page__stat-label {
-  color: var(--color-ink-soft, #5b6984);
-  font-size: 0.8rem;
-  font-weight: 700;
-}
-
-.settings-page__stat-value {
-  color: var(--color-ink, #24324a);
-  font-size: 0.94rem;
-  line-height: 1.4;
-}
-
 .settings-page__content {
   min-width: 0;
 }
@@ -562,10 +417,6 @@ watch(
   }
 
   .settings-page__rail {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .settings-page__stats {
     grid-template-columns: minmax(0, 1fr);
   }
 }

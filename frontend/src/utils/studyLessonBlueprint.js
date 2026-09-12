@@ -1,3 +1,6 @@
+import { resolveStudyCardAnimationId } from "./studyCardAnimations.js";
+import { resolveStudyConceptAnimationId } from "./studyConceptAnimations.js";
+
 const DEFAULT_CARD_DURATION_MS = 2600;
 
 const SUBJECT_VISUAL_PRESETS = Object.freeze({
@@ -69,6 +72,7 @@ function createCard(item, overrides = {}, options = {}) {
 
   return {
     id: cardId,
+    lessonId,
     kind: normalizeText(overrides.kind) || "lesson",
     eyebrow: normalizeText(overrides.eyebrow),
     title,
@@ -83,6 +87,10 @@ function createCard(item, overrides = {}, options = {}) {
     narrationText: resolveStudyNarrationText(item, cardId, [title, body, detail]),
     visualGlyph: normalizeText(overrides.visualGlyph) || preset.glyph,
     visualTone: normalizeText(overrides.visualTone) || preset.tone,
+    // 概念动画（按知识点标签注册）优先于按步骤动作分配的通用动画
+    visualAnimationId:
+      resolveStudyConceptAnimationId({ knowledgeTags: item?.knowledgeTags, cardId }) ||
+      resolveStudyCardAnimationId({ lessonId, cardId }),
     minDurationMs: Number.isFinite(Number(overrides.minDurationMs))
       ? Math.max(1600, Number(overrides.minDurationMs))
       : DEFAULT_CARD_DURATION_MS

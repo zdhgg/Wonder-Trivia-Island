@@ -1,21 +1,19 @@
 import { storeToRefs } from "pinia";
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { playStudyNarration, stopStudyNarration } from "../audio/studyNarrationEngine";
 import { playAudioCue, syncAudioSettings, unlockAudioEngine } from "../audio/audioEngine";
 import { APP_ROUTE_NAME } from "../router";
 import {
   fetchQuestionCoverage,
   fetchQuestionStats,
   fetchRandomQuestions,
-  generateHomeWelcomeMessage,
-  generateQuestionReviewSpeech
+  generateHomeWelcomeMessage
 } from "../services/questionsApi";
 import { SETTINGS_DEFAULT_SECTION_ID, SETTINGS_SECTION_IDS, getSettingsSectionById, getSettingsSectionByRouteSlug } from "../components/settings/settingsSections";
 import { TOOL_DEFAULT_SECTION_ID, TOOL_SECTION_IDS, getToolSectionById, getToolSectionByRouteSlug } from "../components/tools/toolSections";
 import { useAudioStore } from "../stores/useAudioStore";
 import { useQuizStore } from "../stores/useQuizStore";
-import { DEFAULT_PROFILE, HOME_WELCOME_VOICE_MODE, useSettingsStore } from "../stores/useSettingsStore";
+import { DEFAULT_PROFILE, useSettingsStore } from "../stores/useSettingsStore";
 import {
   buildHomeWelcomeEyebrow,
   buildHomeWelcomeContextHash,
@@ -23,18 +21,12 @@ import {
   buildHomeWelcomeFallbackSpeechText,
   buildHomeWelcomeTitle,
   buildHomeWelcomeTemporalContext,
-  buildHomeWelcomeVoiceButtonLabel,
   getHomeWelcomeDateKey,
-  isHomeWelcomeTitleOffStyle,
-  isHomeWelcomeTextTooSimilar,
   markHomeWelcomeVisited,
   normalizeHomeWelcomeLine,
   normalizeHomeWelcomeSpeechText,
-  normalizeHomeWelcomeTitle,
-  readHomeWelcomeAutoSpeechDate,
   readHomeWelcomeCache,
   readHomeWelcomeVisitDate,
-  markHomeWelcomeAutoSpeechPlayed,
   writeHomeWelcomeCache
 } from "../utils/homeWelcomeMessage";
 import { createAppRouting } from "./app/useAppRouting";
@@ -98,6 +90,7 @@ export function useTriviaApp() {
     CHALLENGE: "challenge",
     QUIZ: "quiz",
     STUDY: "study",
+    STUDY_MAP: "study-map",
     STUDY_PLAYER: "study-player",
     WRONG_BOOK: "wrong-book",
     TOOLS: "tools",
@@ -114,6 +107,7 @@ export function useTriviaApp() {
   const QUIZ_PRACTICE_SOURCE = Object.freeze({
     GENERAL: "general",
     KNOWLEDGE: "knowledge",
+    WEAK_POINT: "weak-point",
     WRONG_BOOK: "wrong-book"
   });
 
@@ -508,6 +502,7 @@ export function useTriviaApp() {
     currentView,
     studyInitialGradeFilter,
     selectedStudyLessonId,
+    lastStudyLessonId,
     activeToolSectionId,
     activeSettingsSectionId,
     normalizeToolSectionId,
@@ -517,6 +512,7 @@ export function useTriviaApp() {
     showChallengeView,
     showQuizView,
     showStudyView,
+    showStudyMapView,
     showStudyLessonPlayerView,
     closeStudyLessonPlayerView,
     showWrongBookView,
@@ -612,6 +608,7 @@ export function useTriviaApp() {
     quizPracticeContext,
     isChallengeMode,
     isKnowledgePractice,
+    isWeakPointPractice,
     isWrongBookPractice,
     enableQuizSessionPersistence,
     persistQuizSession,
@@ -636,7 +633,7 @@ export function useTriviaApp() {
   const activeKnowledgeTagFilter = computed(() =>
     isChallengeMode.value
       ? currentStage.value.questionKnowledgeTag || currentStage.value.knowledgeTag || ""
-      : isKnowledgePractice.value
+      : isKnowledgePractice.value || isWeakPointPractice.value
         ? quizPracticeContext.value.knowledgeTag
         : ""
   );
@@ -731,27 +728,16 @@ export function useTriviaApp() {
 
     return segments.join(" · ");
   });
-  const HOME_WELCOME_SPEAK_DURATION_MS = 2400;
-  const homeWelcomeMascotStatus = ref("idle");
-  const hasPendingHomeWelcomeSpeech = ref(false);
   const homeWelcomeNow = ref(new Date());
   const homeWelcomeVisitedDate = ref(readHomeWelcomeVisitDate());
-  const homeWelcomeAutoSpeechDate = ref(readHomeWelcomeAutoSpeechDate());
   const homeWelcomeVariantIndex = ref(0);
   const homeWelcomeFallbackLine = ref("");
   const homeWelcomeFallbackSpeechText = ref("");
-  const homeWelcomeDynamicTitle = ref("");
   const homeWelcomeDynamicLine = ref("");
   const homeWelcomeDynamicSpeechText = ref("");
   const isHomeWelcomeProfileJustSaved = ref(false);
   const homeWelcomeLastFailedContextKey = ref("");
-  const homeWelcomeSpeechStatus = ref("idle");
-  const homeWelcomeSpeechErrorMessage = ref("");
-  let homeWelcomeSpeechTimer = 0;
   let homeWelcomeRequestController = null;
-  let homeWelcomeSpeechController = null;
-  let activeHomeWelcomeSpeechUrl = "";
-  let homeWelcomeSpeechUtterance = null;
   const homeWelcomeDisplayName = computed(() => {
     const normalizedName = String(settingsStore.profile.displayName || "").trim();
     return normalizedName || DEFAULT_PROFILE.displayName;
@@ -763,28 +749,6 @@ export function useTriviaApp() {
     const grade = String(settingsStore.profile.grade || "").trim();
     const semester = String(settingsStore.profile.semester || "").trim();
     return [grade, semester].filter(Boolean).join(" · ");
-  });
-  const homeWelcomeVoiceMode = computed(
-    () => String(settingsStore.coachingPreferences?.homeWelcomeVoiceMode || HOME_WELCOME_VOICE_MODE.MANUAL).trim() || HOME_WELCOME_VOICE_MODE.MANUAL
-  );
-  const shouldShowHomeWelcomeVoiceButton = computed(
-    () => homeWelcomeVoiceMode.value !== HOME_WELCOME_VOICE_MODE.OFF
-  );
-  const homeWelcomeSpeechVolume = computed(() =>
-    Math.max(0, Math.min(1, Number(masterVolume.value || 0) * Number(sfxVolume.value || 0)))
-  );
-  const effectiveHomeWelcomeTtsVoice = computed(() => {
-    const runtimeVoice = String(settingsStore.effectiveTtsRuntimeConfig?.ttsVoice || "").trim();
-    return runtimeVoice || settingsStore.coachingPreferences?.aiReviewVoice || "coral";
-  });
-  const effectiveHomeWelcomeTtsAudioFormat = computed(() => {
-    const runtimeFormat = String(settingsStore.effectiveTtsRuntimeConfig?.ttsAudioFormat || "").trim().toLowerCase();
-
-    if (["mp3", "wav", "pcm16"].includes(runtimeFormat)) {
-      return runtimeFormat;
-    }
-
-    return "mp3";
   });
 
   const studyKnowledgeSummaries = computed(() => buildKnowledgeSummaryList(studyRecordBook.value));
@@ -957,9 +921,33 @@ export function useTriviaApp() {
     wrongQuestionItems.value.filter((item) => item.reviewStatus === "mastered").length
   );
 
+  const studyProfileGrade = computed(() => String(settingsStore.profile.grade || "").trim());
+
+  // 首页“知识小讲堂”的续学信息：上次学到的小站仍在当前路线里才可恢复
+  const homeStudyResume = computed(() => {
+    const lessonId = String(lastStudyLessonId.value || "").trim();
+
+    if (!lessonId) {
+      return null;
+    }
+
+    const lesson = knowledgeStudyItems.value.find((item) => item.id === lessonId);
+
+    if (!lesson) {
+      return null;
+    }
+
+    return {
+      lessonId,
+      lessonTitle: lesson.label,
+      scopeText: [lesson.primaryGrade, lesson.primarySemester, lesson.primarySubject].filter(Boolean).join(" · ")
+    };
+  });
+
   const homeKnowledgeSpotlight = computed(() => ({
     eyebrow: "",
     title: "知识小讲堂",
+    resume: homeStudyResume.value,
     summary: isKnowledgeRoutesLoading.value
       ? "知识路线加载中，马上就好。"
       : knowledgeSystematicSections.value.length
@@ -1070,45 +1058,17 @@ export function useTriviaApp() {
     homeWelcomeFallbackLine.value ||
     buildHomeWelcomeFallbackLine(homeWelcomeContext.value)
   );
-  const homeWelcomeTitle = computed(() => {
-    const summary = homeWelcomeSummary.value;
-    const dynamicTitle = normalizeHomeWelcomeTitle(homeWelcomeDynamicTitle.value);
-
-    if (
-      dynamicTitle &&
-      !isHomeWelcomeTitleOffStyle(dynamicTitle, homeWelcomeContext.value) &&
-      !isHomeWelcomeTextTooSimilar(dynamicTitle, summary)
-    ) {
-      return dynamicTitle;
-    }
-
-    return buildHomeWelcomeTitle(homeWelcomeContext.value, {
+  const homeWelcomeTitle = computed(() =>
+    buildHomeWelcomeTitle(homeWelcomeContext.value, {
       displayName: homeWelcomeDisplayName.value,
-      useCustomName: isUsingCustomHomeWelcomeName.value,
-      avoidText: summary
-    });
-  });
-  const homeWelcomeSpeechText = computed(() =>
-    homeWelcomeDynamicSpeechText.value ||
-    homeWelcomeFallbackSpeechText.value ||
-    normalizeHomeWelcomeSpeechText(homeWelcomeSummary.value)
+      useCustomName: isUsingCustomHomeWelcomeName.value
+    })
   );
-  const homeWelcomeVoiceButtonLabel = computed(() => {
-    return buildHomeWelcomeVoiceButtonLabel(homeWelcomeContext.value, {
-      status: homeWelcomeSpeechStatus.value
-    });
-  });
   const homeWelcomePanel = computed(() => ({
     eyebrow: homeWelcomeEyebrow.value,
     title: homeWelcomeTitle.value,
-    summary: homeWelcomeSummary.value,
     profileChip: homeWelcomeProfileChip.value,
-    mascotStatus: homeWelcomeMascotStatus.value,
-    themeTone: homeWelcomeContext.value.timeBand,
-    showVoiceButton: shouldShowHomeWelcomeVoiceButton.value,
-    voiceButtonLabel: homeWelcomeVoiceButtonLabel.value,
-    voiceStatus: homeWelcomeSpeechStatus.value,
-    voiceErrorMessage: homeWelcomeSpeechErrorMessage.value
+    themeTone: homeWelcomeContext.value.timeBand
   }));
 
   const activeQuestionCountValue = computed(() =>
@@ -1142,7 +1102,9 @@ export function useTriviaApp() {
         ? "当前是错题温习，会优先读取你本地错题本里的题目快照。"
         : isKnowledgePractice.value
           ? `当前会围绕知识点 ${activeKnowledgeTagFilter.value} 出题，你仍然可以调整题量、难度和限时。`
-          : "自由练习可以随时调整题库范围、题量、难度和限时。"
+          : isWeakPointPractice.value
+            ? `当前只练「${activeKnowledgeTagFilter.value}」这一个薄弱点，题目不够时也不会掺入其他内容。`
+            : "自由练习可以随时调整题库范围、题量、难度和限时。"
   );
 
   const hasPendingQuizSettingsChanges = computed(
@@ -1205,7 +1167,9 @@ export function useTriviaApp() {
         ? `正在整理错题本里的 ${quizPracticeContext.value.questionIds.length || pendingWrongQuestionIds.value.length} 道题。`
         : isKnowledgePractice.value
           ? `正在围绕知识点 ${activeKnowledgeTagFilter.value} 挑选 ${activeQuestionCountValue.value} 道题。`
-          : `正在从奇妙知识岛题库里挑选 ${activeQuestionCountValue.value} 道题。`
+          : isWeakPointPractice.value
+            ? `正在围绕薄弱点 ${activeKnowledgeTagFilter.value} 挑选 ${activeQuestionCountValue.value} 道题。`
+            : `正在从奇妙知识岛题库里挑选 ${activeQuestionCountValue.value} 道题。`
   );
 
   const hasQuestions = computed(() => questions.value.length > 0);
@@ -1311,6 +1275,14 @@ export function useTriviaApp() {
       return [
         { label: "当前模式", value: "知识点学习" },
         { label: "知识点", value: activeKnowledgeTagFilter.value },
+        { label: "练习目标", value: `${activeQuestionCountValue.value} 题 · ${activeDifficultyLabel.value}` }
+      ];
+    }
+
+    if (isWeakPointPractice.value) {
+      return [
+        { label: "当前模式", value: "专项强化" },
+        { label: "薄弱点", value: activeKnowledgeTagFilter.value },
         { label: "练习目标", value: `${activeQuestionCountValue.value} 题 · ${activeDifficultyLabel.value}` }
       ];
     }
@@ -1623,23 +1595,9 @@ export function useTriviaApp() {
         sfxEnabled: nextSfxEnabled,
         sfxVolume: nextSfxVolume
       });
-
-      if (
-        (homeWelcomeSpeechStatus.value === "loading" || homeWelcomeSpeechStatus.value === "playing") &&
-        (nextMasterVolume <= 0 || !nextSfxEnabled || nextSfxVolume <= 0)
-      ) {
-        stopHomeWelcomeSpeech();
-      }
     },
     { immediate: true }
   );
-
-  watch(homeWelcomeVoiceMode, (nextMode) => {
-    if (nextMode === HOME_WELCOME_VOICE_MODE.OFF) {
-      stopHomeWelcomeSpeech();
-      homeWelcomeSpeechErrorMessage.value = "";
-    }
-  });
 
   async function loadQuestionStatsSummary() {
     try {
@@ -1681,145 +1639,11 @@ export function useTriviaApp() {
     showHomeView();
   }
 
-  function clearHomeWelcomeSpeechTimer() {
-    if (homeWelcomeSpeechTimer) {
-      clearTimeout(homeWelcomeSpeechTimer);
-      homeWelcomeSpeechTimer = 0;
-    }
-  }
-
-  function revokeHomeWelcomeSpeechUrl() {
-    if (!activeHomeWelcomeSpeechUrl) {
-      return;
-    }
-
-    URL.revokeObjectURL(activeHomeWelcomeSpeechUrl);
-    activeHomeWelcomeSpeechUrl = "";
-  }
-
-  function cancelHomeWelcomeBrowserSpeech() {
-    if (typeof window === "undefined" || !window.speechSynthesis) {
-      homeWelcomeSpeechUtterance = null;
-      return;
-    }
-
-    if (homeWelcomeSpeechUtterance) {
-      window.speechSynthesis.cancel();
-      homeWelcomeSpeechUtterance = null;
-    }
-  }
-
-  function finishHomeWelcomeSpeech({ status = "idle", errorMessage = "" } = {}) {
-    revokeHomeWelcomeSpeechUrl();
-    homeWelcomeSpeechStatus.value = status;
-    homeWelcomeSpeechErrorMessage.value = errorMessage;
-
-    if (currentView.value === VIEW_MODE.HOME && status !== "playing") {
-      homeWelcomeMascotStatus.value = "idle";
-    }
-  }
-
-  function stopHomeWelcomeSpeech({ clearError = true } = {}) {
-    if (homeWelcomeSpeechController) {
-      homeWelcomeSpeechController.abort();
-      homeWelcomeSpeechController = null;
-    }
-
-    clearHomeWelcomeSpeechTimer();
-    stopStudyNarration();
-    cancelHomeWelcomeBrowserSpeech();
-    finishHomeWelcomeSpeech({
-      status: "idle",
-      errorMessage: clearError ? "" : homeWelcomeSpeechErrorMessage.value
-    });
-  }
-
-  function isBrowserHomeWelcomeSpeechSupported() {
-    return typeof window !== "undefined" && "speechSynthesis" in window && typeof window.SpeechSynthesisUtterance !== "undefined";
-  }
-
-  function tryPlayHomeWelcomeWithBrowserSpeech(text, { suppressError = false } = {}) {
-    const narrationText = normalizeHomeWelcomeSpeechText(text);
-
-    if (!narrationText || !isBrowserHomeWelcomeSpeechSupported()) {
-      return false;
-    }
-
-    clearHomeWelcomeSpeechTimer();
-    stopStudyNarration();
-    cancelHomeWelcomeBrowserSpeech();
-
-    const utterance = new SpeechSynthesisUtterance(narrationText);
-    utterance.lang = "zh-CN";
-    utterance.rate = Math.max(0.85, Math.min(1.2, Number(settingsStore.coachingPreferences?.aiReviewSpeed || 1)));
-    utterance.pitch = 1;
-    utterance.volume = homeWelcomeSpeechVolume.value > 0 ? homeWelcomeSpeechVolume.value : 1;
-
-    homeWelcomeSpeechUtterance = utterance;
-    homeWelcomeMascotStatus.value = "speaking";
-    homeWelcomeSpeechStatus.value = "playing";
-    homeWelcomeSpeechErrorMessage.value = "";
-
-    utterance.onend = () => {
-      if (homeWelcomeSpeechUtterance !== utterance) {
-        return;
-      }
-
-      homeWelcomeSpeechUtterance = null;
-      finishHomeWelcomeSpeech();
-    };
-
-    utterance.onerror = () => {
-      if (homeWelcomeSpeechUtterance !== utterance) {
-        return;
-      }
-
-      homeWelcomeSpeechUtterance = null;
-      finishHomeWelcomeSpeech({
-        status: suppressError ? "idle" : "error",
-        errorMessage: suppressError ? "" : "浏览器这次没把欢迎语读出来。"
-      });
-    };
-
-    try {
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(utterance);
-      return true;
-    } catch {
-      homeWelcomeSpeechUtterance = null;
-
-      if (!suppressError) {
-        finishHomeWelcomeSpeech({
-          status: "error",
-          errorMessage: "浏览器这次没把欢迎语读出来。"
-        });
-      } else {
-        finishHomeWelcomeSpeech();
-      }
-
-      return false;
-    }
-  }
-
-  function triggerHomeWelcomeMascotSpeech(durationMs = HOME_WELCOME_SPEAK_DURATION_MS) {
-    clearHomeWelcomeSpeechTimer();
-    homeWelcomeMascotStatus.value = "speaking";
-    homeWelcomeSpeechTimer = setTimeout(() => {
-      homeWelcomeMascotStatus.value = "idle";
-      homeWelcomeSpeechTimer = 0;
-    }, durationMs);
-  }
-
-  function queueHomeWelcomeMascotSpeech() {
+  // 资料变更后重新生成首页欢迎文案（与语音无关）。
+  function refreshHomeWelcomeAfterProfileChange() {
     isHomeWelcomeProfileJustSaved.value = true;
-
-    if (currentView.value === VIEW_MODE.HOME) {
-      advanceHomeWelcomeVariant();
-      void refreshHomeWelcomeCopy({ force: true });
-      return;
-    }
-
-    hasPendingHomeWelcomeSpeech.value = true;
+    advanceHomeWelcomeVariant();
+    void refreshHomeWelcomeCopy({ force: true });
   }
 
   function clearHomeWelcomeRequest() {
@@ -1833,10 +1657,6 @@ export function useTriviaApp() {
     homeWelcomeVisitedDate.value = markHomeWelcomeVisited();
   }
 
-  function markHomeWelcomeAutoSpeechPlayedToday() {
-    homeWelcomeAutoSpeechDate.value = markHomeWelcomeAutoSpeechPlayed();
-  }
-
   function advanceHomeWelcomeVariant() {
     homeWelcomeVariantIndex.value += 1;
   }
@@ -1845,163 +1665,15 @@ export function useTriviaApp() {
     homeWelcomeNow.value = new Date();
   }
 
-  async function handlePlayHomeWelcomeVoice({ triggeredByAuto = false } = {}) {
-    if (homeWelcomeVoiceMode.value === HOME_WELCOME_VOICE_MODE.OFF) {
-      return;
-    }
-
-    if (homeWelcomeSpeechStatus.value === "loading" || homeWelcomeSpeechStatus.value === "playing") {
-      if (!triggeredByAuto) {
-        stopHomeWelcomeSpeech();
-      }
-
-      return;
-    }
-
-    if (homeWelcomeSpeechVolume.value <= 0 || !sfxEnabled.value) {
-      if (!triggeredByAuto) {
-        homeWelcomeSpeechErrorMessage.value = "当前欢迎语音跟随音效通道，请先打开音效和音量。";
-      }
-
-      return;
-    }
-
-    const narrationText = normalizeHomeWelcomeSpeechText(homeWelcomeSpeechText.value);
-
-    if (!narrationText) {
-      return;
-    }
-
-    if (triggeredByAuto) {
-      markHomeWelcomeAutoSpeechPlayedToday();
-    }
-
-    stopHomeWelcomeSpeech();
-    clearHomeWelcomeSpeechTimer();
-    homeWelcomeSpeechErrorMessage.value = "";
-    homeWelcomeSpeechStatus.value = "loading";
-    homeWelcomeMascotStatus.value = "speaking";
-
-    const speechController = new AbortController();
-    homeWelcomeSpeechController = speechController;
-
-    try {
-      if (!triggeredByAuto) {
-        await ensureAudioReady();
-      }
-
-      const blob = await generateQuestionReviewSpeech({
-        text: narrationText,
-        model: settingsStore.effectiveTtsModel || "",
-        voice: effectiveHomeWelcomeTtsVoice.value,
-        speed: settingsStore.coachingPreferences?.aiReviewSpeed || 1,
-        audioFormat: effectiveHomeWelcomeTtsAudioFormat.value,
-        aiRuntime: settingsStore.effectiveTtsRuntimeConfig,
-        signal: speechController.signal
-      });
-
-      if (speechController.signal.aborted || homeWelcomeSpeechController !== speechController) {
-        return;
-      }
-
-      activeHomeWelcomeSpeechUrl = URL.createObjectURL(blob);
-      const playback = await playStudyNarration(activeHomeWelcomeSpeechUrl, {
-        volume: homeWelcomeSpeechVolume.value,
-        onEnded: () => {
-          finishHomeWelcomeSpeech();
-        },
-        onError: ({ reason }) => {
-          const fallbackStarted = tryPlayHomeWelcomeWithBrowserSpeech(narrationText, {
-            suppressError: triggeredByAuto
-          });
-
-          if (fallbackStarted) {
-            return;
-          }
-
-          finishHomeWelcomeSpeech({
-            status: triggeredByAuto ? "idle" : "error",
-            errorMessage:
-              triggeredByAuto
-                ? ""
-                : reason === "play-blocked"
-                  ? "浏览器拦住了欢迎语音，点一下按钮再试一次。"
-                  : "猫头鹰这次没把欢迎词说出来。"
-          });
-        }
-      });
-
-      if (!playback.started) {
-        const fallbackStarted = tryPlayHomeWelcomeWithBrowserSpeech(narrationText, {
-          suppressError: triggeredByAuto
-        });
-
-        if (fallbackStarted) {
-          return;
-        }
-
-        finishHomeWelcomeSpeech({
-          status: triggeredByAuto ? "idle" : "error",
-          errorMessage:
-            triggeredByAuto
-              ? ""
-              : playback.reason === "play-blocked"
-                ? "浏览器拦住了欢迎语音，点一下按钮再试一次。"
-                : "猫头鹰这次没把欢迎词说出来。"
-        });
-        return;
-      }
-
-      homeWelcomeSpeechStatus.value = "playing";
-    } catch (error) {
-      if (error?.name === "AbortError" || speechController.signal.aborted) {
-        return;
-      }
-
-      const fallbackStarted = tryPlayHomeWelcomeWithBrowserSpeech(narrationText, {
-        suppressError: triggeredByAuto
-      });
-
-      if (fallbackStarted) {
-        return;
-      }
-
-      finishHomeWelcomeSpeech({
-        status: triggeredByAuto ? "idle" : "error",
-        errorMessage: triggeredByAuto ? "" : error?.message || "猫头鹰这次没把欢迎词说出来。"
-      });
-    } finally {
-      if (homeWelcomeSpeechController === speechController) {
-        homeWelcomeSpeechController = null;
-      }
-    }
-  }
-
   async function refreshHomeWelcomeCopy({ force = false } = {}) {
     refreshHomeWelcomeTemporalContext();
     const context = homeWelcomeContext.value;
     const contextKey = `${getHomeWelcomeDateKey(homeWelcomeNow.value)}|${buildHomeWelcomeContextHash(context)}`;
-    const shouldSpeakOnRefresh = currentView.value === VIEW_MODE.HOME && (force || context.isFirstHomeVisitToday);
-    const shouldAutoPlayVoice =
-      currentView.value === VIEW_MODE.HOME &&
-      homeWelcomeVoiceMode.value === HOME_WELCOME_VOICE_MODE.DAILY_AUTO &&
-      context.isFirstHomeVisitToday &&
-      homeWelcomeAutoSpeechDate.value !== getHomeWelcomeDateKey(homeWelcomeNow.value);
 
     homeWelcomeDynamicLine.value = "";
     homeWelcomeDynamicSpeechText.value = "";
-    homeWelcomeDynamicTitle.value = "";
     homeWelcomeFallbackLine.value = buildHomeWelcomeFallbackLine(context);
     homeWelcomeFallbackSpeechText.value = buildHomeWelcomeFallbackSpeechText(context);
-    homeWelcomeSpeechErrorMessage.value = "";
-
-    if (shouldSpeakOnRefresh && homeWelcomeMascotStatus.value !== "speaking") {
-      triggerHomeWelcomeMascotSpeech();
-    }
-
-    if (shouldAutoPlayVoice) {
-      void handlePlayHomeWelcomeVoice({ triggeredByAuto: true });
-    }
 
     if (!force && homeWelcomeLastFailedContextKey.value === contextKey) {
       markHomeWelcomeVisitedToday();
@@ -2012,7 +1684,6 @@ export function useTriviaApp() {
     const cachedLine = !force ? readHomeWelcomeCache(context) : null;
 
     if (cachedLine?.text) {
-      homeWelcomeDynamicTitle.value = normalizeHomeWelcomeTitle(cachedLine.title);
       homeWelcomeDynamicLine.value = cachedLine.text;
       homeWelcomeDynamicSpeechText.value = normalizeHomeWelcomeSpeechText(cachedLine.speechText || cachedLine.text);
       homeWelcomeLastFailedContextKey.value = "";
@@ -2032,17 +1703,15 @@ export function useTriviaApp() {
         aiRuntime: settingsStore.effectiveReviewRuntimeConfig,
         signal: requestController.signal
       });
-      const resolvedTitle = normalizeHomeWelcomeTitle(payload?.data?.title);
       const resolvedLine = normalizeHomeWelcomeLine(payload?.data?.bubbleText || payload?.data?.speechText);
       const resolvedSpeechText = normalizeHomeWelcomeSpeechText(payload?.data?.speechText || payload?.data?.bubbleText);
 
       if (resolvedLine) {
-        homeWelcomeDynamicTitle.value = resolvedTitle;
         homeWelcomeDynamicLine.value = resolvedLine;
         homeWelcomeDynamicSpeechText.value = resolvedSpeechText || resolvedLine;
         homeWelcomeLastFailedContextKey.value = "";
         writeHomeWelcomeCache(context, resolvedLine, {
-          title: resolvedTitle,
+          title: homeWelcomeTitle.value,
           speechText: resolvedSpeechText || resolvedLine,
           source: payload?.meta?.source || payload?.meta?.api || "ai"
         });
@@ -2116,7 +1785,44 @@ export function useTriviaApp() {
     closeQuizSettings();
     closeAudioSettings();
     void ensureKnowledgeStudyRuntime();
-    showStudyView({ gradeFilter });
+    // 没有显式指定年级时，回落到孩子档案里的年级
+    const requestedGrade = String(gradeFilter || "").trim() || String(settingsStore.profile.grade || "").trim();
+    showStudyView({ gradeFilter: requestedGrade });
+    restoreLastStudyLesson();
+  }
+
+  function openStudyMapView() {
+    closeQuizSettings();
+    closeAudioSettings();
+    void ensureKnowledgeStudyRuntime();
+    showStudyMapView();
+  }
+
+  // 深链直达讲堂/地图页时也要装载路线数据
+  watch(currentView, (view) => {
+    if (view === VIEW_MODE.STUDY || view === VIEW_MODE.STUDY_MAP) {
+      void ensureKnowledgeStudyRuntime();
+    }
+  });
+
+  // 续学：把讲堂恢复到上次学到的小站（等路线数据就绪后对齐年级与选中站）
+  function restoreLastStudyLesson() {
+    const lastId = String(lastStudyLessonId.value || "").trim();
+
+    if (!lastId) {
+      return;
+    }
+
+    void ensureKnowledgeStudyRuntime().then(() => {
+      const lastLesson = knowledgeStudyItems.value.find((item) => item.id === lastId);
+
+      if (!lastLesson) {
+        return;
+      }
+
+      selectedStudyLessonId.value = lastLesson.id;
+      studyInitialGradeFilter.value = String(lastLesson.primaryGrade || "").trim();
+    });
   }
 
   async function openStudyLessonPlayer(itemOrId) {
@@ -2432,6 +2138,37 @@ export function useTriviaApp() {
     });
   }
 
+  // 专项强化：只围绕一个薄弱点抽题，不按学期过滤（题库里通用学期题很少，
+  // 加上学期条件会把题量砍掉一半），并关掉标签兜底以保证“不掺别的题”。
+  async function startWeakPointPractice({ weakPoint, grade, subject } = {}) {
+    const knowledgeLabel = String(weakPoint?.knowledgeTag || "").trim();
+    const nextGrade = String(grade || "").trim();
+    const nextSubject = String(subject || "").trim();
+
+    if (!knowledgeLabel || !nextGrade || !nextSubject) {
+      return;
+    }
+
+    wrongBookFocusTag.value = "";
+    setQuizPracticeContext({
+      source: QUIZ_PRACTICE_SOURCE.WEAK_POINT,
+      knowledgeTag: knowledgeLabel
+    });
+
+    await enterQuizWorkspace({
+      nextPlayMode: PLAY_MODE.FREE,
+      nextSettings: {
+        selectedSubject: nextSubject,
+        selectedGrade: nextGrade,
+        selectedSemester: DEFAULT_QUIZ_SETTINGS.selectedSemester,
+        selectedQuestionCount: "5",
+        // 不加难度过滤：专项强化要覆盖整个知识点，限制难度会砍掉题池，
+        // 造成选择器里显示的题量和实际能抽到的对不上。
+        selectedDifficulty: ""
+      }
+    });
+  }
+
   async function startWrongQuestionReview(questionIds = pendingWrongQuestionIds.value) {
     const ids = Array.isArray(questionIds)
       ? questionIds
@@ -2553,21 +2290,9 @@ export function useTriviaApp() {
   watch(currentView, (nextView) => {
     if (nextView !== VIEW_MODE.HOME) {
       clearHomeWelcomeRequest();
-      stopHomeWelcomeSpeech();
-    }
-
-    if (nextView !== VIEW_MODE.HOME || !hasPendingHomeWelcomeSpeech.value) {
-      if (nextView === VIEW_MODE.HOME) {
-        advanceHomeWelcomeVariant();
-        void refreshHomeWelcomeCopy({
-          force: isHomeWelcomeProfileJustSaved.value
-        });
-      }
-
       return;
     }
 
-    hasPendingHomeWelcomeSpeech.value = false;
     advanceHomeWelcomeVariant();
     void refreshHomeWelcomeCopy({
       force: isHomeWelcomeProfileJustSaved.value
@@ -2597,8 +2322,6 @@ export function useTriviaApp() {
 
   onBeforeUnmount(() => {
     clearHomeWelcomeRequest();
-    stopHomeWelcomeSpeech();
-    clearHomeWelcomeSpeechTimer();
     disposeQuizSession();
     disposeChallengeRuntime();
     disposeStudyRecordRuntime();
@@ -2935,6 +2658,8 @@ export function useTriviaApp() {
     selectedStudyLesson,
     nextStudyLesson,
     wrongQuestionItems,
+    homeStudyResume,
+    studyProfileGrade,
     homeKnowledgeSpotlight,
     homeWrongBookSpotlight,
     knowledgeStudyOverview,
@@ -2946,6 +2671,7 @@ export function useTriviaApp() {
     homeChallengeChapter,
     homeChallengeLabel,
     homeChallengeRouteTitle,
+    homeChallengeStageLabel,
     challengeWorldData,
     challengeStages,
     currentStage,
@@ -3014,8 +2740,7 @@ export function useTriviaApp() {
     restoreChallengeProgressBook,
     restoreStudyRecordBook,
     applyProfileDefaultsToHome,
-    queueHomeWelcomeMascotSpeech,
-    handlePlayHomeWelcomeVoice,
+    refreshHomeWelcomeAfterProfileChange,
     getViewTabClass,
     getChallengeStageClass,
     clearChallengeOutcome,
@@ -3024,6 +2749,7 @@ export function useTriviaApp() {
     openChallengeView,
     openQuizView,
     openStudyView,
+    openStudyMapView,
     openStudyLessonPlayer,
     closeStudyLessonPlayer,
     completeStudyLesson,
@@ -3047,6 +2773,7 @@ export function useTriviaApp() {
     startHomeSubjectPractice,
     startHomeFreePractice,
     startKnowledgeTagPractice,
+    startWeakPointPractice,
     startWrongQuestionReview,
     startSingleWrongQuestionReview,
     handleImportFinished,

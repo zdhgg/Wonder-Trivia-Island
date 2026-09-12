@@ -1,27 +1,12 @@
 import { computed, ref, watch } from "vue";
-
-function formatCurriculumGradeRange(sections = []) {
-  const grades = [...new Set(sections.map((section) => String(section?.grade || "").trim()).filter(Boolean))];
-
-  if (!grades.length) {
-    return "学习路线";
-  }
-
-  if (grades.length === 1) {
-    return `${grades[0]}学习路线`;
-  }
-
-  const first = grades[0].replace("年级", "");
-  const last = grades[grades.length - 1].replace("年级", "");
-  return `${first}到${last}年级学习路线`;
-}
+import { getMapModuleStatus, getSubjectTheme, getSubjectGlyph } from "../../utils/knowledgeStudy";
 
 function buildUniqueOptions(values = [], allLabel) {
   const normalized = [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))];
   return [allLabel, ...normalized];
 }
 
-function getStudyGradeCoverConfig(grade) {
+export function getStudyGradeCoverConfig(grade) {
   if (grade === "一年级") {
     return {
       theme: "sprout",
@@ -98,55 +83,12 @@ function getStudyGradeCoverConfig(grade) {
   };
 }
 
-function getStudySemesterCoverConfig(semester) {
-  if (semester === "上册") {
-    return {
-      theme: "upper",
-      glyph: "上",
-      coverLabel: "上册封面",
-      prompt: "先把这一册前半程的主线学顺"
-    };
-  }
-
-  if (semester === "下册") {
-    return {
-      theme: "lower",
-      glyph: "下",
-      coverLabel: "下册封面",
-      prompt: "继续把后半程的主线稳稳接上"
-    };
-  }
-
-  return {
-    theme: "all",
-    glyph: "册",
-    coverLabel: "整年总览",
-    prompt: "先看整年，再决定先走哪一册"
-  };
-}
-
 const PRIMARY_GRADE_OPTIONS = Object.freeze(["一年级", "二年级", "三年级", "四年级", "五年级", "六年级"]);
-const SUBJECT_THEME_MAP = Object.freeze({
-  语文: { theme: "chinese", glyph: "文" },
-  数学: { theme: "math", glyph: "数" },
-  英语: { theme: "english", glyph: "E" },
-  科学: { theme: "science", glyph: "科" },
-  道德与法治: { theme: "civic", glyph: "品" }
-});
-
 export function useKnowledgeStudyFilters(props) {
-  const expandedLessonIds = ref([]);
-  const lessonContentStageById = ref({});
   const selectedGradeFilter = ref("");
   const selectedSemesterFilter = ref("全部学期");
   const selectedSubjectFilter = ref("全部学科");
   const selectedLessonId = ref("");
-  const expandedLessonContentIds = ref([]);
-  const showRecordedCards = ref(false);
-  const showRecommendedCards = ref(false);
-  const isStudyNavigatorOpen = ref(false);
-  const isCurriculumMapOpen = ref(false);
-  const selectedMapSectionId = ref("");
 
   function resolvePreferredGradeFilter(options = []) {
     const requestedGrade = String(props.initialGradeFilter || "").trim();
@@ -231,20 +173,6 @@ export function useKnowledgeStudyFilters(props) {
     { immediate: true }
   );
 
-  watch([selectedGradeFilter, selectedSemesterFilter, selectedSubjectFilter], () => {
-    expandedLessonIds.value = [];
-    expandedLessonContentIds.value = [];
-    lessonContentStageById.value = {};
-    showRecordedCards.value = false;
-    showRecommendedCards.value = false;
-  });
-
-  watch(selectedLessonId, () => {
-    expandedLessonIds.value = [];
-    expandedLessonContentIds.value = [];
-    lessonContentStageById.value = {};
-  });
-
   function matchesSelectedGrade(value) {
     return selectedGradeFilter.value === "全部年级" || String(value || "").trim() === selectedGradeFilter.value;
   }
@@ -279,30 +207,6 @@ export function useKnowledgeStudyFilters(props) {
     props.knowledgeItems.filter((item) => item.isSystematic && matchesKnowledgeItem(item))
   );
 
-  const mapSectionOptions = computed(() =>
-    filteredSystematicSections.value.map((section) => {
-      const modules = (section.subjects || []).flatMap((subject) => subject.modules || []);
-      const dueModuleCount = modules.filter((module) => Number(module.dueCount || 0) > 0).length;
-
-      return {
-        id: section.id,
-        label: `${section.grade} · ${section.semester}`,
-        subjectCount: section.subjects.length,
-        moduleCount: modules.length,
-        dueModuleCount,
-        statusText: dueModuleCount > 0 ? `${dueModuleCount} 站待回看` : `${modules.length} 站`
-      };
-    })
-  );
-
-  const recordedKnowledgeItems = computed(() =>
-    props.knowledgeItems.filter((item) => !item.isRecommended && !item.isSystematic && matchesKnowledgeItem(item))
-  );
-
-  const recommendedKnowledgeItems = computed(() =>
-    props.knowledgeItems.filter((item) => item.isRecommended && matchesKnowledgeItem(item))
-  );
-
   const systematicSectionsAvailable = computed(() => filteredSystematicSections.value.length > 0);
   const selectedGradeHasSystematicRoute = computed(() =>
     selectedGradeFilter.value === "全部年级"
@@ -312,7 +216,6 @@ export function useKnowledgeStudyFilters(props) {
   const selectedGradeIsPreparing = computed(
     () => !props.isLoading && selectedGradeFilter.value !== "全部年级" && !selectedGradeHasSystematicRoute.value
   );
-  const curriculumRouteTitle = computed(() => formatCurriculumGradeRange(filteredSystematicSections.value));
   const activeFilterSummary = computed(() => {
     const segments = [selectedGradeFilter.value, selectedSemesterFilter.value, selectedSubjectFilter.value].filter(
       (value) => !value.startsWith("全部")
@@ -333,25 +236,6 @@ export function useKnowledgeStudyFilters(props) {
       filteredSystematicKnowledgeItems.value.find((item) => item.id === selectedLessonId.value) ||
       filteredSystematicKnowledgeItems.value[0] ||
       null
-  );
-
-  const studyNavigatorSummary = computed(() => {
-    if (selectedSystematicKnowledgeItem.value) {
-      const scope = activeFilterSummary.value === "全部内容" ? "" : `${activeFilterSummary.value} · `;
-      return `${scope}当前小站 ${selectedSystematicKnowledgeItem.value.label}`;
-    }
-
-    return filterResultSummary.value;
-  });
-
-  const activeMapSection = computed(
-    () =>
-      filteredSystematicSections.value.find((section) => section.id === selectedMapSectionId.value) ||
-      filteredSystematicSections.value[0] ||
-      null
-  );
-  const activeMapSectionOption = computed(
-    () => mapSectionOptions.value.find((option) => option.id === activeMapSection.value?.id) || null
   );
 
   const currentGradeCover = computed(() => {
@@ -386,89 +270,45 @@ export function useKnowledgeStudyFilters(props) {
     ];
   });
 
-  const semesterCoverEntries = computed(() => {
-    if (selectedGradeFilter.value === "全部年级") {
+  // 当前筛选范围内有待补强题的小站与总题数，供页面底部快捷条直达错题本
+  const dueStations = computed(() =>
+    props.knowledgeItems.filter((item) => matchesKnowledgeItem(item) && Number(item.dueCount || 0) > 0)
+  );
+  const dueQuestionCount = computed(() =>
+    dueStations.value.reduce((sum, item) => sum + Number(item.dueCount || 0), 0)
+  );
+
+  // 当前小站所在那一册的学科分组小站列表，供页面右侧切换栏直接换站
+  const stationRailGroups = computed(() => {
+    const activeSection =
+      filteredSystematicSections.value.find((section) =>
+        (section.subjects || []).some((subject) =>
+          (subject.modules || []).some((module) => module.id === selectedLessonId.value)
+        )
+      ) || filteredSystematicSections.value[0];
+
+    if (!activeSection) {
       return [];
     }
 
-    return props.systematicSections
-      .filter((section) => section.grade === selectedGradeFilter.value)
-      .map((section) => {
-        const subjectSections = (section.subjects || []).filter((subject) => matchesSelectedSubject(subject.subject));
-        const lessonCount = props.knowledgeItems.filter(
-          (item) =>
-            item.isSystematic &&
-            item.primaryGrade === section.grade &&
-            item.primarySemester === section.semester &&
-            matchesSelectedSubject(item.primarySubject)
-        ).length;
-        const dueModuleCount = props.knowledgeItems.filter(
-          (item) =>
-            item.isSystematic &&
-            item.primaryGrade === section.grade &&
-            item.primarySemester === section.semester &&
-            matchesSelectedSubject(item.primarySubject) &&
-            Number(item.dueCount || 0) > 0
-        ).length;
-        const subjects = [...new Set(subjectSections.map((subject) => subject.subject).filter(Boolean))];
-        const cover = getStudySemesterCoverConfig(section.semester);
-
-        return {
-          id: section.id,
-          semester: section.semester,
-          title: section.title,
-          summary: section.summary,
-          subjectLabel: subjects.join("、") || "本册主线",
-          lessonCount,
-          dueModuleCount,
-          isActive: selectedSemesterFilter.value === section.semester,
-          statusText:
-            selectedSemesterFilter.value === section.semester
-              ? "当前在看"
-              : dueModuleCount > 0
-                ? `今天回看 ${dueModuleCount} 站`
-                : lessonCount > 0
-                  ? `${lessonCount} 个学习站`
-                  : "先看这一册",
-          ...cover
-        };
-      })
-      .filter((entry) => entry.lessonCount > 0);
+    return [
+      {
+        id: activeSection.id,
+        title: activeSection.title,
+        subjects: (activeSection.subjects || []).map((subject) => ({
+          id: subject.id,
+          subject: subject.subject,
+          theme: getSubjectTheme(subject.subject),
+          glyph: getSubjectGlyph(subject.subject),
+          stations: (subject.modules || []).map((module) => ({
+            id: module.id,
+            title: module.title,
+            status: getMapModuleStatus(module, selectedLessonId.value)
+          }))
+        }))
+      }
+    ];
   });
-
-  const semesterCoverSummary = computed(() => {
-    if (!semesterCoverEntries.value.length) {
-      return "";
-    }
-
-    if (selectedSemesterFilter.value === "全部学期") {
-      return `先看 ${selectedGradeFilter.value} 整年路线，也可以直接点上册或下册。`;
-    }
-
-    return `${selectedGradeFilter.value} · ${selectedSemesterFilter.value} 已选好，后面的小站都会跟着这一册走。`;
-  });
-
-  const lessonPickerGroups = computed(() =>
-    filteredSystematicSections.value.map((section) => ({
-      id: section.id,
-      title: section.title,
-      groups: (section.subjects || []).map((subject) => ({
-        id: subject.id,
-        title: subject.subject,
-        lessons: (subject.modules || [])
-          .map((module) => filteredSystematicKnowledgeItems.value.find((item) => item.id === module.id))
-          .filter(Boolean)
-      }))
-    }))
-  );
-
-  function findMapSectionIdByLesson(lessonId) {
-    return (
-      filteredSystematicSections.value.find((section) =>
-        (section.subjects || []).some((subject) => (subject.modules || []).some((module) => module.id === lessonId))
-      )?.id || ""
-    );
-  }
 
   watch(
     filteredSystematicKnowledgeItems,
@@ -492,77 +332,6 @@ export function useKnowledgeStudyFilters(props) {
     { immediate: true }
   );
 
-  watch(
-    mapSectionOptions,
-    (options) => {
-      const optionIds = options.map((option) => option.id);
-
-      if (!optionIds.length) {
-        selectedMapSectionId.value = "";
-        return;
-      }
-
-      if (!optionIds.includes(selectedMapSectionId.value)) {
-        selectedMapSectionId.value = findMapSectionIdByLesson(selectedLessonId.value) || optionIds[0];
-      }
-    },
-    { immediate: true }
-  );
-
-  watch(isCurriculumMapOpen, (isOpen) => {
-    if (!isOpen) {
-      return;
-    }
-
-    const preferredSectionId = findMapSectionIdByLesson(selectedLessonId.value);
-
-    if (preferredSectionId) {
-      selectedMapSectionId.value = preferredSectionId;
-    }
-  });
-
-  const knowledgeSections = computed(() => {
-    const sections = [];
-
-    if (selectedSystematicKnowledgeItem.value) {
-      sections.push({
-        id: "systematic-lessons",
-        eyebrow: "路线小卡",
-        title: "今天先学这一站",
-        description: `先把「${selectedSystematicKnowledgeItem.value.label}」学顺，再决定要不要继续往后看。`,
-        items: [selectedSystematicKnowledgeItem.value]
-      });
-    }
-
-    if (recordedKnowledgeItems.value.length) {
-      sections.push({
-        id: "recorded",
-        eyebrow: "我的小卡",
-        title: "我的知识小卡",
-        description: "这些小卡已经连上做题记录，适合回看巩固。",
-        items: recordedKnowledgeItems.value,
-        collapsible: true,
-        expanded: showRecordedCards.value,
-        collapsedText: `这里还有 ${recordedKnowledgeItems.value.length} 张个人小卡，想看时再展开。`
-      });
-    }
-
-    if (recommendedKnowledgeItems.value.length) {
-      sections.push({
-        id: "recommended",
-        eyebrow: "起步小卡",
-        title: recordedKnowledgeItems.value.length ? "还能先学这些" : "可以先从这些开始",
-        description: "这些还没挂上个人进度，也可以先听讲入门。",
-        items: recommendedKnowledgeItems.value,
-        collapsible: true,
-        expanded: showRecommendedCards.value,
-        collapsedText: `这里还有 ${recommendedKnowledgeItems.value.length} 张起步小卡，想继续时再打开。`
-      });
-    }
-
-    return sections;
-  });
-
   const emptyStateTitle = computed(() =>
     props.isLoading
       ? "知识路线加载中"
@@ -583,90 +352,24 @@ export function useKnowledgeStudyFilters(props) {
           : "先做几道题，系统就会慢慢帮你整理出知识路线和个人小卡。"
   );
 
-  function resetFilters() {
-    selectedGradeFilter.value = gradeFilterOptions.value.find((option) => option !== "全部年级") || "全部年级";
-    selectedSemesterFilter.value = "全部学期";
-    selectedSubjectFilter.value = "全部学科";
-    selectedLessonId.value = "";
-    expandedLessonIds.value = [];
-    expandedLessonContentIds.value = [];
-    lessonContentStageById.value = {};
-    showRecordedCards.value = false;
-    showRecommendedCards.value = false;
-  }
-
-  function selectLessonFromNavigator(lessonId) {
-    selectedLessonId.value = lessonId;
-    isStudyNavigatorOpen.value = false;
-  }
-
-  function getMapModuleStatus(module) {
-    if (selectedLessonId.value === module.id) {
-      return { label: "当前在看", tone: "current" };
-    }
-
-    if (Number(module.dueCount || 0) > 0) {
-      return { label: `回看 ${module.dueCount}`, tone: "alert" };
-    }
-
-    if (Number(module.matchedCount || 0) > 0) {
-      return { label: `已连 ${module.matchedCount}`, tone: "calm" };
-    }
-
-    return { label: "新站", tone: "planned" };
-  }
-
-  function getSubjectTheme(subject) {
-    return SUBJECT_THEME_MAP[subject]?.theme || "general";
-  }
-
-  function getSubjectGlyph(subject) {
-    return SUBJECT_THEME_MAP[subject]?.glyph || "学";
-  }
-
   return {
-    expandedLessonIds,
-    lessonContentStageById,
     selectedGradeFilter,
     selectedSemesterFilter,
     selectedSubjectFilter,
     selectedLessonId,
-    expandedLessonContentIds,
-    showRecordedCards,
-    showRecommendedCards,
-    isStudyNavigatorOpen,
-    isCurriculumMapOpen,
-    selectedMapSectionId,
-    gradeFilterOptions,
-    semesterFilterOptions,
-    subjectFilterOptions,
     filteredSystematicSections,
     filteredSystematicKnowledgeItems,
-    mapSectionOptions,
-    recordedKnowledgeItems,
-    recommendedKnowledgeItems,
     systematicSectionsAvailable,
     selectedGradeHasSystematicRoute,
     selectedGradeIsPreparing,
-    curriculumRouteTitle,
     activeFilterSummary,
-    filterResultSummary,
-    studyNavigatorSummary,
-    activeMapSection,
-    activeMapSectionOption,
     selectedSystematicKnowledgeItem,
     currentGradeCover,
     heroOverviewStats,
-    semesterCoverEntries,
-    semesterCoverSummary,
-    lessonPickerGroups,
-    knowledgeSections,
+    stationRailGroups,
+    dueStations,
+    dueQuestionCount,
     emptyStateTitle,
-    emptyStateText,
-    resetFilters,
-    selectLessonFromNavigator,
-    getMapModuleStatus,
-    getSubjectTheme,
-    getSubjectGlyph
+    emptyStateText
   };
 }

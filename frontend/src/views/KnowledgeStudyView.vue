@@ -1,10 +1,8 @@
 <script setup>
 import { computed } from "vue";
-import CurriculumMapDialog from "../components/study/CurriculumMapDialog.vue";
 import StudyHeroPanel from "../components/study/StudyHeroPanel.vue";
-import StudyLessonSection from "../components/study/StudyLessonSection.vue";
-import StudyNavigatorDialog from "../components/study/StudyNavigatorDialog.vue";
-import { useKnowledgeLessonCards } from "../composables/study/useKnowledgeLessonCards";
+import StudyLessonCard from "../components/study/StudyLessonCard.vue";
+import StudyStationRail from "../components/study/StudyStationRail.vue";
 import { useKnowledgeStudyFilters } from "../composables/study/useKnowledgeStudyFilters";
 import { useStudyLessonNarrationMeta } from "../composables/study/useStudyLessonNarrationMeta";
 
@@ -39,78 +37,27 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(["start-practice", "open-wrong-review", "open-study-lesson"]);
+const emit = defineEmits(["start-practice", "open-wrong-review", "open-study-lesson", "open-study-map"]);
+
 const {
-  expandedLessonIds,
-  lessonContentStageById,
   selectedGradeFilter,
-  selectedSemesterFilter,
-  selectedSubjectFilter,
   selectedLessonId,
-  expandedLessonContentIds,
-  showRecordedCards,
-  showRecommendedCards,
-  isStudyNavigatorOpen,
-  isCurriculumMapOpen,
-  selectedMapSectionId,
-  gradeFilterOptions,
-  semesterFilterOptions,
-  subjectFilterOptions,
-  mapSectionOptions,
   systematicSectionsAvailable,
-  curriculumRouteTitle,
-  filterResultSummary,
-  studyNavigatorSummary,
-  activeMapSection,
-  activeMapSectionOption,
   selectedSystematicKnowledgeItem,
   currentGradeCover,
   heroOverviewStats,
-  semesterCoverEntries,
-  lessonPickerGroups,
-  knowledgeSections,
+  stationRailGroups,
+  dueStations,
+  dueQuestionCount,
   emptyStateTitle,
-  emptyStateText,
-  resetFilters,
-  selectLessonFromNavigator,
-  getMapModuleStatus,
-  getSubjectTheme,
-  getSubjectGlyph
+  emptyStateText
 } = useKnowledgeStudyFilters(props);
 
 const { getLessonNarrationMeta } = useStudyLessonNarrationMeta({
   knowledgeItems: computed(() => props.knowledgeItems),
-  selectedGradeFilter,
+  selectedGradeFilter: computed(() => props.initialGradeFilter),
   selectedSystematicKnowledgeItem
 });
-
-const {
-  isLessonExpanded,
-  toggleLessonExpanded,
-  getVisibleKnowledgePoints,
-  getKnowledgePointToggleLabel,
-  isLessonContentOpen,
-  getLessonContentStage,
-  advanceLessonContentStage,
-  getMiniLessonTone,
-  getMiniLessonStateLabel,
-  shouldRevealMiniLessonBody,
-  getMiniLessonGuideText,
-  toggleSection
-} = useKnowledgeLessonCards({
-  expandedLessonIds,
-  lessonContentStageById,
-  expandedLessonContentIds,
-  showRecordedCards,
-  showRecommendedCards,
-  getLessonNarrationMeta
-});
-
-function openLessonFromMap(lessonId) {
-  selectedLessonId.value = lessonId;
-  isCurriculumMapOpen.value = false;
-  emit("open-study-lesson", lessonId);
-}
 
 function openStudyLesson(item) {
   emit("open-study-lesson", item);
@@ -121,96 +68,113 @@ function openStudyLesson(item) {
   <section class="study-hub">
     <StudyHeroPanel
       :current-grade-cover="currentGradeCover"
-      :study-navigator-summary="studyNavigatorSummary"
       :hero-overview-stats="heroOverviewStats"
       :systematic-sections-available="systematicSectionsAvailable"
-      @open-navigator="isStudyNavigatorOpen = true"
-      @open-map="isCurriculumMapOpen = true"
+      @open-map="$emit('open-study-map')"
     />
 
-    <StudyLessonSection
-      v-for="section in knowledgeSections"
-      :key="section.id"
-      :section="section"
-      :get-lesson-narration-meta="getLessonNarrationMeta"
-      :is-lesson-expanded="isLessonExpanded"
-      :toggle-lesson-expanded="toggleLessonExpanded"
-      :get-visible-knowledge-points="getVisibleKnowledgePoints"
-      :get-knowledge-point-toggle-label="getKnowledgePointToggleLabel"
-      :is-lesson-content-open="isLessonContentOpen"
-      :get-lesson-content-stage="getLessonContentStage"
-      :advance-lesson-content-stage="advanceLessonContentStage"
-      :get-mini-lesson-tone="getMiniLessonTone"
-      :get-mini-lesson-state-label="getMiniLessonStateLabel"
-      :should-reveal-mini-lesson-body="shouldRevealMiniLessonBody"
-      :get-mini-lesson-guide-text="getMiniLessonGuideText"
-      :toggle-section="toggleSection"
-      @start-practice="$emit('start-practice', $event)"
-      @open-wrong-review="$emit('open-wrong-review', $event)"
-      @open-study-lesson="openStudyLesson"
-    />
+    <div class="study-hub__main">
+      <div v-if="selectedSystematicKnowledgeItem" class="study-hub__columns">
+        <div class="study-hub__left">
+          <StudyLessonCard
+            :item="selectedSystematicKnowledgeItem"
+            :get-lesson-narration-meta="getLessonNarrationMeta"
+            @start-practice="$emit('start-practice', $event)"
+            @open-wrong-review="$emit('open-wrong-review', $event)"
+            @open-study-lesson="openStudyLesson"
+          />
 
-    <section v-if="!knowledgeSections.length && !systematicSectionsAvailable" class="study-empty">
-      <p class="study-empty__eyebrow">Ready To Learn</p>
-      <h3 class="study-empty__title">{{ emptyStateTitle }}</h3>
-      <p class="study-empty__text">{{ emptyStateText }}</p>
-    </section>
+          <section v-if="dueQuestionCount > 0" class="study-due-strip">
+            <p class="study-due-strip__text">
+              这条路线还有 <strong>{{ dueStations.length }}</strong> 个小站、共
+              <strong>{{ dueQuestionCount }}</strong> 题待补强
+            </p>
+            <button class="btn-cartoon btn-cartoon--yellow" type="button" @click="$emit('open-wrong-review')">
+              去看待补强题
+            </button>
+          </section>
+        </div>
 
-    <StudyNavigatorDialog
-      v-model="isStudyNavigatorOpen"
-      :study-navigator-summary="studyNavigatorSummary"
-      :filter-result-summary="filterResultSummary"
-      :grade-filter-options="gradeFilterOptions"
-      :selected-grade-filter="selectedGradeFilter"
-      :semester-filter-options="semesterFilterOptions"
-      :selected-semester-filter="selectedSemesterFilter"
-      :subject-filter-options="subjectFilterOptions"
-      :selected-subject-filter="selectedSubjectFilter"
-      :semester-cover-entries="semesterCoverEntries"
-      :selected-systematic-knowledge-item="selectedSystematicKnowledgeItem"
-      :lesson-picker-groups="lessonPickerGroups"
-      @update:selected-grade-filter="selectedGradeFilter = $event"
-      @update:selected-semester-filter="selectedSemesterFilter = $event"
-      @update:selected-subject-filter="selectedSubjectFilter = $event"
-      @reset-filters="resetFilters"
-      @select-lesson="selectLessonFromNavigator"
-    />
+        <StudyStationRail
+          :rail-groups="stationRailGroups"
+          :current-lesson-id="selectedLessonId"
+          @select-lesson="selectedLessonId = $event"
+        />
+      </div>
 
-    <CurriculumMapDialog
-      v-model="isCurriculumMapOpen"
-      :curriculum-route-title="curriculumRouteTitle"
-      :systematic-sections-available="systematicSectionsAvailable"
-      :map-section-options="mapSectionOptions"
-      :active-map-section="activeMapSection"
-      :active-map-section-option="activeMapSectionOption"
-      :selected-lesson-id="selectedLessonId"
-      :selected-map-section-id="selectedMapSectionId"
-      :get-subject-theme="getSubjectTheme"
-      :get-subject-glyph="getSubjectGlyph"
-      :get-map-module-status="getMapModuleStatus"
-      @update:selected-map-section-id="selectedMapSectionId = $event"
-      @open-lesson="openLessonFromMap"
-    />
+      <section v-else class="study-empty">
+        <p class="study-empty__eyebrow">Ready To Learn</p>
+        <h3 class="study-empty__title">{{ emptyStateTitle }}</h3>
+        <p class="study-empty__text">{{ emptyStateText }}</p>
+      </section>
+    </div>
   </section>
 </template>
 
 <style scoped>
-:deep(.study-navigator-modal) {
-  width: min(980px, 100%);
-}
-
-:deep(.study-map-modal) {
-  width: min(1040px, 100%);
-}
-
+/* 一屏布局：Hero 横条在顶部，当前小站卡在剩余空间里垂直居中 */
 .study-hub {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: calc(100dvh - 120px);
+}
+
+.study-hub__main {
+  flex: 1;
   display: grid;
-  gap: 22px;
+  align-items: center;
+}
+
+/* 双栏：左主卡（+待补强快捷条）+ 右“本册小站”切换栏，填实横向留白 */
+.study-hub__columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(264px, 316px);
+  gap: 16px;
+  align-items: start;
+  width: 100%;
+}
+
+.study-hub__left {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+}
+
+.study-due-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  padding: 12px 18px;
+  border: 1.5px dashed rgba(255, 174, 0, 0.38);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at top right, rgba(255, 231, 156, 0.42) 0%, transparent 40%),
+    linear-gradient(180deg, rgba(255, 253, 248, 0.94) 0%, rgba(255, 249, 235, 0.9) 100%);
+  box-shadow: 0 18px 30px -30px rgba(36, 50, 74, 0.3);
+}
+
+.study-due-strip__text {
+  margin: 0;
+  color: var(--color-ink);
+  font-size: 0.94rem;
+  line-height: 1.55;
+}
+
+.study-due-strip__text strong {
+  font-weight: 900;
+}
+
+.study-due-strip .btn-cartoon {
+  width: auto;
 }
 
 .study-empty {
-  position: relative;
-  order: 9;
+  width: 100%;
+  max-width: 1080px;
+  margin-inline: auto;
   display: grid;
   gap: 18px;
   overflow: hidden;
@@ -247,7 +211,17 @@ function openStudyLesson(item) {
   line-height: 1.65;
 }
 
+@media (max-width: 1080px) {
+  .study-hub__columns {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 720px) {
+  .study-hub {
+    gap: 14px;
+  }
+
   .study-empty {
     padding: 18px;
     border-radius: 26px;

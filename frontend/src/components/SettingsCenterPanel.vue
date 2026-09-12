@@ -10,7 +10,6 @@ import SettingsCoachingSection from "./settings/SettingsCoachingSection.vue";
 import SettingsLogsSection from "./settings/SettingsLogsSection.vue";
 import SettingsModelLibrarySection from "./settings/SettingsModelLibrarySection.vue";
 import SettingsAboutSection from "./settings/SettingsAboutSection.vue";
-import SettingsOverviewSection from "./settings/SettingsOverviewSection.vue";
 import SettingsProfileSection from "./settings/SettingsProfileSection.vue";
 import { getSettingsSectionById, SETTINGS_SECTION_IDS } from "./settings/settingsSections";
 import {
@@ -20,7 +19,6 @@ import {
   AI_REVIEW_VOICE_OPTIONS,
   AI_MODEL_MODE,
   AUTO_ADVANCE_DELAY_OPTIONS,
-  HOME_WELCOME_VOICE_MODE_OPTIONS,
   PROFILE_GENDER_OPTIONS,
   resolveAiModelNameForSelection,
   resolveAiRuntimeConfigForSelection,
@@ -31,11 +29,7 @@ import {
 const props = defineProps({
   activeSectionId: {
     type: String,
-    default: "settings-overview"
-  },
-  showHero: {
-    type: Boolean,
-    default: true
+    default: "settings-profile"
   },
   backupStatusMessage: {
     type: String,
@@ -69,7 +63,6 @@ let aiConnectionTestController = null;
 const { profile, aiPreferences, coachingPreferences, activityLogs } = storeToRefs(settingsStore);
 const { isSupported, masterVolume, musicEnabled, sfxEnabled } = storeToRefs(audioStore);
 const SECTION_COMPONENTS = Object.freeze({
-  "settings-overview": SettingsOverviewSection,
   "settings-profile": SettingsProfileSection,
   "settings-ai": SettingsAiSection,
   "settings-model-library": SettingsModelLibrarySection,
@@ -93,7 +86,6 @@ const coachingDraft = ref({
   autoAdvanceOnCorrect: false,
   autoPlayAiReviewOnWrong: false,
   autoPlayAiReviewOnCorrect: false,
-  homeWelcomeVoiceMode: "manual",
   autoAdvanceDelayMs: 1500,
   aiReviewVoice: "coral",
   aiReviewSpeed: 1,
@@ -194,10 +186,9 @@ function resetAiConnectionTestState() {
 }
 
 const normalizedActiveSectionId = computed(() =>
-  SETTINGS_SECTION_IDS.includes(String(props.activeSectionId || "").trim()) ? String(props.activeSectionId).trim() : "settings-overview"
+  SETTINGS_SECTION_IDS.includes(String(props.activeSectionId || "").trim()) ? String(props.activeSectionId).trim() : "settings-profile"
 );
 const activityLogItems = computed(() => activityLogs.value.slice(0, 12));
-const accountSummary = computed(() => `${profile.value.displayName} · ${profile.value.grade} · ${profile.value.semester}`);
 const profileUpdatedLabel = computed(() => formatTimestamp(profile.value.updatedAt));
 const aiUpdatedLabel = computed(() => formatTimestamp(aiPreferences.value.updatedAt));
 const coachingUpdatedLabel = computed(() => formatTimestamp(coachingPreferences.value.updatedAt));
@@ -220,7 +211,6 @@ const coachingDirty = computed(
     coachingDraft.value.autoAdvanceOnCorrect !== coachingPreferences.value.autoAdvanceOnCorrect ||
     coachingDraft.value.autoPlayAiReviewOnWrong !== coachingPreferences.value.autoPlayAiReviewOnWrong ||
     coachingDraft.value.autoPlayAiReviewOnCorrect !== coachingPreferences.value.autoPlayAiReviewOnCorrect ||
-    coachingDraft.value.homeWelcomeVoiceMode !== coachingPreferences.value.homeWelcomeVoiceMode ||
     coachingDraft.value.autoAdvanceDelayMs !== coachingPreferences.value.autoAdvanceDelayMs ||
     coachingDraft.value.aiReviewVoice !== coachingPreferences.value.aiReviewVoice ||
     coachingDraft.value.aiReviewSpeed !== coachingPreferences.value.aiReviewSpeed ||
@@ -243,68 +233,6 @@ const backupSectionSummary = computed(() =>
 const logsSectionSummary = computed(() =>
   activityLogItems.value.length > 0 ? `最近记录 ${activityLogItems.value.length} 条关键操作。` : "当前还没有记录到关键操作。"
 );
-const overviewCards = computed(() => [
-  {
-    id: "settings-profile",
-    eyebrow: "Profile",
-    title: getSettingsSectionById("settings-profile").sectionTitle,
-    summary: accountSummary.value,
-    detail: profileDirty.value ? "当前有未保存的档案改动。" : `最近更新 ${profileUpdatedLabel.value}`,
-    tone: profileDirty.value ? "warning" : "neutral"
-  },
-  {
-    id: "settings-ai",
-    eyebrow: "AI Setup",
-    title: getSettingsSectionById("settings-ai").sectionTitle,
-    summary: settingsStore.aiConfigurationSummary,
-    detail: aiDirty.value ? "当前有未保存的模型配置改动。" : `最近更新 ${aiUpdatedLabel.value}`,
-    tone: aiDirty.value ? "warning" : "neutral"
-  },
-  {
-    id: "settings-coaching",
-    eyebrow: "Study Coach",
-    title: getSettingsSectionById("settings-coaching").sectionTitle,
-    summary: [
-      coachingDraft.value.autoAdvanceOnCorrect ? "答对自动继续" : "答对停留看反馈",
-      coachingDraft.value.autoPlayAiReviewOnWrong ? "答错自动播报" : "答错手动播报"
-    ].join(" · "),
-    detail: coachingDirty.value ? "当前有未保存的陪练偏好改动。" : `最近更新 ${coachingUpdatedLabel.value}`,
-    tone: coachingDirty.value ? "warning" : "neutral"
-  },
-  {
-    id: "settings-audio",
-    eyebrow: "Audio",
-    title: getSettingsSectionById("settings-audio").sectionTitle,
-    summary: audioSectionSummary.value,
-    detail: "音量和通道开关会即时生效，并自动保存在本机。",
-    tone: "neutral"
-  },
-  {
-    id: "settings-backup",
-    eyebrow: "Backup",
-    title: getSettingsSectionById("settings-backup").sectionTitle,
-    summary: backupSectionSummary.value,
-    detail: "支持导出当前学习环境，或从 JSON 恢复本机数据。",
-    tone: props.isBackupBusy ? "info" : "neutral"
-  },
-  {
-    id: "settings-logs",
-    eyebrow: "Activity Log",
-    title: getSettingsSectionById("settings-logs").sectionTitle,
-    summary: logsSectionSummary.value,
-    detail: "可查看最近关键操作，并按需清空本机记录。",
-    tone: "neutral"
-  },
-  {
-    id: "settings-about",
-    eyebrow: "About",
-    title: getSettingsSectionById("settings-about").sectionTitle,
-    summary: "查看当前版本、系统状态和正式发布记录。",
-    detail: "适合集中放版本号、运行情况和后续更新说明。",
-    tone: "neutral",
-    size: "wide"
-  }
-]);
 const SECTION_SAVE_CONFIG = Object.freeze({
   "settings-profile": {
     title: "学习档案",
@@ -352,13 +280,6 @@ const pendingSaveSections = computed(() => {
 
   return sections;
 });
-const pendingSaveOverviewItems = computed(() =>
-  pendingSaveSections.value.map((sectionId) => ({
-    id: sectionId,
-    title: getSettingsSectionById(sectionId).sectionTitle,
-    actionLabel: SECTION_SAVE_CONFIG[sectionId]?.dirtyActionLabel || "保存当前分区"
-  }))
-);
 const currentSaveSectionConfig = computed(() => SECTION_SAVE_CONFIG[normalizedActiveSectionId.value] || null);
 const currentSectionIsDirty = computed(() => {
   if (normalizedActiveSectionId.value === "settings-profile") {
@@ -379,25 +300,9 @@ const currentSectionIsDirty = computed(() => {
 
   return false;
 });
-const showStickyActionBar = computed(
-  () => normalizedActiveSectionId.value !== "settings-overview" || pendingSaveSections.value.length > 0
-);
-const stickyBarTitle = computed(() => {
-  if (normalizedActiveSectionId.value === "settings-overview") {
-    return pendingSaveSections.value.length > 0 ? "还有改动未保存" : "当前已同步";
-  }
-
-  return currentSaveSectionConfig.value?.title || overviewCards.value.find((card) => card.id === normalizedActiveSectionId.value)?.title || "当前分区";
-});
+const showStickyActionBar = computed(() => true);
+const stickyBarTitle = computed(() => currentSaveSectionConfig.value?.title || "当前分区");
 const stickyBarDetail = computed(() => {
-  if (normalizedActiveSectionId.value === "settings-overview") {
-    const pendingTitles = pendingSaveOverviewItems.value.map((item) => item.title);
-
-    return pendingSaveSections.value.length > 0
-      ? `${pendingTitles.join("、")} 还没保存。`
-      : "没有待保存改动。";
-  }
-
   if (currentSaveSectionConfig.value) {
     return currentSectionIsDirty.value
       ? "有未保存改动。"
@@ -437,7 +342,7 @@ const showSaveAllAction = computed(() => {
     return false;
   }
 
-  if (normalizedActiveSectionId.value === "settings-overview" || !showCurrentSectionSaveAction.value) {
+  if (!showCurrentSectionSaveAction.value) {
     return true;
   }
 
@@ -451,7 +356,7 @@ const saveAllActionLabel = computed(
   () => (pendingSaveSections.value.length > 1 ? `保存全部 ${pendingSaveSections.value.length} 项改动` : "保存全部改动")
 );
 const activeSectionComponent = computed(
-  () => SECTION_COMPONENTS[normalizedActiveSectionId.value] || SettingsOverviewSection
+  () => SECTION_COMPONENTS[normalizedActiveSectionId.value] || SECTION_COMPONENTS["settings-profile"]
 );
 const activeSectionProps = computed(() => {
   switch (normalizedActiveSectionId.value) {
@@ -494,7 +399,6 @@ const activeSectionProps = computed(() => {
         aiReviewVoiceOptions: AI_REVIEW_VOICE_OPTIONS,
         aiReviewSpeedOptions: AI_REVIEW_SPEED_OPTIONS,
         aiReviewLengthOptions: AI_REVIEW_LENGTH_OPTIONS,
-        homeWelcomeVoiceModeOptions: HOME_WELCOME_VOICE_MODE_OPTIONS
       };
     case "settings-backup":
       return {
@@ -509,11 +413,6 @@ const activeSectionProps = computed(() => {
       };
     case "settings-about":
       return {};
-    case "settings-overview":
-      return {
-        cards: overviewCards.value,
-        pendingSaveCards: pendingSaveOverviewItems.value
-      };
     case "settings-audio":
     default:
       return {};
@@ -549,10 +448,6 @@ const activeSectionListeners = computed(() => {
     case "settings-logs":
       return {
         "clear-logs": handleClearActivityLogs
-      };
-    case "settings-overview":
-      return {
-        "open-section": handleSectionOpen
       };
     default:
       return {};
@@ -597,7 +492,6 @@ watch(
       autoAdvanceOnCorrect: nextPreferences.autoAdvanceOnCorrect,
       autoPlayAiReviewOnWrong: nextPreferences.autoPlayAiReviewOnWrong,
       autoPlayAiReviewOnCorrect: nextPreferences.autoPlayAiReviewOnCorrect,
-      homeWelcomeVoiceMode: nextPreferences.homeWelcomeVoiceMode,
       autoAdvanceDelayMs: nextPreferences.autoAdvanceDelayMs,
       aiReviewVoice: nextPreferences.aiReviewVoice,
       aiReviewSpeed: nextPreferences.aiReviewSpeed,
@@ -826,22 +720,6 @@ watch(
 
 <template>
   <div class="settings-center">
-    <section v-if="showHero" id="settings-overview" class="settings-center__hero settings-section-anchor">
-      <div class="settings-center__hero-copy">
-        <p class="settings-center__eyebrow">Settings Center</p>
-        <h3 class="settings-center__title">学习档案、AI 配置和本机数据都在这里统一管理。</h3>
-        <p class="settings-center__text">
-          当前以单一学习档案运行，不需要登录；改动会优先保存在本机，并在可用时同步学习记录。
-        </p>
-      </div>
-
-      <div class="settings-center__hero-chips" aria-label="设置概览">
-        <span class="settings-center__hero-chip">{{ accountSummary }}</span>
-        <span class="settings-center__hero-chip">AI：{{ settingsStore.aiConfigurationSummary }}</span>
-        <span class="settings-center__hero-chip">档案更新：{{ profileUpdatedLabel }}</span>
-      </div>
-    </section>
-
     <Transition name="settings-panel-swap" mode="out-in">
       <div :key="normalizedActiveSectionId" ref="activeSectionShellRef" class="settings-panel-shell">
         <component :is="activeSectionComponent" v-bind="activeSectionProps" v-on="activeSectionListeners" />
@@ -872,14 +750,6 @@ watch(
         >
           {{ saveAllActionLabel }}
         </button>
-        <button
-          v-if="normalizedActiveSectionId !== 'settings-overview'"
-          class="settings-action-bar__link"
-          type="button"
-          @click="handleSectionOpen('settings-overview')"
-        >
-          返回概览
-        </button>
       </div>
     </section>
   </div>
@@ -892,7 +762,6 @@ watch(
   color: var(--color-ink);
 }
 
-.settings-center__hero,
 .settings-stage,
 .settings-card {
   min-width: 0;
@@ -902,23 +771,12 @@ watch(
   box-shadow: 0 18px 30px -28px rgba(36, 50, 74, 0.34);
 }
 
-.settings-center__hero {
-  display: grid;
-  gap: 14px;
-  padding: 18px 20px;
-  background: linear-gradient(180deg, rgba(245, 251, 255, 0.92) 0%, rgba(255, 252, 244, 0.86) 100%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.68);
-}
-
-.settings-center__hero-copy,
 .settings-stage__intro {
   display: grid;
   gap: 10px;
 }
 
-.settings-center__eyebrow,
-.settings-card__eyebrow,
-.settings-overview-card__eyebrow {
+.settings-card__eyebrow {
   margin: 0;
   color: var(--color-ink-soft);
   font-size: 0.76rem;
@@ -927,7 +785,6 @@ watch(
   text-transform: uppercase;
 }
 
-.settings-center__title,
 .settings-card__title,
 .settings-stage__title {
   margin: 0;
@@ -936,26 +793,16 @@ watch(
   line-height: 1.35;
 }
 
-.settings-center__text,
 .settings-card__note,
 .settings-status,
 .settings-log__detail,
-.settings-stage__text,
-.settings-overview-card__summary,
-.settings-overview-card__detail {
+.settings-stage__text {
   margin: 0;
   color: var(--color-ink-soft);
   font-size: 0.92rem;
   line-height: 1.6;
 }
 
-.settings-center__hero-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.settings-center__hero-chip,
 .settings-inline-summary {
   display: inline-flex;
   align-items: center;
@@ -985,54 +832,13 @@ watch(
   align-content: start;
 }
 
-.settings-stage--overview {
-  gap: 18px;
-}
-
-.settings-overview-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.settings-overview-card {
-  display: grid;
-  gap: 10px;
-  padding: 16px;
-  border: 1px solid rgba(36, 50, 74, 0.08);
-  border-radius: 22px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92) 0%, rgba(247, 251, 255, 0.86) 100%);
-  color: var(--color-ink);
-  text-align: left;
-  cursor: pointer;
-  transition:
-    transform 180ms ease,
-    border-color 180ms ease,
-    box-shadow 180ms ease,
-    background-color 180ms ease;
-}
-
-.settings-overview-card:hover,
-.settings-overview-card:focus-visible {
-  border-color: rgba(124, 216, 184, 0.42);
-  box-shadow: 0 18px 24px -24px rgba(36, 50, 74, 0.36);
-  outline: none;
-  transform: translateY(-1px);
-}
-
-.settings-overview-card--warning {
-  border-color: rgba(255, 186, 82, 0.26);
-  background: linear-gradient(180deg, rgba(255, 251, 241, 0.94) 0%, rgba(255, 255, 255, 0.88) 100%);
-}
-
-.settings-overview-card__topline {
+.settings-card__head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
 }
 
-.settings-overview-card__badge,
 .settings-card__badge {
   display: inline-flex;
   align-items: center;
@@ -1045,25 +851,6 @@ watch(
   font-size: 0.78rem;
   font-weight: 800;
   letter-spacing: 0.02em;
-}
-
-.settings-overview-card__title {
-  color: var(--color-ink);
-  font-size: 1.02rem;
-  line-height: 1.35;
-}
-
-.settings-overview-card__action {
-  color: var(--color-ink);
-  font-size: 0.88rem;
-  font-weight: 800;
-}
-
-.settings-card__head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
 }
 
 .settings-card__meta,
@@ -1356,7 +1143,6 @@ watch(
 }
 
 @media (max-width: 900px) {
-  .settings-overview-grid,
   .settings-form,
   .settings-stats {
     grid-template-columns: minmax(0, 1fr);

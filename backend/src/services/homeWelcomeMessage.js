@@ -128,8 +128,8 @@ function normalizeHomeWelcomeTone(value) {
   return "warm";
 }
 
-function normalizeHomeWelcomeTitle(value, context = {}) {
-  return normalizeHomeWelcomeTextWithTime(value, context, HOME_WELCOME_MAX_TITLE_LENGTH);
+function normalizeHomeWelcomeTitle(value) {
+  return normalizeHomeWelcomeLine(value, HOME_WELCOME_MAX_TITLE_LENGTH);
 }
 
 function isHomeWelcomeTextTooSimilar(left, right) {
@@ -159,26 +159,45 @@ function isHomeWelcomeTitleOffStyle(title, context = {}) {
 
 function buildHomeWelcomeFallbackTitle(context = {}) {
   const displayName = normalizeInlineText(context.displayName, 20);
-  const timeCueLabel = normalizeInlineText(context.timeCueLabel, 20);
-  const monthVibe = normalizeInlineText(context.monthVibe, 20);
 
-  if (displayName && timeCueLabel) {
-    return `${timeCueLabel}的小岛在等你，${displayName}`;
-  }
-
-  if (monthVibe && timeCueLabel) {
-    return `${monthVibe}，${timeCueLabel}的小岛在等你`;
-  }
-
-  if (timeCueLabel) {
-    return `${timeCueLabel}的小岛在等你`;
+  if (context.isProfileJustSaved) {
+    return "新路线准备好了";
   }
 
   if (displayName) {
-    return `欢迎回来，${displayName}`;
+    return `${displayName}，欢迎回来`;
   }
 
-  return "欢迎来到奇妙知识岛";
+  return context.isFirstHomeVisitToday ? "今天想去哪座岛看看？" : "欢迎回到奇妙知识岛";
+}
+
+function buildHomeWelcomeFallbackBubbleText(context = {}) {
+  const reviewDueCount = Math.max(0, Number.parseInt(String(context.reviewDueCount || 0), 10) || 0);
+  const reviewingCount = Math.max(0, Number.parseInt(String(context.reviewingCount || 0), 10) || 0);
+  const challengeStageLabel = normalizeInlineText(context.challengeStageLabel, 10);
+  const gradeSemesterLabel = `${normalizeInlineText(context.grade, 20)}${normalizeInlineText(context.semester, 20)}`;
+
+  if (context.isProfileJustSaved) {
+    return gradeSemesterLabel
+      ? `${gradeSemesterLabel}的新路线已经同步到首页。`
+      : "首页已经按你的新档案重新整理。";
+  }
+
+  if (reviewDueCount > 0) {
+    return `有 ${reviewDueCount} 道小题值得再看一眼，也可以先去探索。`;
+  }
+
+  if (reviewingCount > 0) {
+    return `上次温习的 ${reviewingCount} 道小题还在，也可以先去探索。`;
+  }
+
+  if (challengeStageLabel) {
+    return `上次停下的${challengeStageLabel}还亮着，也可以换条路线。`;
+  }
+
+  return context.isFirstHomeVisitToday
+    ? "火山、森林、矿洞和海滩都准备好了。"
+    : "继续上次的旅程，或者换一条新路线。";
 }
 
 function resolveTimeMentionCandidates(context = {}) {
@@ -197,7 +216,25 @@ function resolveTimeMentionCandidates(context = {}) {
   return Array.from(new Set([timeCueLabel, timeGreetingLabel].filter(Boolean)));
 }
 
-function normalizeHomeWelcomeTextWithTime(value, context = {}, maxLength = HOME_WELCOME_MAX_BUBBLE_LENGTH) {
+function normalizeHomeWelcomeSpeechText(value, maxLength = HOME_WELCOME_MAX_SPEECH_LENGTH) {
+  const normalized = normalizeInlineText(value, maxLength * 3);
+
+  if (!normalized) {
+    return "";
+  }
+
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  if (maxLength <= 1) {
+    return normalized.slice(0, maxLength);
+  }
+
+  return `${normalized.slice(0, maxLength - 1).trim()}…`;
+}
+
+function normalizeHomeWelcomeSpeechWithTime(value, context = {}, maxLength = HOME_WELCOME_MAX_SPEECH_LENGTH) {
   const normalized = normalizeInlineText(value, maxLength * 3);
 
   if (!normalized) {
@@ -207,29 +244,42 @@ function normalizeHomeWelcomeTextWithTime(value, context = {}, maxLength = HOME_
   const mentions = resolveTimeMentionCandidates(context);
 
   if (mentions.some((mention) => normalized.includes(mention))) {
-    return normalizeHomeWelcomeLine(normalized, maxLength);
+    return normalizeHomeWelcomeSpeechText(normalized, maxLength);
   }
 
   const prefix = normalizeInlineText(context.timeGreetingLabel, 20) || normalizeInlineText(context.timeCueLabel, 20);
   const prefixed = prefix ? `${prefix}，${normalized}` : normalized;
-  return normalizeHomeWelcomeLine(prefixed, maxLength);
+  return normalizeHomeWelcomeSpeechText(prefixed, maxLength);
+}
+
+function isHomeWelcomeBubbleOffRole(bubbleText, title, context = {}) {
+  const disallowedTokens = [
+    ...resolveTimeMentionCandidates(context),
+    normalizeInlineText(context.monthLabel, 20),
+    normalizeInlineText(context.monthVibe, 20),
+    normalizeInlineText(context.seasonLabel, 20),
+    normalizeInlineText(context.displayName, 20)
+  ].filter(Boolean);
+
+  return disallowedTokens.some((token) => bubbleText.includes(token)) || isHomeWelcomeTextTooSimilar(title, bubbleText);
 }
 
 function validateHomeWelcomePayload(payload = {}, context = {}) {
   const tone = normalizeHomeWelcomeTone(payload.tone);
-  const bubbleText = normalizeHomeWelcomeTextWithTime(
-    payload.bubbleText || payload.speechText,
-    context,
-    HOME_WELCOME_MAX_BUBBLE_LENGTH
-  );
-  const speechText =
-    normalizeHomeWelcomeTextWithTime(payload.speechText || bubbleText, context, HOME_WELCOME_MAX_SPEECH_LENGTH) || bubbleText;
-  const fallbackTitle = normalizeHomeWelcomeTitle(buildHomeWelcomeFallbackTitle(context), context);
-  let title = normalizeHomeWelcomeTitle(payload.title || fallbackTitle, context) || fallbackTitle;
+  const fallbackTitle = normalizeHomeWelcomeTitle(buildHomeWelcomeFallbackTitle(context));
+  let title = normalizeHomeWelcomeTitle(payload.title || fallbackTitle) || fallbackTitle;
+  let bubbleText = normalizeHomeWelcomeLine(payload.bubbleText || payload.speechText, HOME_WELCOME_MAX_BUBBLE_LENGTH);
 
   if (isHomeWelcomeTitleOffStyle(title, context) || isHomeWelcomeTextTooSimilar(title, bubbleText)) {
     title = fallbackTitle;
   }
+
+  if (!bubbleText || isHomeWelcomeBubbleOffRole(bubbleText, title, context)) {
+    bubbleText = normalizeHomeWelcomeLine(buildHomeWelcomeFallbackBubbleText(context), HOME_WELCOME_MAX_BUBBLE_LENGTH);
+  }
+
+  const speechText =
+    normalizeHomeWelcomeSpeechWithTime(payload.speechText || bubbleText, context, HOME_WELCOME_MAX_SPEECH_LENGTH) || bubbleText;
 
   if (!bubbleText || !speechText) {
     throw createServiceError(502, "AI 首页欢迎语结果不完整。");
@@ -266,96 +316,6 @@ function buildHomeWelcomeSchema() {
   };
 }
 
-function buildHomeWelcomeInstructions(context) {
-  const gradeHint = context.grade ? `当前年级是${context.grade}。` : "年级未知。";
-  const semesterHint = context.semester ? `当前学期是${context.semester}。` : "学期未知。";
-  const visitHint = context.isProfileJustSaved
-    ? "刚保存过学习档案，重点是让孩子感到已经准备好了、可以安心了，像回家一样温暖。"
-    : context.isFirstHomeVisitToday
-      ? "这是今天第一次进入首页，要像第一次见面那样温暖地打招呼。"
-      : "这是普通回访，语气要像老朋友又见面了，自然亲切。";
-  const backgroundHint = [
-    context.reviewDueCount > 0 ? `有 ${context.reviewDueCount} 题待温习。` : "",
-    context.reviewingCount > 0 ? `有 ${context.reviewingCount} 题正在回温中。` : "",
-    context.challengeStageLabel ? `闯关停在：${context.challengeStageLabel}。` : ""
-  ]
-    .filter(Boolean)
-    .join(" ");
-  const progressStateHint = context.reviewDueCount > 0
-    ? "当前更适合写成轻轻提醒型欢迎语：像在说“有几道还惦记着你的小题还在这儿，想先看一眼也行”，但不要制造任务压力。"
-    : context.reviewingCount > 0
-      ? "当前更适合写成延续陪伴型欢迎语：像在说“上次看到的那几题还在这儿等你，今天接着慢慢来就好”。"
-      : context.challengeStageLabel
-        ? "当前更适合写成续接路线型欢迎语：像在说“上次停下的那一站还亮着，想接着往前走一点也行”。"
-        : "当前更适合写成纯欢迎型欢迎语：重点是安静地欢迎回来，不必特意提进度。";
-  const nameHint = context.displayName ? `昵称是${context.displayName}。` : "昵称未设置。";
-  const temporalHint = [
-    context.timeBand ? `当前时段是${context.timeBand}。` : "",
-    context.timeCueLabel ? `当前要显式写出的时段词是：${context.timeCueLabel}。` : "",
-    context.timeGreetingLabel ? `可直接使用的时段问候是：${context.timeGreetingLabel}。` : "",
-    context.monthLabel ? `当前是${context.monthLabel}。` : "",
-    context.monthVibe ? `当前月份的感觉是：${context.monthVibe}。` : "",
-    context.seasonLabel ? `当前季节是${context.seasonLabel}。` : "",
-    context.schoolYearPhase ? `当前学季阶段是：${context.schoolYearPhase}。` : ""
-  ]
-    .filter(Boolean)
-    .join(" ");
-
-  return [
-    "你在为小学学习产品首页里的猫头鹰生成一句温馨的欢迎短句。",
-    "只输出符合 JSON Schema 的内容，不要输出多余文本。",
-    "title 用在首页大标题，bubbleText 用在标题下方的一句欢迎短句，speechText 用于播报。",
-    "title 要像首页主标题一样自然醒目，优先 10 到 18 个中文字符，最多不超过 28 个字符。",
-    "title 可以带昵称，但不要和 bubbleText 完全一样，也不要只是重复眉标问候。",
-    "title 和 bubbleText 不能只差一个称呼或一个短前缀，二者要有明确区分。",
-    "title 不要出现“任务、挑战、闯关、冲刺、打卡、立刻、马上”这类有催促感的词。",
-    "bubbleText 可以比以前更有内容一些，优先 18 到 32 个中文字符，必要时可以接近 36 个字符。",
-    "允许 bubbleText 带一层更明显的个性化，比如自然地叫一声昵称，或者轻轻提到孩子上次停下的位置和节奏感。",
-    "如果上下文里有昵称，优先自然带一次昵称，但不要显得刻意，也不要每句都叫昵称。",
-    "允许一句话里有两到三个短停顿，不必为了过短而只剩标签式表达。",
-    "bubbleText 和 speechText 可以相同，但都必须自然、简短、温暖。",
-    "不能编造数据，只能使用上下文里真实存在的信息。",
-    "核心目标：让孩子感到被看见、被欢迎，而不是被安排任务。",
-    "更像在轻轻说\u300c我在这里陪你\u300d，而不是\u300c你应该做什么\u300d。",
-    "整体长度依然要克制，但可以比之前更丰富一点，不必刻意压成非常短的碎句。",
-    "低年级更短、更口语、更可爱；高年级更稳、更温柔。",
-    "必须显式带上给定的时段词，不要只写月份气氛而省略时段。",
-    "时段词要自然嵌入句子，不要只是在最前面机械地补一个问候。",
-    "不要像广告，不要像活动文案，不要喊口号。",
-    "不要连续感叹，不要使用空泛鼓励词，例如\u201c冲呀\u201d\u201c太棒啦\u201d\u201c一起出发吧\u201d\u201c快来挑战\u201d。",
-    "优先使用月份的氛围、学季的阶段感、时段的早晚来营造温暖的气氛。",
-    "不同月份要有不同的气息：比如新年伊始的安静、春暖花开的温柔、初夏微风的轻快、盛夏时光的慵懒、秋日新学期的清爽、深秋时节的沉静、冬日暖阳的温暖。",
-    "不同学季阶段要有不同的语气：期末临近要温暖安抚、寒暑假里要轻松愉快、新学期开始要温柔鼓励、学期中段要平静陪伴。",
-    "可以轻轻提到学习进度，但必须像朋友聊天时顺口一提，不能变成任务清单。",
-    "不要直接提\u201c错题\u201d\u201c闯关\u201d\u201c任务\u201d\u201c挑战\u201d\u201c冲刺\u201d这些词。",
-    "如果刚保存过档案，表达\u201c已经准备好了\u201d\u201c可以安心了\u201d的感觉。",
-    "如果时段是晚上或深夜，语气要更轻更静，像在说\u201c不着急，待一会儿就好\u201d。",
-    "尽量让每个年级、每个时段的孩子都觉得猫头鹰只是在等他，不是在催他。",
-    gradeHint,
-    semesterHint,
-    nameHint,
-    temporalHint,
-    visitHint,
-    progressStateHint,
-    backgroundHint ? `背景参考（不需要说出来，只是让你了解情况）：${backgroundHint}` : "",
-    "可接受示例：新年伊始，小岛安安静静的，进来坐坐吧。",
-    "可接受示例：春暖花开的时候，小岛也醒过来了。",
-    "可接受示例：初夏微风里，小岛还是老样子。",
-    "可接受示例：暑假里也来啦，小岛一直在这儿。",
-    "可接受示例：新学期开始了，小岛也跟着亮起来了。",
-    "可接受示例：深秋的小岛，安静又温柔。",
-    "可接受示例：快期末了，不用慌，慢慢来。",
-    "可接受示例：晚上好，小岛的灯还亮着呢，不着急。",
-    "可接受示例：傍晚的小岛还亮着，进来坐坐吧。",
-    "可接受示例：深夜了，小岛还留着一盏灯。",
-    "可接受示例：新的档案已经就位，今天轻轻来就好。",
-    "不可接受示例：欢迎来到最棒的学习之旅，现在立刻开始挑战吧！",
-    "不可接受示例：错题本里有3题在等你回看！",
-    "不可接受示例：启蒙冲线这站还亮着，快去闯关吧！",
-    "不可接受示例：今天的学习任务已经排好了，先从错题本开始吧！"
-  ].join("\n");
-}
-
 function buildHomeWelcomeInput(context) {
   return [
     `昵称：${context.displayName || "未设置"}`,
@@ -374,12 +334,82 @@ function buildHomeWelcomeInput(context) {
   ].join("\n");
 }
 
+function buildFocusedHomeWelcomeInstructions(context) {
+  const gradeHint = context.grade ? `当前年级是${context.grade}。` : "年级未知。";
+  const semesterHint = context.semester ? `当前学期是${context.semester}。` : "学期未知。";
+  const visitHint = context.isProfileJustSaved
+    ? "刚保存过学习档案，明确告诉孩子新路线和首页已经准备好。"
+    : context.isFirstHomeVisitToday
+      ? "这是今天第一次进入首页，欢迎之后自然地邀请孩子选一座岛看看。"
+      : "这是普通回访，优先承接上次进度，再给孩子换路线的自由。";
+  const backgroundHint = [
+    context.reviewDueCount > 0 ? `有 ${context.reviewDueCount} 题待温习。` : "",
+    context.reviewingCount > 0 ? `有 ${context.reviewingCount} 题正在回温中。` : "",
+    context.challengeStageLabel ? `上次停在：${context.challengeStageLabel}。` : ""
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const progressStateHint = context.reviewDueCount > 0
+    ? `bubbleText 优先写成“有 ${context.reviewDueCount} 道小题值得再看一眼，也可以先去探索”这一类温和提示。`
+    : context.reviewingCount > 0
+      ? "bubbleText 优先说明上次温习的小题还在，同时保留先去探索的选择。"
+      : context.challengeStageLabel
+        ? "bubbleText 优先说明上次停下的那一站还亮着，同时允许孩子换一条路线。"
+        : "没有可承接的进度时，bubbleText 简短介绍火山、森林、矿洞、海滩或新的路线。";
+  const temporalHint = [
+    context.timeGreetingLabel ? `speechText 可用的时段问候是：${context.timeGreetingLabel}。` : "",
+    context.monthVibe ? `月份气息仅可偶尔用于 speechText：${context.monthVibe}。` : "",
+    context.schoolYearPhase ? `当前学季阶段是：${context.schoolYearPhase}。` : ""
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return [
+    "你在为小学学习产品“奇妙知识岛”的首页生成欢迎文案。",
+    "只输出符合 JSON Schema 的内容，不要输出多余文本。",
+    "title 是稳定欢迎标题，bubbleText 是标题下方的行动提示，speechText 用于猫头鹰播报；三者必须各司其职。",
+    "title 控制在 8 到 14 个中文字符，最多 18 个字符。",
+    "普通回访且有昵称时，title 优先使用“昵称，欢迎回来”；没有昵称时可使用“今天想去哪座岛看看”。",
+    "刚保存档案时，title 优先使用“新路线准备好了”。",
+    "title 不要出现“任务、挑战、闯关、冲刺、打卡、立刻、马上”这类有催促感的词。",
+    "bubbleText 控制在 14 到 24 个中文字符，最多 30 个字符，只写一句。",
+    "bubbleText 优先承接真实进度并给出一个低压力选择；没有进度时再介绍可探索的路线。",
+    "bubbleText 不写时段、月份或季节，不重复 title，也不要再次叫昵称。",
+    "speechText 控制在 24 到 56 个中文字符，最多两句，适合直接朗读。",
+    "时段只在 speechText 中自然出现一次；不要让 title 和 bubbleText 再重复时段。",
+    "speechText 可以先问候，再补充 bubbleText 没有容纳的陪伴信息，但不要机械照抄。",
+    "不能编造数据，只能使用上下文里真实存在的信息。",
+    "核心目标：让孩子感到被欢迎，同时清楚知道可以继续上次进度，也可以自由换路线。",
+    "语气要温暖、有探索感，但不能像任务清单，也不能像广告口号。",
+    "低年级更短、更口语、更可爱；高年级更稳、更温柔。",
+    "不要连续感叹，不要使用空泛鼓励词，例如“冲呀”“太棒啦”“一起出发吧”“快来挑战”。",
+    "不要反复使用“慢慢来、轻轻来、不着急、安心啦、来坐坐吧”这类过度安抚表达。",
+    "月份和季节不是必填信息，只能偶尔出现在 speechText，不能堆叠气氛词。",
+    "不要直接提“错题”“闯关”“任务”“挑战”“冲刺”这些词。",
+    "如果时段是晚上或深夜，降低兴奋度，但仍然保持清楚、自然。",
+    gradeHint,
+    semesterHint,
+    context.displayName ? `昵称是${context.displayName}。` : "昵称未设置。",
+    temporalHint,
+    visitHint,
+    progressStateHint,
+    backgroundHint ? `背景参考（不需要说出来，只是让你了解情况）：${backgroundHint}` : "",
+    "可接受示例：title“小心心，欢迎回来”，bubbleText“上次停下的第 3 站还亮着，也可以换条路线”。",
+    "可接受示例：title“今天想去哪座岛看看”，bubbleText“火山、森林、矿洞和海滩都准备好了”。",
+    "可接受示例：title“新路线准备好了”，bubbleText“五年级下册的新路线已经同步到首页”。",
+    "可接受 speechText：下午好，小心心。猫头鹰把路线图准备好了，今天想去哪座岛看看？",
+    "不可接受示例：欢迎来到最棒的学习之旅，现在立刻开始挑战吧！",
+    "不可接受示例：夏末微凉里，下午好，小岛安安静静地在这里陪你。",
+    "不可接受示例：今天的学习任务已经排好了，先从错题本开始吧！"
+  ].join("\n");
+}
+
 async function requestHomeWelcomeFromModel(client, request, textApiMode = "auto") {
   const requestedModel = resolveReviewModel(request.model);
   const response = await requestStructuredOutput({
     client,
     model: requestedModel,
-    instructions: buildHomeWelcomeInstructions(request.context),
+    instructions: buildFocusedHomeWelcomeInstructions(request.context),
     input: buildHomeWelcomeInput(request.context),
     schemaName: "elementary_home_welcome",
     schema: buildHomeWelcomeSchema(),

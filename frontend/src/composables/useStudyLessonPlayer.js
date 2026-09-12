@@ -40,6 +40,10 @@ export function useStudyLessonPlayer(lessonRef) {
   const lessonPrefetchStatus = ref("idle");
   const lessonPrefetchReadyCount = ref(0);
   const lessonPrefetchRequestedCount = ref(0);
+  // 每次真正开讲（含重播）自增，作为卡片动画的重挂载 key，让动画从 0 开始跟语音对齐
+  const narrationPlaybackKey = ref(0);
+  // 当前这遍语音的时长（毫秒），0 表示未知（回退到动画默认节奏）
+  const narrationDurationMs = ref(0);
 
   const cardUnlockTimerId = ref(0);
   const completionTimerId = ref(0);
@@ -306,10 +310,19 @@ export function useStudyLessonPlayer(lessonRef) {
 
     narrationStatus.value = "playing";
     narrationNotice.value = "";
+    narrationDurationMs.value = 0;
     let handledByError = false;
 
     const playbackResult = await playStudyNarration(narrationSrc, {
       volume: getNarrationVolume(),
+      onStarted: ({ durationMs } = {}) => {
+        if (!isNarrationRequestCurrent(requestId)) {
+          return;
+        }
+
+        narrationPlaybackKey.value += 1;
+        narrationDurationMs.value = Number(durationMs) > 0 ? Math.round(Number(durationMs)) : 0;
+      },
       onEnded: () => {
         if (!isNarrationRequestCurrent(requestId)) {
           return;
@@ -363,6 +376,8 @@ export function useStudyLessonPlayer(lessonRef) {
     shouldAutoComplete.value = false;
     narrationNotice.value = "";
     needsManualStart.value = false;
+    narrationPlaybackKey.value = 0;
+    narrationDurationMs.value = 0;
     lessonPrefetchStatus.value = "idle";
     lessonPrefetchReadyCount.value = 0;
     lessonPrefetchRequestedCount.value = 0;
@@ -406,6 +421,9 @@ export function useStudyLessonPlayer(lessonRef) {
 
     if (!isLastCard.value) {
       cardIndex.value += 1;
+      // 换卡后先回到 waiting 姿态，等这张卡自己的语音开讲再起动画
+      narrationPlaybackKey.value = 0;
+      narrationDurationMs.value = 0;
       startCurrentCard();
       return;
     }
@@ -466,6 +484,8 @@ export function useStudyLessonPlayer(lessonRef) {
     currentCard,
     narrationStatus,
     narrationNotice,
+    narrationPlaybackKey,
+    narrationDurationMs,
     hasNarration,
     needsManualStart,
     canGoNext,

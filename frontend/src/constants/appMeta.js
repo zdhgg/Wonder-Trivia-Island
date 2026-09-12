@@ -1,14 +1,29 @@
 export const APP_META = Object.freeze({
   productName: "奇妙知识岛",
-  version: "1.3.0",
-  releaseTag: "v1.3.0",
-  releaseLabel: "1.3 闯关世界与答题体验升级版",
-  releasedAt: "2026-06-03",
+  version: "1.4.0",
+  releaseTag: "v1.4.0",
+  releaseLabel: "1.4 讲堂地图与专项强化版",
+  releasedAt: "2026-09-13",
   repositoryUrl: "https://github.com/zdhgg/Wonder-Trivia-Island",
-  releaseUrl: "https://github.com/zdhgg/Wonder-Trivia-Island/releases/tag/v1.3.0",
+  releaseUrl: "https://github.com/zdhgg/Wonder-Trivia-Island/releases/tag/v1.4.0",
   architectureSummary: "Vue 3 + Vite 8 · Node.js 24 + Express 5 · SQLite",
   dataModeLabel: "单学习档案 · 本机优先",
   changelog: Object.freeze([
+    Object.freeze({
+      version: "1.4.0",
+      tag: "v1.4.0",
+      date: "2026-09-13",
+      channel: "正式版",
+      title: "讲堂地图、弱项专项练习和讲堂动画升级",
+      summary: "新增讲堂地图与弱项专项练习入口，为讲堂卡片补上步骤与概念动画，并按年级重排闯关关卡规则。",
+      highlights: Object.freeze([
+        "新增讲堂地图，按年级分册铺开六年学习路线，可直接继续上次讲堂或进入任意讲堂。",
+        "新增弱项专项练习，把薄弱点翻成知识标签后定向抽题，题量偏少的专项会提前提示。",
+        "讲堂卡片新增步骤与概念动画，旁白播放时把音频时长同步给动画时间轴，讲解节奏更统一。",
+        "闯关关卡按年级重排题量、限时和通关目标，答题玩法补齐年级奖励目标与得分策略。",
+        "首页欢迎语收紧标题、气泡和播报的长度上限，并补充新的标题锚点约束。"
+      ])
+    }),
     Object.freeze({
       version: "1.3.0",
       tag: "v1.3.0",

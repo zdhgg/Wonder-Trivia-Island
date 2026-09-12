@@ -1,17 +1,8 @@
 export const SETTINGS_SECTIONS = Object.freeze([
   {
-    id: "settings-overview",
-    href: "#settings-overview",
-    routeSlug: "",
-    navLabel: "概览",
-    sectionTitle: "概览",
-    category: "overview",
-    dirtyKey: ""
-  },
-  {
     id: "settings-profile",
     href: "#settings-profile",
-    routeSlug: "profile",
+    routeSlug: "",
     navLabel: "学习档案",
     sectionTitle: "学习档案",
     category: "editor",

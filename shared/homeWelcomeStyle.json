@@ -1,7 +1,7 @@
 {
-  "maxTitleLength": 28,
-  "maxBubbleLength": 36,
-  "maxSpeechLength": 96,
+  "maxTitleLength": 18,
+  "maxBubbleLength": 30,
+  "maxSpeechLength": 64,
   "offStyleTitlePatterns": [
     "任务",
     "挑战",
@@ -24,8 +24,10 @@
     "错题"
   ],
   "titleAnchorKeywords": [
-    "小岛",
-    "猫头鹰"
+    "岛",
+    "猫头鹰",
+    "欢迎回来",
+    "路线"
   ],
   "timeMentionAliasMap": {
     "morning": ["早晨", "早上", "清晨", "早上好"],

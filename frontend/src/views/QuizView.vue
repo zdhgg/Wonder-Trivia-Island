@@ -1,13 +1,12 @@
 <script>
 import { onMounted, ref } from "vue";
-import OwlMascot from "../components/OwlMascot.vue";
 import ResultScoreCard from "../components/ResultScoreCard.vue";
-import ModalDialog from "../components/ModalDialog.vue";
 import BalloonOption from "../components/BalloonOption.vue";
+import AnswerOption from "../components/AnswerOption.vue";
 import { useQuizView } from "../composables/useQuizView";
 
 export default {
-  components: { OwlMascot, ResultScoreCard, ModalDialog, BalloonOption },
+  components: { ResultScoreCard, BalloonOption, AnswerOption },
   props: {
     questions: {
       type: Array,
@@ -77,7 +76,7 @@ export default {
       <span class="quiz-view__bottle"></span>
     </div>
 
-    <div class="quiz-view__board" :class="{ 'quiz-view__board--solo': !hasQuestions }">
+    <div class="quiz-view__board quiz-view__board--solo">
       <div class="quiz-view__content">
         <div v-if="!hasQuestions" class="quiz-view__empty">
           <h2 class="quiz-view__empty-title">暂时还没有题目</h2>
@@ -96,18 +95,45 @@ export default {
               }
             ]"
           >
-            <section class="quiz-card__journey quiz-card__journey--glass" aria-label="答题进度">
+            <section
+              class="quiz-card__journey quiz-card__journey--glass"
+              :aria-label="`答题进度 已答 ${answeredCount} / ${questions.length} 题`"
+            >
               <div class="quiz-card__journey-header">
                 <div class="quiz-card__journey-copy-main">
                   <h3 class="quiz-card__journey-heading">{{ journeyHeading }}</h3>
-                  <span class="quiz-card__journey-title">{{ journeyTitle }} • {{ answeredCount }}/{{ questions.length }}题</span>
                 </div>
                 <div class="quiz-card__journey-stats">
+                  <span v-if="challengeRewardLabel" class="quiz-card__challenge-chip quiz-card__challenge-chip--reward">
+                    奖励 {{ challengeRewardLabel }}
+                  </span>
                   <div class="quiz-card__journey-score-badge">
                     <span class="score-value">{{ currentScore }}</span>
                     <span class="score-label">分</span>
                   </div>
                 </div>
+              </div>
+
+              <div
+                v-if="playGoalState"
+                :class="['quiz-card__play-goal', `quiz-card__play-goal--${playGoalState.key}`]"
+                :style="{ '--play-goal-target': playGoalState.target }"
+                aria-live="polite"
+              >
+                <div class="quiz-card__play-goal-copy">
+                  <span class="quiz-card__play-goal-name">{{ playGoalState.title }}</span>
+                  <strong>{{ playGoalLabel }}</strong>
+                </div>
+                <div class="quiz-card__play-goal-meter" :aria-label="`${playGoalState.title}进度 ${playGoalState.progress} / ${playGoalState.target}`">
+                  <span
+                    v-for="node in playGoalProgressNodes"
+                    :key="node.id"
+                    :class="['quiz-card__play-goal-node', { 'is-filled': node.filled }]"
+                  >
+                    {{ node.filled ? "★" : "" }}
+                  </span>
+                </div>
+                <span class="quiz-card__play-goal-count">{{ playGoalCountLabel }}</span>
               </div>
 
               <div class="quiz-card__treasure-map" aria-hidden="true">
@@ -155,17 +181,6 @@ export default {
                 </div>
               </div>
             </div>
-            <div v-if="isChallengeMode && challengeMissionLabel" class="quiz-card__challenge-strip" aria-label="本关任务">
-              <span class="quiz-card__challenge-chip quiz-card__challenge-chip--goal">
-                目标 {{ challengeMissionLabel }}
-              </span>
-              <span :class="['quiz-card__challenge-chip', `quiz-card__challenge-chip--${challengeMissionTone}`]">
-                {{ challengeMissionProgress }}
-              </span>
-              <span v-if="challengeRewardLabel" class="quiz-card__challenge-chip quiz-card__challenge-chip--reward">
-                奖励 {{ challengeRewardLabel }}
-              </span>
-            </div>
             <div v-if="showCountdown" :class="['quiz-card__countdown', `quiz-card__countdown--${timerTone}`]">
               <div class="quiz-card__countdown-track" aria-hidden="true">
                 <div class="quiz-card__countdown-fill" :style="{ width: `${timerPercent}%` }"></div>
@@ -180,67 +195,86 @@ export default {
             </div>
             <p v-if="submitErrorMessage" class="quiz-card__error">{{ submitErrorMessage }}</p>
 
-            <div class="quiz-card__options-shell">
-              <div :class="['quiz-card__options', { 'quiz-card__options--grid': usePlayfulOptionLayout }]">
-                <BalloonOption
-                  v-for="(option, index) in currentQuestion.options"
-                  :key="option.key"
-                  :option="option"
-                  :is-selected="selectedOptionKey === option.key"
-                  :is-correct="selectedOptionKey === option.key && answerState === 'correct'"
-                  :is-submitting="isSubmitting"
+            <section v-if="useStrategyOptions" class="quiz-card__strategy" aria-label="本题得分策略">
+              <div class="quiz-card__strategy-copy">
+                <strong>本题怎么答？</strong>
+                <span>冲刺分更高，答错会扣分</span>
+              </div>
+              <div class="quiz-card__strategy-control">
+                <button
+                  v-for="strategy in strategyOptions"
+                  :key="strategy.value"
+                  type="button"
+                  :class="['quiz-card__strategy-option', { 'is-selected': selectedStrategyMode === strategy.value }]"
+                  :aria-pressed="selectedStrategyMode === strategy.value"
                   :disabled="!canAnswer"
-                  :color-theme="['pink', 'blue', 'green', 'yellow'][index % 4]"
-                  @select="handleOptionSelect"
-                />
-              </div>
-
-            </div>
-
-            <div v-if="showCorrectStarAnimation" class="flying-star-overlay">
-              <div class="flying-star-text">答对啦！</div>
-              <div class="flying-star-icon">⭐</div>
-            </div>
-
-            <ModalDialog
-              v-model="showResultModal"
-              title-id="result-modal-title"
-              :heading-title="resultModalIsCorrect ? '答对啦！' : '答错了哦'"
-              :disable-close="true"
-              panel-class="quiz-card__result-modal"
-            >
-              <div v-if="resultModalIsCorrect" class="quiz-card__celebration-panel">
-                <div class="quiz-card__celebration-burst">
-                  <span class="quiz-card__celebration-firework quiz-card__celebration-firework--left"></span>
-                  <span class="quiz-card__celebration-firework quiz-card__celebration-firework--right"></span>
-                  <span class="quiz-card__celebration-star quiz-card__celebration-star--1">★</span>
-                  <span class="quiz-card__celebration-star quiz-card__celebration-star--2">✦</span>
-                  <span class="quiz-card__celebration-star quiz-card__celebration-star--3">★</span>
-                  <span class="quiz-card__celebration-star quiz-card__celebration-star--4">✦</span>
-                </div>
-                <span class="quiz-card__celebration-score">+{{ pointsPerCorrect }} 分</span>
-                <p v-if="selectedAnswerLabel" class="quiz-card__result-answer-line">你点的是：{{ selectedAnswerLabel }}</p>
-              </div>
-              <div v-else class="quiz-card__wrong-panel">
-                <p class="quiz-card__wrong-panel-title">已加入错题本，下次再努力！</p>
-                <dl class="quiz-card__answer-summary">
-                  <div class="quiz-card__answer-summary-row">
-                    <dt>你点的是</dt>
-                    <dd>{{ selectedAnswerLabel || "未作答" }}</dd>
-                  </div>
-                  <div class="quiz-card__answer-summary-row">
-                    <dt>正确答案</dt>
-                    <dd>{{ correctAnswerLabel }}</dd>
-                  </div>
-                </dl>
-              </div>
-
-              <div class="quiz-card__result-modal-actions">
-                <button class="btn-cartoon btn-cartoon--mint quiz-card__continue" type="button" @click="handleModalAdvance">
-                  继续下一题 ({{ resultAutoAdvanceTimer }}s)
+                  @click="selectAnswerStrategy(strategy.value)"
+                >
+                  <strong>{{ strategy.label }}</strong>
+                  <span>{{ strategy.detail }}</span>
                 </button>
               </div>
-            </ModalDialog>
+            </section>
+
+            <div class="quiz-card__options-shell">
+              <div :class="['quiz-card__options', { 'quiz-card__options--grid': usePlayfulOptionLayout, 'quiz-card__options--balloons': useBalloonOptions }]">
+                <template v-for="(option, index) in currentQuestion.options" :key="option.key">
+                  <BalloonOption
+                    v-if="useBalloonOptions"
+                    :option="option"
+                    :is-selected="selectedOptionKey === option.key"
+                    :is-correct="Boolean(feedback) && feedback.correctAnswer === option.key"
+                    :is-wrong="answerState === 'wrong' && selectedOptionKey === option.key && feedback?.correctAnswer !== option.key"
+                    :is-submitting="isSubmitting"
+                    :disabled="!canAnswer"
+                    :color-theme="['pink', 'blue', 'green', 'yellow'][index % 4]"
+                    @select="handleOptionSelect"
+                  />
+                  <AnswerOption
+                    v-else
+                    :option="option"
+                    :variant="answerOptionVariant"
+                    :is-selected="selectedOptionKey === option.key"
+                    :is-correct="Boolean(feedback) && feedback.correctAnswer === option.key"
+                    :is-wrong="answerState === 'wrong' && selectedOptionKey === option.key && feedback?.correctAnswer !== option.key"
+                    :is-submitting="isSubmitting"
+                    :disabled="!canAnswer"
+                    :show-option-key="shouldShowOptionKey"
+                    :soft-option-key="useSoftOptionKey"
+                    @select="handleOptionSelect"
+                  />
+                </template>
+              </div>
+
+            </div>
+
+            <div
+              v-if="showCorrectStarAnimation"
+              class="flying-star-overlay"
+              :style="{ '--correct-feedback-duration': `${correctFeedbackDelay}ms` }"
+            >
+              <div class="flying-star-icon" aria-hidden="true">{{ correctFeedbackIcon }}</div>
+              <strong class="flying-star-text">{{ correctFeedbackTitle }}</strong>
+              <span class="flying-star-detail">{{ correctFeedbackDetail }}</span>
+            </div>
+
+            <Transition name="answer-feedback">
+              <section v-if="showResultModal" class="quiz-card__answer-feedback" role="status" aria-live="polite">
+                <div class="quiz-card__answer-feedback-copy">
+                  <span class="quiz-card__answer-feedback-mark" aria-hidden="true">↗</span>
+                  <div>
+                    <strong>{{ wrongFeedbackTitle }}</strong>
+                    <p>{{ wrongFeedbackDetail }}</p>
+                  </div>
+                </div>
+                <div class="quiz-card__answer-feedback-actions">
+                  <button class="btn-cartoon btn-cartoon--mint quiz-card__continue" type="button" @click="handleModalAdvance">
+                    我记住了，继续
+                  </button>
+                  <span>{{ resultAutoAdvanceTimer }} 秒后继续</span>
+                </div>
+              </section>
+            </Transition>
           </article>
 
           <article v-else key="quiz-finished" class="quiz-card quiz-card--finished">
@@ -267,6 +301,12 @@ export default {
               :next-stage-title="challengeResult?.nextStageTitle ?? ''"
               :unlocked-next-stage="challengeResult?.unlockedNextStage ?? false"
               :challenge-outcome="challengeResult"
+              :best-streak="bestCorrectStreak"
+              :session-reward-count="sessionRewardCount"
+              :session-reward-label="playRewardConfig?.rewardLabel || ''"
+              :show-strategy-stats="useStrategyOptions"
+              :sprint-attempt-count="sprintAttemptCount"
+              :sprint-success-count="sprintSuccessCount"
               @replay="handleReplay"
               @next-stage="handleNextStage"
             />
@@ -312,66 +352,6 @@ export default {
           </article>
         </Transition>
       </div>
-
-      <aside v-if="hasQuestions" class="quiz-view__sidebar">
-        <div class="quiz-view__companion" :class="{ 'quiz-view__companion--active': currentQuestion }">
-          <div class="quiz-view__companion-head">
-            <span class="quiz-view__companion-tag">{{ companionPersonaName }}</span>
-            <span :class="['quiz-view__companion-state', `quiz-view__companion-state--${companionTone}`]">
-              {{ companionStateLabel }}
-            </span>
-          </div>
-
-          <div class="quiz-view__companion-copy">
-            <div class="quiz-view__companion-title-row">
-              <h3 class="quiz-view__companion-title">{{ companionTitle }}</h3>
-              <span :class="['quiz-view__companion-auto-state', `quiz-view__companion-auto-state--${companionAutoVoiceTone}`]">
-                {{ companionAutoVoiceLabel }}
-              </span>
-            </div>
-            <div v-if="showCompanionVoiceButton || companionVoiceErrorMessage" class="quiz-view__companion-actions">
-              <button
-                v-if="showCompanionVoiceButton"
-                class="quiz-view__companion-voice"
-                type="button"
-                :disabled="aiSpeechStatus === 'loading' || quizSummarySpeechStatus === 'loading'"
-                @click="handlePlayCompanionVoice"
-              >
-                {{ companionVoiceButtonLabel }}
-              </button>
-              <p v-if="companionVoiceErrorMessage" class="quiz-view__companion-error">{{ companionVoiceErrorMessage }}</p>
-            </div>
-          </div>
-
-
-
-          <div class="quiz-view__companion-focus">
-            <span class="quiz-view__companion-focus-label">{{ companionFocusLabel }}</span>
-            <p class="quiz-view__companion-focus-text">{{ companionFocusText }}</p>
-          </div>
-
-          <div class="quiz-view__mascot-shell">
-            <div :class="['quiz-view__mascot-dialog', { 'quiz-view__mascot-dialog--speaking': mascotStatus === 'speaking' }]" aria-live="polite">
-              <span :class="['quiz-view__mascot-dialog-tag', { 'quiz-view__mascot-dialog-tag--speaking': mascotStatus === 'speaking' }]">
-                {{ companionDialogTag }}
-              </span>
-              <p
-                :class="[
-                  'quiz-view__bubble',
-                  'quiz-view__bubble--mascot',
-                  `quiz-view__bubble--${companionTone}`,
-                  { 'quiz-view__bubble--speaking': mascotStatus === 'speaking' }
-                ]"
-              >
-                {{ mascotHint }}
-              </p>
-            </div>
-            <div class="quiz-view__mascot">
-              <OwlMascot :status="mascotStatus" />
-            </div>
-          </div>
-        </div>
-      </aside>
     </div>
   </section>
 </template>

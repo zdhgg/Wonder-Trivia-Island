@@ -138,7 +138,7 @@ npm run audio:study-tts -- -SelectionTsvPath "docs/generated/study-narration-gra
 
 - 当前脚本依赖 Windows 自带 `System.Speech`，输出为 `.wav`。
 - 播放器已经支持 `.wav`，联调阶段可以直接用；正式上线建议继续转成 `.mp3`。
-- 运行 `npm run audio:study-manifest` 时，会把现有讲堂音频同步到 `frontend/public/audio/study`，供前端按静态路径直接播放。
+- 运行 `npm run audio:study-manifest` 时，会根据 `frontend/public/audio/study` 里的现有讲堂音频生成播放索引和覆盖清单。
 - 同一次导出还会生成 grade/priority pack 清单，供后续做整年级预取或分批下载。
 
 ## 转成上线格式
@@ -212,7 +212,7 @@ npm run audio:study-optimize -- --selection-tsv docs/generated/study-narration-g
 素材目录:
 
 ```text
-frontend/src/assets/audio/study/<lessonId>/<cardId>.<ext>
+frontend/public/audio/study/<lessonId>/<cardId>.<ext>
 ```
 
 支持格式:
@@ -224,8 +224,8 @@ frontend/src/assets/audio/study/<lessonId>/<cardId>.<ext>
 
 说明:
 
-- 音频制作和导入仍以 `frontend/src/assets/audio/study` 为素材源目录。
-- `npm run audio:study-manifest` 会自动把已有素材镜像到 `frontend/public/audio/study`，播放器实际走的是这份公开静态目录。
+- 音频制作、导入、转码和播放器都以 `frontend/public/audio/study` 为单一素材源目录。
+- `npm run audio:study-manifest` 不再复制素材，只根据这份公开静态目录生成 manifest、前端索引和音频包清单。
 - 讲堂播放器会在进入某个 lesson 时，后台预取当前 lesson 的 5 条旁白并在离开时释放。
 - 现在额外支持“下载到本机浏览器”:
   - 前端会把选中的年级包或优先批次包写入浏览器 `Cache Storage`，关闭页面后仍会保留。
@@ -236,9 +236,9 @@ frontend/src/assets/audio/study/<lessonId>/<cardId>.<ext>
 示例:
 
 ```text
-frontend/src/assets/audio/study/g1-upper-chinese-habits/step-1.mp3
-frontend/src/assets/audio/study/g1-upper-chinese-habits/example.mp3
-frontend/src/assets/audio/study/g1-upper-chinese-habits/memory.mp3
+frontend/public/audio/study/g1-upper-chinese-habits/step-1.mp3
+frontend/public/audio/study/g1-upper-chinese-habits/example.mp3
+frontend/public/audio/study/g1-upper-chinese-habits/memory.mp3
 ```
 
 ## 推荐执行顺序

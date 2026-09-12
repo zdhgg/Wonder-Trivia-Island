@@ -43,6 +43,11 @@ body,
   margin: 0;
 }
 
+/* 装饰气泡贴着 .page-shell 边缘放置，窄于容器断点时会横向出血，这里裁掉横向滚动。 */
+html {
+  overflow-x: clip;
+}
+
 body {
   min-height: 100vh;
   color: var(--color-ink);
@@ -92,7 +97,7 @@ select {
   z-index: 1;
   max-width: 1240px;
   margin: 0 auto;
-  padding: 28px 24px 56px;
+  padding: 24px 24px 24px;
 }
 
 .page-shell--wide {
@@ -149,7 +154,7 @@ select {
 
 .site-nav {
   position: relative;
-  margin-bottom: 20px;
+  margin-bottom: 14px;
   padding: 4px 0;
 }
 
@@ -671,7 +676,7 @@ select {
 
 .page-main {
   display: grid;
-  gap: 20px;
+  gap: 16px;
 }
 
 .page-main--immersive {
@@ -680,7 +685,7 @@ select {
 
 .quiz-workspace {
   display: grid;
-  gap: 22px;
+  gap: 14px;
 }
 
 .quiz-workspace__content {
@@ -3072,11 +3077,48 @@ select {
   width: auto !important;
 }
 
+.adventure-bar__mute {
+  min-height: 38px;
+  min-width: 42px;
+  padding: 6px 10px;
+  border: 1.5px solid rgba(36, 50, 74, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.92);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 160ms ease, border-color 160ms ease, background-color 160ms ease;
+}
+
+.adventure-bar__mute:hover {
+  transform: translateY(-1px);
+  border-color: rgba(124, 216, 184, 0.52);
+  background: rgba(255, 255, 255, 0.98);
+}
+
 @media (max-width: 720px) {
+  .adventure-bar__mute {
+    min-height: 32px;
+    min-width: 38px;
+    padding: 4px 8px;
+    font-size: 0.92rem;
+  }
+}
+
+@media (max-width: 720px) {
+  /* 窄屏分两行：标题独占一行居中，按钮一行，避免关名被挤成竖排。 */
   .quiz-workspace__adventure-bar {
     flex-direction: row;
+    flex-wrap: wrap;
+    row-gap: 8px;
     padding: 8px 12px;
     border-radius: 20px;
+  }
+
+  .adventure-bar__title {
+    order: -1;
+    width: 100%;
+    justify-content: center;
   }
 
   .adventure-bar__heading {
@@ -3418,130 +3460,3 @@ select {
   background: #ff8f00;
 }
 
-/* 🎬 高度抗锯齿弹性动画 */
-.animate-fade-in {
-  animation: fade-in 0.22s ease-out forwards;
-}
-
-.animate-pop-in {
-  animation: pop-in 0.34s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
-}
-
-@keyframes fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-@keyframes pop-in {
-  from {
-    opacity: 0;
-    transform: scale(0.85) translateY(24px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
-}
-
-/* ==========================================================================
-   🗺️ 世界大地图视图 (World Map)
-   ========================================================================== */
-.challenge-world-map {
-  padding: 16px 24px;
-  height: 100%;
-  overflow-y: auto;
-}
-
-.challenge-world__continents {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 24px;
-  padding: 16px 8px 60px;
-}
-
-.challenge-world-card {
-  position: relative;
-  background: linear-gradient(145deg, rgba(255,255,255,0.95) 0%, rgba(248,252,255,0.85) 100%);
-  border: 3px solid rgba(255, 255, 255, 0.8);
-  border-radius: 24px;
-  padding: 20px;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  cursor: pointer;
-  box-shadow: 0 10px 25px rgba(36, 50, 74, 0.08), inset 0 2px 0 rgba(255, 255, 255, 1);
-  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-  backdrop-filter: blur(10px);
-}
-
-.challenge-world-card:hover {
-  transform: translateY(-8px) scale(1.02);
-  box-shadow: 0 15px 35px rgba(36, 50, 74, 0.15), inset 0 2px 0 rgba(255, 255, 255, 1);
-  border-color: #74b9ff;
-}
-
-.challenge-world-card__icon {
-  font-size: 3.2rem;
-  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.15));
-}
-
-.challenge-world-card__content {
-  flex: 1;
-}
-
-.challenge-world-card__title {
-  font-family: "ZCOOL KuaiLe", "Baloo 2", sans-serif;
-  font-size: 1.4rem;
-  color: #2c3e50;
-  margin: 0 0 4px 0;
-  line-height: 1.25;
-  display: flex;
-  flex-direction: column;
-}
-
-.challenge-world-card__island-name {
-  font-size: 1.35rem;
-  color: #2d3436;
-  font-weight: 850;
-}
-
-.challenge-world-card__theme-title {
-  font-size: 0.95rem;
-  color: #7f8c8d;
-  font-weight: normal;
-  margin-top: 2px;
-  font-family: var(--font-primary), sans-serif;
-}
-
-.challenge-world-card__grade-tag {
-  display: inline-block;
-  font-size: 0.75rem;
-  background: rgba(116, 185, 255, 0.15);
-  color: #0984e3;
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-weight: bold;
-  margin-bottom: 8px;
-}
-
-.challenge-world-card__stats {
-  font-size: 0.9rem;
-  color: #5c6c7c;
-  font-weight: 800;
-  margin-bottom: 8px;
-}
-
-.challenge-world-card__progress-bar {
-  width: 100%;
-  height: 8px;
-  background: rgba(44, 62, 80, 0.1);
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.challenge-world-card__progress-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #ff9f43, #ff6b6b);
-  border-radius: 4px;
-  transition: width 0.6s ease-out;
-}

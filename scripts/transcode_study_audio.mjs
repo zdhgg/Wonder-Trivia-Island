@@ -3,7 +3,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import ffmpegPath from "ffmpeg-static";
 
-const DEFAULT_ROOT = "frontend/src/assets/audio/study";
+const DEFAULT_ROOT = "frontend/public/audio/study";
 const DEFAULT_TARGET_FORMAT = "mp3";
 const DEFAULT_MP3_BITRATE = "48k";
 const DEFAULT_SAMPLE_RATE = "16000";

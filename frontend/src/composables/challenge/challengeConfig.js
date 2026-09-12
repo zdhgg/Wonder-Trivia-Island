@@ -362,6 +362,134 @@ export const CHALLENGE_CHAPTER_ROUTE_CONFIG = Object.freeze({
     })
   });
 
+function createGradeStageRule(questionCount, timeLimitSeconds, passAccuracy, mission) {
+  return Object.freeze({
+    questionCount,
+    timeLimitSeconds,
+    passAccuracy,
+    mission: Object.freeze(mission)
+  });
+}
+
+const CHALLENGE_GRADE_STAGE_RULES = Object.freeze({
+  "一年级": Object.freeze({
+    "stage-1": createGradeStageRule(3, 0, 60, { type: "pass", label: "完成 3 题" }),
+    "stage-2": createGradeStageRule(4, 0, 60, { type: "correct-target", target: 3, label: "答对 3 题" }),
+    "stage-3": createGradeStageRule(4, 0, 60, { type: "correct-target", target: 3, label: "答对 3 题" }),
+    "stage-4": createGradeStageRule(5, 0, 60, { type: "correct-target", target: 4, label: "答对 4 题" }),
+    "stage-5": createGradeStageRule(5, 30, 60, { type: "streak", target: 2, label: "连对 2 题" }),
+    "stage-6": createGradeStageRule(5, 25, 70, { type: "correct-target", target: 4, label: "答对 4 题" }),
+    "stage-7": createGradeStageRule(6, 25, 70, { type: "streak", target: 3, label: "连对 3 题" })
+  }),
+  "二年级": Object.freeze({
+    "stage-1": createGradeStageRule(3, 0, 60, { type: "pass", label: "完成 3 题" }),
+    "stage-2": createGradeStageRule(4, 0, 60, { type: "correct-target", target: 3, label: "答对 3 题" }),
+    "stage-3": createGradeStageRule(5, 35, 60, { type: "zero-timeout", label: "全程不超时" }),
+    "stage-4": createGradeStageRule(6, 30, 70, { type: "correct-target", target: 5, label: "答对 5 题" }),
+    "stage-5": createGradeStageRule(6, 25, 70, { type: "streak", target: 3, label: "连对 3 题" }),
+    "stage-6": createGradeStageRule(7, 25, 70, { type: "correct-target", target: 5, label: "答对 5 题" }),
+    "stage-7": createGradeStageRule(8, 20, 75, {
+      type: "final-sprint",
+      target: 2,
+      windowSize: 3,
+      sprintTimeLimitSeconds: 18,
+      label: "最后 3 题答对 2 题"
+    })
+  }),
+  "三年级": Object.freeze({
+    "stage-1": createGradeStageRule(4, 0, 60, { type: "pass", label: "完成 4 题" }),
+    "stage-2": createGradeStageRule(5, 35, 60, { type: "streak", target: 3, label: "连对 3 题" }),
+    "stage-3": createGradeStageRule(6, 30, 70, { type: "zero-timeout", label: "全程不超时" }),
+    "stage-4": createGradeStageRule(7, 25, 70, { type: "correct-target", target: 5, label: "答对 5 题" }),
+    "stage-5": createGradeStageRule(8, 22, 75, {
+      type: "final-sprint",
+      target: 2,
+      windowSize: 3,
+      sprintTimeLimitSeconds: 18,
+      label: "最后 3 题答对 2 题"
+    }),
+    "stage-6": createGradeStageRule(8, 20, 75, { type: "correct-target", target: 6, label: "答对 6 题" }),
+    "stage-7": createGradeStageRule(9, 18, 80, { type: "streak", target: 4, label: "连对 4 题" })
+  }),
+  "四年级": Object.freeze({
+    "stage-1": createGradeStageRule(5, 30, 60, { type: "pass", label: "完成 5 题" }),
+    "stage-2": createGradeStageRule(6, 25, 70, { type: "streak", target: 3, label: "连对 3 题" }),
+    "stage-3": createGradeStageRule(7, 22, 70, { type: "zero-timeout", label: "全程不超时" }),
+    "stage-4": createGradeStageRule(8, 20, 75, { type: "correct-target", target: 6, label: "答对 6 题" }),
+    "stage-5": createGradeStageRule(9, 18, 75, {
+      type: "final-sprint",
+      target: 2,
+      windowSize: 3,
+      sprintTimeLimitSeconds: 15,
+      label: "最后 3 题答对 2 题"
+    }),
+    "stage-6": createGradeStageRule(9, 16, 80, { type: "correct-target", target: 7, label: "答对 7 题" }),
+    "stage-7": createGradeStageRule(10, 15, 80, { type: "streak", target: 4, label: "连对 4 题" })
+  }),
+  "五年级": Object.freeze({
+    "stage-1": createGradeStageRule(5, 25, 70, { type: "pass", label: "完成 5 题" }),
+    "stage-2": createGradeStageRule(6, 22, 70, { type: "streak", target: 3, label: "连对 3 题" }),
+    "stage-3": createGradeStageRule(7, 20, 70, { type: "zero-timeout", label: "全程不超时" }),
+    "stage-4": createGradeStageRule(8, 18, 75, { type: "correct-target", target: 6, label: "答对 6 题" }),
+    "stage-5": createGradeStageRule(10, 16, 80, {
+      type: "final-sprint",
+      target: 3,
+      windowSize: 4,
+      sprintTimeLimitSeconds: 13,
+      label: "最后 4 题答对 3 题"
+    }),
+    "stage-6": createGradeStageRule(10, 15, 80, { type: "correct-target", target: 8, label: "答对 8 题" }),
+    "stage-7": createGradeStageRule(10, 13, 85, { type: "streak", target: 4, label: "连对 4 题" })
+  }),
+  "六年级": Object.freeze({
+    "stage-1": createGradeStageRule(5, 22, 70, { type: "pass", label: "完成 5 题" }),
+    "stage-2": createGradeStageRule(6, 20, 75, { type: "streak", target: 3, label: "连对 3 题" }),
+    "stage-3": createGradeStageRule(8, 18, 75, { type: "zero-timeout", label: "全程不超时" }),
+    "stage-4": createGradeStageRule(8, 16, 80, { type: "correct-target", target: 7, label: "答对 7 题" }),
+    "stage-5": createGradeStageRule(10, 14, 80, {
+      type: "final-sprint",
+      target: 3,
+      windowSize: 4,
+      sprintTimeLimitSeconds: 12,
+      label: "最后 4 题答对 3 题"
+    }),
+    "stage-6": createGradeStageRule(10, 13, 80, { type: "correct-target", target: 8, label: "答对 8 题" }),
+    "stage-7": createGradeStageRule(10, 12, 85, { type: "streak", target: 5, label: "连对 5 题" })
+  })
+});
+
+function getChallengeMissionDetail(mission) {
+  if (mission.type === "correct-target") {
+    return `本关答对 ${mission.target} 题即可完成额外任务。`;
+  }
+
+  if (mission.type === "streak") {
+    return `连续答对 ${mission.target} 题即可完成额外任务。`;
+  }
+
+  if (mission.type === "zero-timeout") {
+    return "在倒计时结束前完成每一道题，不让任何一题超时。";
+  }
+
+  if (mission.type === "final-sprint") {
+    return `最后 ${mission.windowSize} 题进入冲刺，每题 ${mission.sprintTimeLimitSeconds} 秒，答对 ${mission.target} 题即可完成任务。`;
+  }
+
+  return "完成本关即可达成任务。";
+}
+
+function getChallengeStageTravelNote(stageRule) {
+  if (stageRule.timeLimitSeconds <= 0) {
+    return `本关共 ${stageRule.questionCount} 题，不限时，想清楚再作答。`;
+  }
+
+  if (stageRule.mission.type === "final-sprint") {
+    return `本关共 ${stageRule.questionCount} 题，每题 ${stageRule.timeLimitSeconds} 秒；最后 ${stageRule.mission.windowSize} 题会进入加速冲刺。`;
+  }
+
+  return `本关共 ${stageRule.questionCount} 题，每题 ${stageRule.timeLimitSeconds} 秒，先看准题目再行动。`;
+}
+
 export const CHALLENGE_CHAPTERS = Object.freeze([
     Object.freeze({
       id: "chapter-grade-1-upper",
@@ -536,18 +664,35 @@ export function getChallengeChapter(chapterId) {
 
 export function getChallengeStageConfig(stageId, chapterId = DEFAULT_CHALLENGE_CHAPTER_ID) {
     const baseStage = getChallengeStage(stageId);
-    const stageOverride = getChallengeChapter(chapterId).stagePlan?.[baseStage.id] ?? {};
+    const chapter = getChallengeChapter(chapterId);
+    const gradeStageRule = CHALLENGE_GRADE_STAGE_RULES[chapter.grade]?.[baseStage.id] ?? {};
+    const gradeMission = gradeStageRule.mission
+      ? {
+          ...gradeStageRule.mission,
+          detail: getChallengeMissionDetail(gradeStageRule.mission)
+        }
+      : {};
+    const gradeStageOverride = gradeStageRule.mission
+      ? {
+          ...gradeStageRule,
+          travelNote: getChallengeStageTravelNote(gradeStageRule),
+          mission: gradeMission
+        }
+      : gradeStageRule;
+    const stageOverride = chapter.stagePlan?.[baseStage.id] ?? {};
     const resolvedTitle = stageOverride.title || baseStage.title;
     const resolvedKnowledgeTag = stageOverride.knowledgeTag || resolvedTitle;
     const resolvedQuestionKnowledgeTag = stageOverride.questionKnowledgeTag || resolvedKnowledgeTag;
 
     return {
       ...baseStage,
+      ...gradeStageOverride,
       ...stageOverride,
       knowledgeTag: resolvedKnowledgeTag,
       questionKnowledgeTag: resolvedQuestionKnowledgeTag,
       mission: {
         ...baseStage.mission,
+        ...gradeMission,
         ...(stageOverride.mission ?? {})
       },
       reward: {

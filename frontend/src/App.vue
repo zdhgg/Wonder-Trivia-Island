@@ -1,6 +1,7 @@
 <script>
 import { computed, defineAsyncComponent } from "vue";
 import PracticeHomeView from "./views/PracticeHomeView.vue";
+import StudyMapView from "./views/StudyMapView.vue";
 import { useSettingsCenter } from "./composables/useSettingsCenter";
 import { useToolsCenter } from "./composables/useToolsCenter";
 import { useTriviaApp } from "./composables/useTriviaApp";
@@ -19,6 +20,7 @@ export default {
   components: {
     PracticeHomeView,
     KnowledgeStudyView,
+    StudyMapView,
     QuizSettingsModal,
     QuizView,
     SettingsView,
@@ -107,7 +109,7 @@ export default {
       }
     ]"
   >
-    <header v-if="!isImmersiveView" class="site-nav">
+    <header v-if="!isImmersiveView && !isQuizActive" class="site-nav">
       <div class="site-nav__compact">
         <button class="site-brand__home" type="button" @click="handleHomeNavigation">
           <span class="site-brand__home-mark">奇妙知识岛</span>
@@ -161,6 +163,7 @@ export default {
         v-model:subject-practice-grade="homeSubjectPracticeGrade"
         v-model:subject-practice-semester="homeSubjectPracticeSemester"
         :challenge-current-stage-label="currentChallengeHomeLabel"
+        :challenge-stage-short-label="homeChallengeStageLabel"
         :challenge-route-title="homeChallengeRouteTitle"
         :grade-options="homeGradeOptions"
         :subject-options="homeSubjectOptions"
@@ -169,12 +172,12 @@ export default {
         :knowledge-spotlight="homeKnowledgeSpotlight"
         :wrong-book-spotlight="homeWrongBookSpotlight"
         :welcome-panel="homeWelcomePanel"
-        @play-welcome-voice="handlePlayHomeWelcomeVoice"
         @start-challenge="startHomeChallenge"
         @start-grade-practice="startHomeGradePractice"
         @start-subject-practice="startHomeSubjectPractice"
         @start-free-practice="startHomeFreePractice"
-        @open-knowledge-study="openStudyView"
+        @start-weak-point-practice="startWeakPointPractice"
+        @open-knowledge-study="openStudyMapView"
         @open-wrong-review="openWrongBookView"
       />
 
@@ -189,6 +192,19 @@ export default {
         @start-practice="startKnowledgeTagPractice"
         @open-study-lesson="openStudyLessonPlayer"
         @open-wrong-review="openWrongBookView"
+        @open-study-map="openStudyMapView"
+      />
+
+      <StudyMapView
+        v-else-if="currentView === VIEW_MODE.STUDY_MAP"
+        :sections="knowledgeSystematicSections"
+        :is-loading="isKnowledgeRoutesLoading"
+        :study-resume="homeStudyResume"
+        :selected-lesson-id="selectedStudyLessonId"
+        :profile-grade="studyProfileGrade"
+        @continue-lesson="openStudyLessonPlayer"
+        @open-lesson="openStudyLessonPlayer"
+        @back="openStudyView"
       />
 
       <StudyLessonPlayerView
@@ -225,8 +241,6 @@ export default {
         :backup-status-message="backupStatusMessage"
         :is-backup-busy="isBackupBusy"
         :backup-stats="backupStats"
-        :return-label="settingsReturnLabel"
-        @back="closeSettingsView"
         @pending-state-change="handleSettingsPendingStateChange"
         @profile-saved="handleProfileSaved"
         @export-backup="exportBackup"
@@ -447,7 +461,7 @@ export default {
             <span class="adventure-bar__icon">🌟</span>
             <strong class="adventure-bar__heading">{{ isChallengeMode ? currentStageLabel : "自由探索挑战" }}</strong>
           </div>
-          <div id="adventure-bar-actions" class="adventure-bar__actions">
+          <div class="adventure-bar__actions">
             <button
               class="btn-cartoon btn-cartoon--mint btn-cartoon--quiet"
               type="button"
@@ -456,6 +470,16 @@ export default {
             >
               🔄 重开
             </button>
+            <button
+              class="adventure-bar__mute"
+              type="button"
+              :title="isMuted ? '开启声音' : '静音'"
+              :aria-label="isMuted ? '开启声音' : '静音'"
+              @click="toggleGlobalMute"
+            >
+              {{ isMuted ? "🔇" : "🔊" }}
+            </button>
+            <div id="adventure-bar-actions" class="adventure-bar__stars"></div>
           </div>
         </section>
 

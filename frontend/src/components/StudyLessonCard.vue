@@ -1,4 +1,7 @@
 <script setup>
+import { computed } from "vue";
+import { resolveStudyCardAnimationComponent } from "./study/animations/studyCardAnimationRegistry";
+
 const props = defineProps({
   lessonTitle: {
     type: String,
@@ -19,7 +22,45 @@ const props = defineProps({
   isNarrating: {
     type: Boolean,
     default: false
+  },
+  // 每次开讲/重播自增：作为动画组件的 key，重播时动画从头再走一遍
+  playbackKey: {
+    type: Number,
+    default: 0
+  },
+  // 当前这遍语音的状态，动画据此区分“还没开讲 / 跟着讲 / 讲完定格”
+  narrationStatus: {
+    type: String,
+    default: "idle"
+  },
+  // 当前这遍语音的时长（毫秒），0 表示未知
+  narrationDurationMs: {
+    type: Number,
+    default: 0
   }
+});
+
+const animationComponent = computed(() => resolveStudyCardAnimationComponent(props.card.visualAnimationId));
+
+const animationPhase = computed(() => {
+  if (props.narrationStatus === "playing" || props.narrationStatus === "fallback") {
+    return "active";
+  }
+
+  return props.playbackKey > 0 ? "done" : "waiting";
+});
+
+// 语音时长已知时，把它作为动画时间轴的总时长：动画讲完正好语音讲完
+const visualStyle = computed(() => {
+  if (!(props.narrationDurationMs > 0)) {
+    return undefined;
+  }
+
+  return {
+    "--study-anim-duration": `${(props.narrationDurationMs / 1000).toFixed(2)}s`,
+    "--study-anim-iteration": "1",
+    "--study-anim-fill": "forwards"
+  };
 });
 </script>
 
@@ -56,8 +97,17 @@ const props = defineProps({
       </p>
     </div>
 
-    <div class="study-lesson-card__visual" aria-hidden="true">
-      <div class="study-lesson-card__orb">
+    <div class="study-lesson-card__visual" :style="visualStyle" aria-hidden="true">
+      <component
+        :is="animationComponent"
+        v-if="animationComponent"
+        :key="`anim-${playbackKey}`"
+        class="study-lesson-card__animation"
+        :active="isNarrating"
+        :phase="animationPhase"
+      />
+
+      <div v-else class="study-lesson-card__orb">
         <span class="study-lesson-card__glyph">{{ card.visualGlyph }}</span>
       </div>
 
@@ -78,6 +128,13 @@ const props = defineProps({
   --study-card-badge: rgba(255, 255, 255, 0.86);
   --study-card-chip: rgba(255, 255, 255, 0.82);
   --study-card-visual: linear-gradient(160deg, rgba(190, 240, 255, 0.9) 0%, rgba(255, 255, 255, 0.8) 100%);
+  --study-anim-ink: #24324a;
+  --study-anim-line: rgba(36, 50, 74, 0.16);
+  --study-anim-surface: rgba(255, 255, 255, 0.72);
+  --study-anim-accent: rgba(86, 173, 255, 0.95);
+  --study-anim-accent-soft: rgba(86, 173, 255, 0.42);
+  --study-anim-soft: rgba(190, 240, 255, 0.78);
+  --study-anim-warm: rgba(255, 208, 102, 0.96);
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(260px, 0.78fr);
   gap: 24px;
@@ -97,16 +154,33 @@ const props = defineProps({
 .study-lesson-card--chinese {
   --study-card-glow: rgba(255, 214, 179, 0.24);
   --study-card-visual: linear-gradient(160deg, rgba(255, 231, 156, 0.92) 0%, rgba(255, 255, 255, 0.82) 100%);
+  --study-anim-accent: rgba(233, 150, 61, 0.96);
+  --study-anim-accent-soft: rgba(233, 150, 61, 0.4);
+  --study-anim-soft: rgba(255, 231, 156, 0.86);
+  --study-anim-warm: rgba(246, 133, 155, 0.96);
 }
 
 .study-lesson-card--math {
   --study-card-glow: rgba(173, 235, 255, 0.26);
   --study-card-visual: linear-gradient(160deg, rgba(173, 235, 255, 0.92) 0%, rgba(255, 255, 255, 0.82) 100%);
+  --study-anim-accent: rgba(56, 146, 232, 0.96);
+  --study-anim-accent-soft: rgba(56, 146, 232, 0.4);
+  --study-anim-soft: rgba(173, 235, 255, 0.88);
+  --study-anim-warm: rgba(255, 200, 82, 0.96);
 }
 
 .study-lesson-card--english {
   --study-card-glow: rgba(184, 242, 223, 0.28);
   --study-card-visual: linear-gradient(160deg, rgba(184, 242, 223, 0.94) 0%, rgba(255, 255, 255, 0.82) 100%);
+  --study-anim-accent: rgba(58, 168, 132, 0.96);
+  --study-anim-accent-soft: rgba(58, 168, 132, 0.4);
+  --study-anim-soft: rgba(184, 242, 223, 0.88);
+  --study-anim-warm: rgba(255, 200, 82, 0.96);
+}
+
+.study-lesson-card__animation {
+  position: relative;
+  z-index: 1;
 }
 
 .study-lesson-card__copy,

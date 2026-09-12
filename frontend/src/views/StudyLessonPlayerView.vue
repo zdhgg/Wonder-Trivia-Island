@@ -125,6 +125,9 @@ function handleReturnToHall() {
           :progress-label="player.progressLabel"
           :status-text="player.cardStatusText"
           :is-narrating="player.narrationStatus === 'playing'"
+          :playback-key="player.narrationPlaybackKey"
+          :narration-status="player.narrationStatus"
+          :narration-duration-ms="player.narrationDurationMs"
         />
       </Transition>
 

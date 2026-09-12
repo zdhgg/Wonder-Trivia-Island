@@ -169,7 +169,7 @@ def optimize_wav_file(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Trim and downsample study narration WAV assets.")
-    parser.add_argument("--root", default="frontend/src/assets/audio/study", help="Directory containing study WAV assets.")
+    parser.add_argument("--root", default="frontend/public/audio/study", help="Directory containing study WAV assets.")
     parser.add_argument("--selection-tsv", default="", help="Optional TSV file limiting which assets to optimize.")
     parser.add_argument("--target-rate", type=int, default=DEFAULT_SAMPLE_RATE, help="Target WAV sample rate.")
     parser.add_argument("--threshold", type=int, default=DEFAULT_TRIM_THRESHOLD, help="Silence trim RMS threshold.")

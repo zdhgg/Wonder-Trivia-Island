@@ -69,18 +69,6 @@ export const AI_REVIEW_LENGTH_OPTIONS = Object.freeze([
   { label: "详细", value: "detailed" }
 ]);
 
-export const HOME_WELCOME_VOICE_MODE = Object.freeze({
-  OFF: "off",
-  MANUAL: "manual",
-  DAILY_AUTO: "daily-auto"
-});
-
-export const HOME_WELCOME_VOICE_MODE_OPTIONS = Object.freeze([
-  { label: "关闭", value: HOME_WELCOME_VOICE_MODE.OFF },
-  { label: "点按播放", value: HOME_WELCOME_VOICE_MODE.MANUAL },
-  { label: "每天首次自动播报", value: HOME_WELCOME_VOICE_MODE.DAILY_AUTO }
-]);
-
 export const DEFAULT_PROFILE = Object.freeze({
   displayName: "小岛同学",
   gender: "未设置",
@@ -113,7 +101,6 @@ const DEFAULT_COACHING_PREFERENCES = Object.freeze({
   autoAdvanceOnCorrect: false,
   autoPlayAiReviewOnWrong: false,
   autoPlayAiReviewOnCorrect: false,
-  homeWelcomeVoiceMode: HOME_WELCOME_VOICE_MODE.MANUAL,
   autoAdvanceDelayMs: 1500,
   aiReviewVoice: "coral",
   aiReviewSpeed: 1,
@@ -658,11 +645,6 @@ function normalizeCoachingPreferences(savedPreferences = {}) {
   const aiReviewLength = AI_REVIEW_LENGTH_OPTIONS.some((option) => option.value === String(savedPreferences.aiReviewLength || "").trim())
     ? String(savedPreferences.aiReviewLength).trim()
     : DEFAULT_COACHING_PREFERENCES.aiReviewLength;
-  const homeWelcomeVoiceMode = HOME_WELCOME_VOICE_MODE_OPTIONS.some(
-    (option) => option.value === String(savedPreferences.homeWelcomeVoiceMode || "").trim()
-  )
-    ? String(savedPreferences.homeWelcomeVoiceMode).trim()
-    : DEFAULT_COACHING_PREFERENCES.homeWelcomeVoiceMode;
 
   return {
     autoAdvanceOnCorrect:
@@ -677,7 +659,6 @@ function normalizeCoachingPreferences(savedPreferences = {}) {
       typeof savedPreferences.autoPlayAiReviewOnCorrect === "boolean"
         ? savedPreferences.autoPlayAiReviewOnCorrect
         : DEFAULT_COACHING_PREFERENCES.autoPlayAiReviewOnCorrect,
-    homeWelcomeVoiceMode,
     autoAdvanceDelayMs,
     aiReviewVoice,
     aiReviewSpeed,
@@ -902,11 +883,6 @@ export const useSettingsStore = defineStore("settings", {
           this.coachingPreferences.autoAdvanceOnCorrect ? "答对自动继续" : "答对停留看反馈",
           this.coachingPreferences.autoPlayAiReviewOnWrong ? "答错自动播报点评" : "答错手动播放点评",
           this.coachingPreferences.autoPlayAiReviewOnCorrect ? "答对自动播报点评" : "答对手动播放点评",
-          this.coachingPreferences.homeWelcomeVoiceMode === HOME_WELCOME_VOICE_MODE.OFF
-            ? "首页欢迎语音关闭"
-            : this.coachingPreferences.homeWelcomeVoiceMode === HOME_WELCOME_VOICE_MODE.DAILY_AUTO
-              ? "首页欢迎语音每天首次自动播报"
-              : "首页欢迎语音点按播放",
           `${this.coachingPreferences.autoAdvanceDelayMs}ms`,
           `${this.coachingPreferences.aiReviewVoice} · ${this.coachingPreferences.aiReviewSpeed}x`,
           `点评${this.coachingPreferences.aiReviewLength}`

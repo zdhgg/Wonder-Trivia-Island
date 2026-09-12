@@ -123,7 +123,7 @@ export function useSettingsCenter(app) {
       app.applyProfileDefaultsToHome(profile);
     }
 
-    app.queueHomeWelcomeMascotSpeech();
+    app.refreshHomeWelcomeAfterProfileChange();
   }
 
   function buildBackupPayload() {

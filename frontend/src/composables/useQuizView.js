@@ -7,7 +7,17 @@ import { submitQuestionAnswer } from "../services/questionsApi";
 import { useAudioStore } from "../stores/useAudioStore";
 import { ANSWER_STATUS, useQuizStore } from "../stores/useQuizStore";
 import { useSettingsStore } from "../stores/useSettingsStore";
-import { evaluateStageMission, getEffectiveChallengeTimeLimitSeconds } from "../utils/challengeStageRules";
+import { getEffectiveChallengeTimeLimitSeconds } from "../utils/challengeStageRules";
+import {
+  PLAY_STRATEGY_MODE,
+  getGradePlayGoalState,
+  getGradePlayRewardConfig,
+  getQuizCorrectReward,
+  getQuizWrongPenalty,
+  isBalloonOptionGrade,
+  isStrategyGrade,
+  isVoyageOptionGrade
+} from "../utils/quizPlayRewards";
 
 const DEFAULT_GRADE_THEME = Object.freeze({
   key: "harbor",
@@ -356,7 +366,7 @@ export function useQuizView(props, emit) {
   const settingsStore = useSettingsStore();
   settingsStore.hydrate();
 
-  const { answerState, currentQuestionIndex, currentScore } = storeToRefs(quizStore);
+  const { answerState, consecutiveCorrectCount, currentQuestionIndex, currentScore } = storeToRefs(quizStore);
   const { masterVolume, sfxVolume } = storeToRefs(audioStore);
   const { coachingPreferences } = storeToRefs(settingsStore);
 
@@ -373,7 +383,9 @@ export function useQuizView(props, emit) {
   const showResultModal = ref(false);
   const showCorrectStarAnimation = ref(false);
 
-  const resultAutoAdvanceTimer = ref(5);
+  const resultAutoAdvanceTimer = ref(4);
+
+  const selectedStrategyMode = ref(PLAY_STRATEGY_MODE.STEADY);
 
   let resultAutoAdvanceInterval = null;
   let correctAutoAdvanceTimer = null;
@@ -395,7 +407,7 @@ export function useQuizView(props, emit) {
     showResultModal.value = false;
     showCorrectStarAnimation.value = false;
     showExplanation.value = false;
-    scheduleNextQuestion();
+    goToNextQuestion();
   }
 
   function startAutoAdvance(isCorrect = false) {
@@ -406,10 +418,10 @@ export function useQuizView(props, emit) {
       correctAutoAdvanceTimer = setTimeout(() => {
         correctAutoAdvanceTimer = null;
         showCorrectStarAnimation.value = false;
-        handleModalAdvance();
-      }, 1500);
+        goToNextQuestion();
+      }, correctFeedbackDelay.value);
     } else {
-      resultAutoAdvanceTimer.value = 5;
+      resultAutoAdvanceTimer.value = wrongFeedbackDelaySeconds.value;
       showResultModal.value = true;
       showExplanation.value = true;
       resultAutoAdvanceInterval = setInterval(() => {
@@ -428,6 +440,22 @@ export function useQuizView(props, emit) {
   const correctCount = ref(0);
 
   const wrongCount = ref(0);
+
+  const bestCorrectStreak = ref(0);
+
+  const lastPointsEarned = ref(0);
+
+  const sessionRewardCount = ref(0);
+
+  const sprintAttemptCount = ref(0);
+
+  const sprintSuccessCount = ref(0);
+
+  const lastMilestoneUnlocked = ref(false);
+
+  const lastRewardLabel = ref("");
+
+  const lastWrongPenalty = ref(0);
 
   const questionResults = ref([]);
   const questionAttempts = ref([]);
@@ -568,15 +596,6 @@ export function useQuizView(props, emit) {
   }
 
   const shouldAutoAdvanceOnCorrect = computed(() => Boolean(coachingPreferences.value?.autoAdvanceOnCorrect));
-  const shouldAutoPlayAiReviewOnWrong = computed(() => Boolean(coachingPreferences.value?.autoPlayAiReviewOnWrong));
-  const shouldAutoPlayAiReviewOnCorrect = computed(() => Boolean(coachingPreferences.value?.autoPlayAiReviewOnCorrect));
-  const isCompanionAutoVoiceEnabled = computed(
-    () => shouldAutoPlayAiReviewOnWrong.value || shouldAutoPlayAiReviewOnCorrect.value
-  );
-  const companionAutoVoiceLabel = computed(() =>
-    isCompanionAutoVoiceEnabled.value ? "自动播报已开启" : "自动播报已关闭"
-  );
-  const companionAutoVoiceTone = computed(() => (isCompanionAutoVoiceEnabled.value ? "success" : "idle"));
   const effectiveAutoAdvanceDelay = computed(() =>
     Number.isFinite(Number(coachingPreferences.value?.autoAdvanceDelayMs))
       ? Number(coachingPreferences.value.autoAdvanceDelayMs)
@@ -627,6 +646,67 @@ export function useQuizView(props, emit) {
 
   const activeGradeSemesterLabel = computed(() =>
     buildGradeSemesterLabel(activeGradeLabel.value, activeSemesterLabel.value)
+  );
+
+  const useBalloonOptions = computed(() => isBalloonOptionGrade(activeGradeLabel.value));
+  const useVoyageOptions = computed(() => isVoyageOptionGrade(activeGradeLabel.value));
+  const useStrategyOptions = computed(() => isStrategyGrade(activeGradeLabel.value));
+  const answerOptionVariant = computed(() => (useVoyageOptions.value ? "voyage" : "strategy"));
+  const playRewardConfig = computed(() => getGradePlayRewardConfig(activeGradeLabel.value));
+  const playGoalState = computed(() =>
+    getGradePlayGoalState({
+      grade: activeGradeLabel.value,
+      correctCount: correctCount.value,
+      streakCount: consecutiveCorrectCount.value,
+      rewardCount: sessionRewardCount.value,
+      showCompletedMilestone: lastMilestoneUnlocked.value
+    })
+  );
+  const playGoalProgressNodes = computed(() =>
+    Array.from({ length: playGoalState.value?.target || 0 }, (_, index) => ({
+      id: index + 1,
+      filled: index < (playGoalState.value?.progress || 0)
+    }))
+  );
+  const playGoalLabel = computed(() => {
+    if (!playGoalState.value) {
+      return "";
+    }
+
+    if (playGoalState.value.remaining === 0 && sessionRewardCount.value > 0) {
+      return `${playGoalState.value.rewardLabel}到手`;
+    }
+
+    const action = playGoalState.value.metric === "streak" ? "连续答对" : "再答对";
+    return `${action} ${playGoalState.value.remaining} 题得${playGoalState.value.rewardLabel}`;
+  });
+  const playGoalCountLabel = computed(() =>
+    playGoalState.value ? `${playGoalState.value.countLabel} × ${sessionRewardCount.value}` : ""
+  );
+  const strategyOptions = computed(() => {
+    const basePoints = Math.max(0, Number(props.pointsPerCorrect) || 0);
+
+    return [
+      {
+        value: PLAY_STRATEGY_MODE.STEADY,
+        label: "稳答",
+        detail: `答对 +${basePoints} 分`
+      },
+      {
+        value: PLAY_STRATEGY_MODE.SPRINT,
+        label: "冲刺",
+        detail: `答对 +${basePoints + 5} 分，答错 -5 分`
+      }
+    ];
+  });
+  const correctFeedbackDelay = computed(() => {
+    if (activeGradeLabel.value === "一年级") return 1200;
+    if (activeGradeLabel.value === "二年级") return 1050;
+    if (activeGradeLabel.value === "三年级") return 850;
+    return 650;
+  });
+  const wrongFeedbackDelaySeconds = computed(() =>
+    useBalloonOptions.value ? 4 : 3
   );
 
   const quizTheme = computed(() => resolveGradeTheme(activeGradeLabel.value));
@@ -713,13 +793,12 @@ export function useQuizView(props, emit) {
       : `答对 +${props.pointsPerCorrect} 分 · 本轮不限时`
   );
 
-  const journeyTitle = computed(() => (isChallengeMode.value ? "闯关进度" : "探索进度"));
-
   const journeyHeading = computed(() => {
     const questionNumberLabel = `第 ${currentQuestionIndex.value + 1} 题`;
 
-    if (isChallengeMode.value && props.stageTitle) {
-      return `${props.stageTitle} · ${questionNumberLabel}`;
+    // 关卡名只在顶部冒险条出现，题卡内不再重复。
+    if (isChallengeMode.value) {
+      return questionNumberLabel;
     }
 
     return `${questionNumberLabel} · ${quizTheme.value.readyLine}`;
@@ -867,25 +946,6 @@ export function useQuizView(props, emit) {
 
   const useSoftOptionKey = computed(() => optionKeyDisplayMode.value === "soft");
 
-  const challengeMission = computed(() =>
-    isChallengeMode.value && props.challengeStage
-      ? evaluateStageMission(props.challengeStage, {
-          answeredCount: answeredCount.value,
-          correctCount: correctCount.value,
-          wrongCount: wrongCount.value,
-          totalQuestions: props.questions.length,
-          questionResults: questionResults.value,
-          isPassed: props.challengeResult?.isPassed ?? false
-        })
-      : null
-  );
-
-  const challengeMissionLabel = computed(() => challengeMission.value?.label || "");
-
-  const challengeMissionProgress = computed(() => challengeMission.value?.progressText || "");
-
-  const challengeMissionTone = computed(() => challengeMission.value?.tone || "neutral");
-
   const challengeRewardLabel = computed(() => {
     if (!isChallengeMode.value || !props.challengeStage?.reward) {
       return "";
@@ -901,8 +961,6 @@ export function useQuizView(props, emit) {
 
     return getOptionByKey(currentQuestion.value, feedback.value.correctAnswer);
   });
-
-  const selectedOption = computed(() => getOptionByKey(currentQuestion.value, selectedOptionKey.value));
 
   function formatOptionAnswer(option) {
     if (!option) {
@@ -927,11 +985,7 @@ export function useQuizView(props, emit) {
     return `${optionKey} · ${optionText}`;
   }
 
-  const selectedAnswerLabel = computed(() => formatOptionAnswer(selectedOption.value));
-
   const correctAnswerLabel = computed(() => formatOptionAnswer(correctOption.value));
-
-  const resultModalIsCorrect = computed(() => Boolean(feedback.value?.correct));
 
   const isLastQuestion = computed(
     () => Boolean(currentQuestion.value) && currentQuestionIndex.value >= props.questions.length - 1
@@ -977,58 +1031,76 @@ export function useQuizView(props, emit) {
     return timedOut.value ? "这题因为超时被判错，先看答案再继续。" : "这题先记下来，看完解析再继续。";
   });
 
-  const feedbackNextStep = computed(() => {
-    if (!showExplanation.value || !feedback.value) {
-      return "";
-    }
-
-    if (isLastQuestion.value) {
-      return isChallengeMode.value ? "看完这题就进入关卡结算。" : "看完这题就进入成绩结算。";
-    }
-
-    return "看完这题就继续下一题。";
-  });
-
   const continueButtonLabel = computed(() => (isLastQuestion.value ? "查看成绩" : "继续下一题"));
-  const showCorrectCelebration = computed(
-    () => showExplanation.value && Boolean(feedback.value) && answerState.value === ANSWER_STATUS.CORRECT
-  );
-  const celebrationTitle = computed(() => {
-    if (!showCorrectCelebration.value) {
-      return "";
+  const correctFeedbackIcon = computed(() => {
+    if (lastMilestoneUnlocked.value) {
+      return playRewardConfig.value?.countLabel || "奖";
     }
 
-    if (activeGradeLabel.value === "一年级" || activeGradeLabel.value === "二年级") {
-      return "答对啦";
+    if (useStrategyOptions.value && selectedStrategyMode.value === PLAY_STRATEGY_MODE.SPRINT) {
+      return "冲";
     }
 
-    if (activeGradeLabel.value === "三年级") {
-      return "答对了";
-    }
-
-    if (activeGradeLabel.value === "四年级") {
-      return "答得稳";
-    }
-
-    if (activeGradeLabel.value === "五年级") {
-      return "判断正确";
-    }
-
-    return "回答正确";
+    return "★";
   });
-  const celebrationScoreLabel = computed(() =>
-    showCorrectCelebration.value ? `+${props.pointsPerCorrect} 分` : ""
-  );
-  const celebrationSubline = computed(() => {
-    if (!showCorrectCelebration.value) {
+  const correctFeedbackTitle = computed(() => {
+    if (!showCorrectStarAnimation.value) {
       return "";
     }
 
-    if (isLastQuestion.value) {
-      return isChallengeMode.value ? "这一题稳稳收下，马上进入结算。" : "这一题拿下了，马上看成绩。";
+    if (lastMilestoneUnlocked.value) {
+      return `${lastRewardLabel.value}到手`;
     }
 
-    return quizTheme.value.winLine;
+    if (useStrategyOptions.value && selectedStrategyMode.value === PLAY_STRATEGY_MODE.SPRINT) {
+      return "冲刺成功";
+    }
+
+    if (!useStrategyOptions.value && consecutiveCorrectCount.value >= 2) {
+      return `连续答对 ${consecutiveCorrectCount.value} 题`;
+    }
+
+    return useStrategyOptions.value ? "判断正确" : "答对啦";
+  });
+  const correctFeedbackDetail = computed(() => {
+    if (!showCorrectStarAnimation.value) {
+      return "";
+    }
+
+    if (lastMilestoneUnlocked.value) {
+      return `本题 +${lastPointsEarned.value} 分，含${lastRewardLabel.value}奖励`;
+    }
+
+    if (playGoalState.value) {
+      return playGoalLabel.value;
+    }
+
+    return `+${lastPointsEarned.value || props.pointsPerCorrect} 分`;
+  });
+  const wrongFeedbackTitle = computed(() => {
+    if (useBalloonOptions.value) {
+      return timedOut.value ? "时间到，答案在这里" : "差一点，看看正确气球";
+    }
+
+    if (useVoyageOptions.value) {
+      return timedOut.value ? "时间到，修正航向" : "航向修正，答案已标出";
+    }
+
+    if (lastWrongPenalty.value > 0) {
+      return "冲刺失误，答案已标出";
+    }
+
+    return timedOut.value ? "时间到，答案已标出" : "再核对一次正确答案";
+  });
+  const wrongFeedbackDetail = computed(() => {
+    const penaltyText = lastWrongPenalty.value > 0 ? `本题扣 ${lastWrongPenalty.value} 分。` : "";
+    const followupText = playGoalState.value
+      ? playGoalState.value.metric === "streak"
+        ? "顺风进度重新开始，已经获得的旗帜会保留。"
+        : "收集进度会保留。"
+      : "下一题可重新选择稳答或冲刺。";
+
+    return `正确答案是 ${correctAnswerLabel.value}。${penaltyText}${followupText}`;
   });
   const aiReviewButtonLabel = computed(() => {
     if (aiSpeechStatus.value === "loading") {
@@ -1081,86 +1153,6 @@ export function useQuizView(props, emit) {
       ? "已按本轮答题记录自动整理，可作为复盘参考。"
       : `${quizTheme.value.companionName}已按本轮答题记录整理，可作为复盘参考。`
   );
-  const companionPersonaName = computed(() => quizTheme.value.companionName);
-  const companionShortReviewLine = computed(() => {
-    if (!showExplanation.value || !feedback.value) {
-      return "";
-    }
-
-    if (aiReviewStatus.value === "loading") {
-      return `${quizTheme.value.companionName}正在整理一句更贴近这题的提醒。`;
-    }
-
-    if (aiReviewStatus.value === "error") {
-      return normalizeCompanionLine(aiReviewErrorMessage.value, 48) || `${quizTheme.value.companionName}这会儿没整理出提醒。`;
-    }
-
-    if (!aiReview.value) {
-      return normalizeCompanionLine(feedbackNextStep.value, 48);
-    }
-
-    if (aiReview.value.bubbleText) {
-      return normalizeCompanionLine(aiReview.value.bubbleText, 48);
-    }
-
-    if (answerState.value === ANSWER_STATUS.CORRECT) {
-      return pickFirstCompanionLine(aiReview.value.encouragement, aiReview.value.nextStep, aiReview.value.speechText);
-    }
-
-    return pickFirstCompanionLine(aiReview.value.nextStep, aiReview.value.diagnosis, aiReview.value.encouragement, aiReview.value.speechText);
-  });
-  const companionShortSummaryLine = computed(() => {
-    if (!isFinished.value) {
-      return "";
-    }
-
-    if (quizSummaryStatus.value === "loading" || quizSummaryStatus.value === "idle") {
-      return `${quizTheme.value.companionName}正在整理这轮最值得先复盘的一点。`;
-    }
-
-    if (quizSummaryStatus.value === "error") {
-      return normalizeCompanionLine(quizSummaryErrorMessage.value, 48) || `${quizTheme.value.companionName}这会儿没把总结整理出来。`;
-    }
-
-    if (!quizSummary.value) {
-      return "";
-    }
-
-    if (quizSummary.value.bubbleText) {
-      return normalizeCompanionLine(quizSummary.value.bubbleText, 48);
-    }
-
-    return pickFirstCompanionLine(quizSummary.value.focusPoint, quizSummary.value.nextPlan, quizSummary.value.overview, quizSummary.value.speechText);
-  });
-  const showCompanionVoiceButton = computed(() => {
-    if (isFinished.value) {
-      return showQuizSummaryVoiceButton.value;
-    }
-
-    if (showExplanation.value && feedback.value) {
-      return showAiReviewVoiceButton.value;
-    }
-
-    return false;
-  });
-  const companionVoiceButtonLabel = computed(() => {
-    if (isFinished.value) {
-      return quizSummaryButtonLabel.value;
-    }
-
-    return aiReviewButtonLabel.value;
-  });
-  const companionVoiceErrorMessage = computed(() => {
-    if (isFinished.value) {
-      return quizSummarySpeechErrorMessage.value;
-    }
-
-    if (showExplanation.value && feedback.value) {
-      return aiSpeechErrorMessage.value;
-    }
-
-    return "";
-  });
 
   const finishEyebrow = computed(() => {
     if (!isFinished.value) {
@@ -1210,270 +1202,6 @@ export function useQuizView(props, emit) {
     return "下面是这轮练习的完整成绩卡，先看结果，再决定下一步。";
   });
 
-  const companionTone = computed(() => {
-    if (
-      isSubmitting.value ||
-      aiReviewStatus.value === "loading" ||
-      aiSpeechStatus.value === "loading" ||
-      aiSpeechStatus.value === "playing" ||
-      quizSummaryStatus.value === "loading" ||
-      quizSummarySpeechStatus.value === "loading" ||
-      quizSummarySpeechStatus.value === "playing"
-    ) {
-      return "info";
-    }
-
-    if (isFinished.value || answerState.value === ANSWER_STATUS.CORRECT) {
-      return "success";
-    }
-
-    if (answerState.value === ANSWER_STATUS.WRONG) {
-      return "error";
-    }
-
-    return "idle";
-  });
-
-  const companionStateLabel = computed(() => {
-    if (isFinished.value) {
-      if (quizSummarySpeechStatus.value === "playing") {
-        return "正在总结";
-      }
-
-      return isChallengeMode.value ? "关卡完成" : "本轮完成";
-    }
-
-    if (aiSpeechStatus.value === "playing") {
-      return "正在讲解";
-    }
-
-    if (isSubmitting.value) {
-      return "正在判题";
-    }
-
-    if (aiReviewStatus.value === "loading") {
-      return "正在整理";
-    }
-
-    if (answerState.value === ANSWER_STATUS.CORRECT) {
-      return "答对啦";
-    }
-
-    if (answerState.value === ANSWER_STATUS.WRONG) {
-      return timedOut.value ? "超时判错" : "先看解析";
-    }
-
-    return isChallengeMode.value ? "闯关中" : "练习中";
-  });
-
-  const companionTitle = computed(() => {
-    if (isFinished.value) {
-      if (quizSummarySpeechStatus.value === "playing") {
-        return "猫头鹰正在总结";
-      }
-
-      if (quizSummaryStatus.value === "loading" || quizSummaryStatus.value === "idle") {
-        return `${quizTheme.value.companionName}正在整理`;
-      }
-
-      if (quizSummary.value || quizSummaryStatus.value === "error") {
-        return `${quizTheme.value.companionName}总结`;
-      }
-
-      return isChallengeMode.value ? "这关成绩已经整理好了" : quizTheme.value.finishLine;
-    }
-
-    if (showExplanation.value && feedback.value) {
-      if (aiSpeechStatus.value === "playing") {
-        return `${quizTheme.value.companionName}正在讲`;
-      }
-
-      if (aiReviewStatus.value === "loading") {
-        return `${quizTheme.value.companionName}正在想`;
-      }
-
-      if (aiReview.value || aiReviewStatus.value === "error") {
-        return `${quizTheme.value.companionName}提醒`;
-      }
-    }
-
-    if (isSubmitting.value) {
-      return "这题马上就见分晓";
-    }
-
-    if (answerState.value === ANSWER_STATUS.CORRECT) {
-      return isLastQuestion.value ? "最后一题稳稳拿下" : "答得不错，继续保持节奏";
-    }
-
-    if (answerState.value === ANSWER_STATUS.WRONG) {
-      return timedOut.value ? "时间到了，先补回这一题" : "别急，先把这题吃透";
-    }
-
-    return isChallengeMode.value ? "稳住节奏，继续闯关" : quizTheme.value.idleTitle;
-  });
-
-  const companionDialogTag = computed(() => {
-    if (isFinished.value) {
-      if (quizSummarySpeechStatus.value === "playing") {
-        return "正在总结";
-      }
-
-      if (quizSummaryStatus.value === "loading" || quizSummaryStatus.value === "idle") {
-        return "整理中";
-      }
-
-      return `${quizTheme.value.companionName}总结`;
-    }
-
-    if (showExplanation.value && feedback.value) {
-      if (aiSpeechStatus.value === "playing") {
-        return "正在讲";
-      }
-
-      if (aiReviewStatus.value === "loading") {
-        return "整理中";
-      }
-
-      return `${quizTheme.value.companionName}提醒`;
-    }
-
-    return quizTheme.value.companionName;
-  });
-
-  const companionFocusLabel = computed(() => {
-    if (isFinished.value) {
-      return quizSummary.value ? "下一步安排" : "本轮总结";
-    }
-
-    if (showExplanation.value && aiReview.value) {
-      return "这题关键";
-    }
-
-    if (showExplanation.value && feedback.value) {
-      return "下一步";
-    }
-
-    if (isSubmitting.value || showCountdown.value) {
-      return "当前节奏";
-    }
-
-    if (isChallengeMode.value && challengeMission.value) {
-      return "本关任务";
-    }
-
-    return "答题规则";
-  });
-
-  const companionFocusText = computed(() => {
-    if (isFinished.value) {
-      if (quizSummary.value?.nextPlan) {
-        return quizSummary.value.nextPlan;
-      }
-
-      if (isChallengeMode.value && props.challengeResult?.rewardUnlocked) {
-        return normalizeCompanionLine(
-          `共完成 ${answeredCount.value} 题，正确率 ${accuracyPercent.value}%，还收下了 ${props.challengeResult.rewardName}。`,
-          36
-        );
-      }
-
-      return normalizeCompanionLine(
-        `共完成 ${answeredCount.value} 题，正确率 ${accuracyPercent.value}%，总得分 ${currentScore.value} 分。`,
-        36
-      );
-    }
-
-    if (showExplanation.value && aiReview.value) {
-      return normalizeCompanionLine(aiReview.value.nextStep || aiReview.value.diagnosis || feedbackNextStep.value, 36);
-    }
-
-    if (showExplanation.value && feedback.value) {
-      return isLastQuestion.value ? "看完这题解析就进入结算。" : "看完解析后继续下一题。";
-    }
-
-    if (isSubmitting.value) {
-      return isLastQuestion.value ? "最后一题正在判题，结束后直接结算。" : "答案已提交，判题后自动进入下一题。";
-    }
-
-    if (showCountdown.value) {
-      return `还有 ${timeRemainingSeconds.value} 秒，先选最有把握的答案。`;
-    }
-
-    if (isChallengeMode.value && challengeMission.value && props.challengeStage?.reward) {
-      return normalizeCompanionLine(
-        `${challengeMission.value.progressText}，完成后可获得 ${props.challengeStage.reward.glyph} ${props.challengeStage.reward.name}。`,
-        36
-      );
-    }
-
-    return normalizeCompanionLine(ruleSummary.value, 36);
-  });
-
-
-
-  const mascotStatus = computed(() => {
-    if (aiSpeechStatus.value === "playing" || quizSummarySpeechStatus.value === "playing") {
-      return "speaking";
-    }
-
-    if (isFinished.value || answerState.value === ANSWER_STATUS.CORRECT) {
-      return "success";
-    }
-
-    if (answerState.value === ANSWER_STATUS.WRONG) {
-      return "error";
-    }
-
-    return "idle";
-  });
-
-  const mascotHint = computed(() => {
-    if (!hasQuestions.value) {
-      return "等题目准备好，我们就从海边码头出发。";
-    }
-
-    if (isFinished.value) {
-      if (companionShortSummaryLine.value) {
-        return companionShortSummaryLine.value;
-      }
-
-      return isChallengeMode.value ? "这关已经结算，看看你拿到了几颗星。" : quizTheme.value.finishLine;
-    }
-
-    if (showExplanation.value && feedback.value && companionShortReviewLine.value) {
-      return companionShortReviewLine.value;
-    }
-
-    if (isSubmitting.value) {
-      return "正在认真核对答案...";
-    }
-
-    if (answerState.value === ANSWER_STATUS.CORRECT) {
-      return quizTheme.value.winLine;
-    }
-
-    if (answerState.value === ANSWER_STATUS.WRONG) {
-      if (timedOut.value) {
-        return quizTheme.value.timeoutLine;
-      }
-
-      return quizTheme.value.retryLine;
-    }
-
-    return quizTheme.value.startLine;
-  });
-
-  function handlePlayCompanionVoice() {
-    if (isFinished.value) {
-      void handlePlayQuizSummary();
-      return;
-    }
-
-    if (showExplanation.value && feedback.value) {
-      void handlePlayAiReview();
-    }
-  }
-
   function clearAutoAdvanceTimer() {
     if (autoAdvanceTimer) {
       clearTimeout(autoAdvanceTimer);
@@ -1503,6 +1231,15 @@ export function useQuizView(props, emit) {
     submitErrorMessage.value = "";
     correctCount.value = 0;
     wrongCount.value = 0;
+    bestCorrectStreak.value = 0;
+    lastPointsEarned.value = 0;
+    sessionRewardCount.value = 0;
+    sprintAttemptCount.value = 0;
+    sprintSuccessCount.value = 0;
+    lastMilestoneUnlocked.value = false;
+    lastRewardLabel.value = "";
+    lastWrongPenalty.value = 0;
+    selectedStrategyMode.value = PLAY_STRATEGY_MODE.STEADY;
     questionResults.value = [];
     questionAttempts.value = [];
     timedOut.value = false;
@@ -1525,6 +1262,11 @@ export function useQuizView(props, emit) {
     showCorrectStarAnimation.value = false;
     feedback.value = null;
     submitErrorMessage.value = "";
+    lastPointsEarned.value = 0;
+    lastMilestoneUnlocked.value = false;
+    lastRewardLabel.value = "";
+    lastWrongPenalty.value = 0;
+    selectedStrategyMode.value = PLAY_STRATEGY_MODE.STEADY;
     timedOut.value = false;
     resetAiReviewState();
     quizStore.nextQuestion();
@@ -1536,6 +1278,18 @@ export function useQuizView(props, emit) {
     autoAdvanceTimer = setTimeout(() => {
       goToNextQuestion();
     }, effectiveAutoAdvanceDelay.value);
+  }
+
+  function selectAnswerStrategy(mode) {
+    if (!useStrategyOptions.value || !canAnswer.value) {
+      return;
+    }
+
+    if (![PLAY_STRATEGY_MODE.STEADY, PLAY_STRATEGY_MODE.SPRINT].includes(mode)) {
+      return;
+    }
+
+    selectedStrategyMode.value = mode;
   }
 
   function toggleAiReviewExpanded() {
@@ -1604,7 +1358,39 @@ export function useQuizView(props, emit) {
         correctAnswer: result.correctAnswer,
         explanation: result.explanation
       };
-      quizStore.submitAnswer(result.correct, props.pointsPerCorrect);
+      const answerReward = result.correct
+        ? getQuizCorrectReward({
+            grade: activeGradeLabel.value,
+            correctCountBefore: correctCount.value,
+            consecutiveCorrectBefore: consecutiveCorrectCount.value,
+            basePoints: props.pointsPerCorrect,
+            strategyMode: selectedStrategyMode.value
+          })
+        : null;
+      const wrongPenalty = result.correct
+        ? 0
+        : getQuizWrongPenalty({
+            grade: activeGradeLabel.value,
+            strategyMode: selectedStrategyMode.value
+          });
+
+      quizStore.submitAnswer(result.correct, answerReward?.pointsEarned ?? props.pointsPerCorrect, wrongPenalty);
+      lastPointsEarned.value = answerReward?.pointsEarned ?? 0;
+      lastMilestoneUnlocked.value = Boolean(answerReward?.rewardUnlocked);
+      lastRewardLabel.value = String(answerReward?.rewardLabel || "");
+      lastWrongPenalty.value = wrongPenalty;
+
+      if (answerReward?.rewardUnlocked) {
+        sessionRewardCount.value += 1;
+      }
+
+      if (useStrategyOptions.value && selectedStrategyMode.value === PLAY_STRATEGY_MODE.SPRINT) {
+        sprintAttemptCount.value += 1;
+
+        if (result.correct) {
+          sprintSuccessCount.value += 1;
+        }
+      }
 
       emit("question-resolved", {
         question: questionSnapshot,
@@ -1620,6 +1406,7 @@ export function useQuizView(props, emit) {
       if (result.correct) {
         timedOut.value = false;
         correctCount.value += 1;
+        bestCorrectStreak.value = Math.max(bestCorrectStreak.value, consecutiveCorrectCount.value);
         if (currentQuestionIndex.value >= props.questions.length - 1) {
           if (isChallengeMode.value) {
             quizAudio.playSuccess();
@@ -1630,9 +1417,7 @@ export function useQuizView(props, emit) {
           quizAudio.playSuccess();
         }
         submitController = null;
-        setTimeout(() => {
-          startAutoAdvance(true);
-        }, 600);
+        startAutoAdvance(true);
         return;
       }
 
@@ -1769,6 +1554,11 @@ export function useQuizView(props, emit) {
       wrongCount: wrongCount.value,
       totalQuestions: props.questions.length,
       accuracyPercent: accuracyPercent.value,
+      bestCorrectStreak: bestCorrectStreak.value,
+      sessionRewardCount: sessionRewardCount.value,
+      sessionRewardLabel: playRewardConfig.value?.rewardLabel || "",
+      sprintAttemptCount: sprintAttemptCount.value,
+      sprintSuccessCount: sprintSuccessCount.value,
       questionResults: [...questionResults.value]
     });
   });
@@ -1806,6 +1596,7 @@ export function useQuizView(props, emit) {
     quizStore,
     quizAudio,
     answerState,
+    consecutiveCorrectCount,
     currentQuestionIndex,
     currentScore,
     autoAdvanceTimer,
@@ -1821,6 +1612,15 @@ export function useQuizView(props, emit) {
     submitErrorMessage,
     correctCount,
     wrongCount,
+    bestCorrectStreak,
+    lastPointsEarned,
+    sessionRewardCount,
+    sprintAttemptCount,
+    sprintSuccessCount,
+    lastMilestoneUnlocked,
+    lastRewardLabel,
+    lastWrongPenalty,
+    selectedStrategyMode,
     questionResults,
     questionAttempts,
     timeRemainingMs,
@@ -1845,6 +1645,17 @@ export function useQuizView(props, emit) {
     activeGradeLabel,
     activeSemesterLabel,
     activeGradeSemesterLabel,
+    useBalloonOptions,
+    useVoyageOptions,
+    useStrategyOptions,
+    answerOptionVariant,
+    playRewardConfig,
+    playGoalState,
+    playGoalProgressNodes,
+    playGoalLabel,
+    playGoalCountLabel,
+    strategyOptions,
+    correctFeedbackDelay,
     quizTheme,
     quizThemeClass,
     quizThemeStyle,
@@ -1855,7 +1666,6 @@ export function useQuizView(props, emit) {
     knowledgeFollowupButtonLabel,
     showWrongReviewAction,
     ruleSummary,
-    journeyTitle,
     journeyHeading,
     promptStageLabel,
     promptHint,
@@ -1873,27 +1683,20 @@ export function useQuizView(props, emit) {
     optionKeyDisplayMode,
     shouldShowOptionKey,
     useSoftOptionKey,
-    challengeMission,
-    challengeMissionLabel,
-    challengeMissionProgress,
-    challengeMissionTone,
     challengeRewardLabel,
     correctOption,
-    selectedOption,
-    selectedAnswerLabel,
     correctAnswerLabel,
-    resultModalIsCorrect,
     isLastQuestion,
     submissionStatusLabel,
     submissionStatusText,
     feedbackBadge,
     feedbackTitle,
-    feedbackNextStep,
     continueButtonLabel,
-    showCorrectCelebration,
-    celebrationTitle,
-    celebrationScoreLabel,
-    celebrationSubline,
+    correctFeedbackIcon,
+    correctFeedbackTitle,
+    correctFeedbackDetail,
+    wrongFeedbackTitle,
+    wrongFeedbackDetail,
     aiReview,
     aiReviewStatus,
     aiReviewErrorMessage,
@@ -1919,24 +1722,10 @@ export function useQuizView(props, emit) {
     quizSummaryButtonLabel,
     showQuizSummaryVoiceButton,
     quizSummaryFootnote,
-    companionPersonaName,
-    companionAutoVoiceLabel,
-    companionAutoVoiceTone,
-    showCompanionVoiceButton,
-    companionVoiceButtonLabel,
-    companionVoiceErrorMessage,
     finishEyebrow,
     finishHeading,
     finishSupportText,
-    companionTone,
-    companionStateLabel,
-    companionTitle,
-    companionDialogTag,
-    companionFocusLabel,
-    companionFocusText,
 
-    mascotStatus,
-    mascotHint,
     clearAutoAdvanceTimer,
     clearCountdownTimer,
     startCountdown,
@@ -1946,13 +1735,13 @@ export function useQuizView(props, emit) {
     resetViewState,
     goToNextQuestion,
     scheduleNextQuestion,
+    selectAnswerStrategy,
     submitCurrentAnswer,
     loadAiReview,
     loadQuizSummary,
     handlePlayAiReview,
     toggleAiReviewExpanded,
     handlePlayQuizSummary,
-    handlePlayCompanionVoice,
     stopAiReviewSpeech,
     stopQuizSummarySpeech,
     handleOptionSelect,

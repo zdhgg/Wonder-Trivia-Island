@@ -3,6 +3,8 @@ import test from "node:test";
 
 import {
   HOME_WELCOME_CACHE_KEY,
+  HOME_WELCOME_MAX_LINE_LENGTH,
+  HOME_WELCOME_MAX_SPEECH_LENGTH,
   buildHomeWelcomeContextHash,
   buildHomeWelcomeTemporalContext,
   buildHomeWelcomeEyebrow,
@@ -53,49 +55,37 @@ async function withMockWindowStorage(run) {
   }
 }
 
-test("front-end home welcome copy respects the requested time band", () => {
+test("front-end home welcome layers keep time in the eyebrow and speech only", () => {
   const cases = [
     {
       date: new Date(2026, 4, 4, 8, 0, 0),
       eyebrow: "早上好",
-      lineTokens: ["早上", "早晨"],
-      speechTokens: ["早上", "早晨"],
-      titleTokens: ["早晨"]
+      timeTokens: ["早上", "早晨"]
     },
     {
       date: new Date(2026, 4, 4, 12, 0, 0),
       eyebrow: "中午好",
-      lineTokens: ["中午"],
-      speechTokens: ["中午"],
-      titleTokens: ["中午"]
+      timeTokens: ["中午"]
     },
     {
       date: new Date(2026, 4, 4, 16, 0, 0),
       eyebrow: "下午好",
-      lineTokens: ["下午"],
-      speechTokens: ["下午"],
-      titleTokens: ["下午"]
+      timeTokens: ["下午"]
     },
     {
       date: new Date(2026, 4, 4, 18, 30, 0),
       eyebrow: "傍晚了",
-      lineTokens: ["傍晚"],
-      speechTokens: ["傍晚"],
-      titleTokens: ["傍晚"]
+      timeTokens: ["傍晚"]
     },
     {
       date: new Date(2026, 4, 4, 21, 0, 0),
       eyebrow: "晚上好",
-      lineTokens: ["晚上"],
-      speechTokens: ["晚上"],
-      titleTokens: ["晚上"]
+      timeTokens: ["晚上"]
     },
     {
       date: new Date(2026, 4, 4, 23, 30, 0),
       eyebrow: "夜深了",
-      lineTokens: ["深夜", "夜深"],
-      speechTokens: ["深夜", "夜深"],
-      titleTokens: ["夜深"]
+      timeTokens: ["深夜", "夜深"]
     }
   ];
 
@@ -105,29 +95,51 @@ test("front-end home welcome copy respects the requested time band", () => {
     const title = buildHomeWelcomeTitle({}, { avoidText: summary, date: entry.date });
 
     assert.equal(buildHomeWelcomeEyebrow({}, entry.date), entry.eyebrow);
-    assertIncludesOneOf(summary, entry.lineTokens, `summary should match ${entry.eyebrow}`);
-    assertIncludesOneOf(speech, entry.speechTokens, `speech should match ${entry.eyebrow}`);
-    assertIncludesOneOf(title, entry.titleTokens, `title should match ${entry.eyebrow}`);
+    assert.equal(entry.timeTokens.some((token) => summary.includes(token)), false, `summary should not repeat ${entry.eyebrow}`);
+    assert.equal(entry.timeTokens.some((token) => title.includes(token)), false, `title should not repeat ${entry.eyebrow}`);
+    assertIncludesOneOf(speech, entry.timeTokens, `speech should include ${entry.eyebrow}`);
+    assert.ok(summary.length <= HOME_WELCOME_MAX_LINE_LENGTH);
+    assert.ok(speech.length <= HOME_WELCOME_MAX_SPEECH_LENGTH);
   }
 });
 
-test("front-end home welcome copy keeps a warm tone regardless of quiz progress", () => {
+test("front-end home welcome title stays deterministic across dynamic copy refreshes", () => {
+  const date = new Date(2026, 4, 4, 16, 0, 0);
+
+  assert.equal(
+    buildHomeWelcomeTitle(
+      { isFirstHomeVisitToday: true },
+      { displayName: "小心心", useCustomName: true, date }
+    ),
+    "小心心，欢迎回来"
+  );
+  assert.equal(
+    buildHomeWelcomeTitle({ isFirstHomeVisitToday: true }, { date }),
+    "今天想去哪座岛看看？"
+  );
+  assert.equal(
+    buildHomeWelcomeTitle(
+      { isProfileJustSaved: true },
+      { displayName: "小心心", useCustomName: true, date }
+    ),
+    "新路线准备好了"
+  );
+});
+
+test("front-end home welcome copy turns progress into a low-pressure next step", () => {
   const date = new Date(2026, 4, 4, 21, 0, 0);
   const cases = [
     {
       context: { displayName: "小心心", reviewDueCount: 3 },
-      lineTokens: ["晚上", "慢慢来"],
-      speechTokens: ["晚上", "慢慢来"]
+      summaryTokens: ["有 3 道小题", "先去探索"]
     },
     {
       context: { displayName: "小心心", reviewingCount: 4 },
-      lineTokens: ["晚上", "慢慢来"],
-      speechTokens: ["晚上", "慢慢来"]
+      summaryTokens: ["温习的 4 道小题", "先去探索"]
     },
     {
       context: { displayName: "小心心", challengeStageLabel: "第7关·启蒙冲线" },
-      lineTokens: ["晚上", "慢慢来"],
-      speechTokens: ["晚上", "慢慢来"]
+      summaryTokens: ["第7关·启蒙冲线", "换条路线"]
     }
   ];
 
@@ -135,8 +147,12 @@ test("front-end home welcome copy keeps a warm tone regardless of quiz progress"
     const summary = buildHomeWelcomeFallbackLine(entry.context, date);
     const speech = buildHomeWelcomeFallbackSpeechText(entry.context, date);
 
-    assertIncludesOneOf(summary, entry.lineTokens, `summary should stay warm regardless of progress\nreceived: ${summary}`);
-    assertIncludesOneOf(speech, entry.speechTokens, `speech should stay warm regardless of progress\nreceived: ${speech}`);
+    for (const token of entry.summaryTokens) {
+      assert.ok(summary.includes(token), `summary should include ${token}\nreceived: ${summary}`);
+    }
+
+    assert.ok(speech.includes("晚上"), `speech should keep one natural greeting\nreceived: ${speech}`);
+    assert.equal(["慢慢来", "轻轻来", "不着急", "安心啦"].some((token) => summary.includes(token)), false);
   }
 });
 

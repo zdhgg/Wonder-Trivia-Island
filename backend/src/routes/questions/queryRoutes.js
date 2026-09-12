@@ -142,6 +142,8 @@ router.get("/random", (req, res, next) => {
   const count = parseIntegerParam(req.query?.count, 3, { min: 1, max: 20 });
   const questionFilters = parseQuestionFilters(req.query);
   const allowSemesterFallback = parseBooleanParam(req.query?.allowSemesterFallback, false);
+  // 专项强化需要“只练这一类”，不能拿无关题凑数，所以允许显式关掉标签兜底。
+  const allowKnowledgeTagFallback = parseBooleanParam(req.query?.allowKnowledgeTagFallback, true);
 
   if (count === null) {
     res.status(400).json({
@@ -178,7 +180,7 @@ router.get("/random", (req, res, next) => {
       }
     }
 
-    if (questionFilters.knowledgeTag && rows.length < count) {
+    if (allowKnowledgeTagFallback && questionFilters.knowledgeTag && rows.length < count) {
       const nextRows = appendRandomFallbackRows(
         req.db,
         rows,

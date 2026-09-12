@@ -61,6 +61,30 @@ const props = defineProps({
   challengeOutcome: {
     type: Object,
     default: null
+  },
+  bestStreak: {
+    type: Number,
+    default: 0
+  },
+  sessionRewardCount: {
+    type: Number,
+    default: 0
+  },
+  sessionRewardLabel: {
+    type: String,
+    default: ""
+  },
+  showStrategyStats: {
+    type: Boolean,
+    default: false
+  },
+  sprintAttemptCount: {
+    type: Number,
+    default: 0
+  },
+  sprintSuccessCount: {
+    type: Number,
+    default: 0
   }
 });
 
@@ -272,6 +296,29 @@ const nextStageButtonLabel = computed(() => {
           </div>
         </div>
       </div>
+
+      <dl class="result-stats" aria-label="本轮成绩">
+        <div class="result-stat">
+          <dt>答对</dt>
+          <dd>{{ correctCount }} / {{ totalQuestions }}</dd>
+        </div>
+        <div class="result-stat">
+          <dt>最高连对</dt>
+          <dd>{{ bestStreak }} 题</dd>
+        </div>
+        <div class="result-stat">
+          <dt>总得分</dt>
+          <dd>{{ score }} 分</dd>
+        </div>
+        <div v-if="sessionRewardLabel" class="result-stat result-stat--reward">
+          <dt>{{ sessionRewardLabel }}</dt>
+          <dd>{{ sessionRewardCount }}</dd>
+        </div>
+        <div v-if="showStrategyStats" class="result-stat result-stat--strategy">
+          <dt>冲刺命中</dt>
+          <dd>{{ sprintSuccessCount }} / {{ sprintAttemptCount }}</dd>
+        </div>
+      </dl>
 
     </div>
 
@@ -485,6 +532,46 @@ const nextStageButtonLabel = computed(() => {
   color: var(--color-ink-soft, #5b6984);
 }
 
+.result-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 1px;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid rgba(36, 50, 74, 0.1);
+  border-radius: 8px;
+  background: rgba(36, 50, 74, 0.1);
+}
+
+.result-stat {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.result-stat dt {
+  color: var(--color-ink-soft, #5b6984);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.result-stat dd {
+  margin: 0;
+  color: var(--color-ink, #24324a);
+  font-size: 1.08rem;
+  font-weight: 900;
+}
+
+.result-stat--reward dd {
+  color: #a46705;
+}
+
+.result-stat--strategy dd {
+  color: #315f95;
+}
+
 /* Stats Grid */
 .bento-stats {
   display: grid;
@@ -625,6 +712,9 @@ const nextStageButtonLabel = computed(() => {
   }
   .bento-stats {
     grid-template-columns: 1fr;
+  }
+  .result-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .footer-actions {
     flex-direction: column;
