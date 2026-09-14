@@ -5,6 +5,8 @@
     "setup": "npm install && npm run backend:install && npm run frontend:install",
     "dev": "node scripts/dev.js",
     "start": "npm run backend:start",
+    "e2e": "playwright test",
+    "e2e:ui": "playwright test --ui",
     "audio:generate": "python scripts/generate_audio_assets.py",
     "audio:study-manifest": "node --experimental-specifier-resolution=node scripts/export_study_narration_manifest.mjs",
     "audio:study-coverage": "node scripts/check_study_narration_coverage.mjs",
@@ -42,6 +44,7 @@
     "read-excel-file": "^9.0.9"
   },
   "devDependencies": {
+    "@playwright/test": "1.62.0",
     "ffmpeg-static": "^5.3.0"
   }
 }
