@@ -1,7 +1,9 @@
 <script>
 import { computed, defineAsyncComponent } from "vue";
+import { useRoute } from "vue-router";
 import PracticeHomeView from "./views/PracticeHomeView.vue";
 import StudyMapView from "./views/StudyMapView.vue";
+import { createRouterDrivenPages } from "./composables/app/useRouterDrivenPages";
 import { useSettingsCenter } from "./composables/useSettingsCenter";
 import { useToolsCenter } from "./composables/useToolsCenter";
 import { useTriviaApp } from "./composables/useTriviaApp";
@@ -11,9 +13,7 @@ import { useAudioStore } from "./stores/useAudioStore";
 const QuizSettingsModal = defineAsyncComponent(() => import("./components/QuizSettingsModal.vue"));
 const KnowledgeStudyView = defineAsyncComponent(() => import("./views/KnowledgeStudyView.vue"));
 const QuizView = defineAsyncComponent(() => import("./views/QuizView.vue"));
-const SettingsView = defineAsyncComponent(() => import("./views/SettingsView.vue"));
 const StudyLessonPlayerView = defineAsyncComponent(() => import("./views/StudyLessonPlayerView.vue"));
-const ToolsView = defineAsyncComponent(() => import("./views/ToolsView.vue"));
 const WrongQuestionReviewView = defineAsyncComponent(() => import("./views/WrongQuestionReviewView.vue"));
 
 export default {
@@ -23,15 +23,20 @@ export default {
     StudyMapView,
     QuizSettingsModal,
     QuizView,
-    SettingsView,
     StudyLessonPlayerView,
-    ToolsView,
     WrongQuestionReviewView
   },
   setup() {
     const app = useTriviaApp();
     const settingsCenter = useSettingsCenter(app);
     const toolsCenter = useToolsCenter(app);
+    // 工具台 / 设置页已由路由负责渲染，这里只做 props 与事件的适配
+    const routerDrivenPages = createRouterDrivenPages({
+      route: useRoute(),
+      app,
+      settingsCenter,
+      toolsCenter
+    });
     const isImmersiveView = computed(() => app.currentView.value === app.VIEW_MODE.STUDY_PLAYER);
 
     const quizStore = useQuizStore();
@@ -86,6 +91,7 @@ export default {
       ...app,
       ...settingsCenter,
       ...toolsCenter,
+      ...routerDrivenPages,
       isImmersiveView,
       isQuizActive,
       isMuted,
@@ -152,8 +158,13 @@ export default {
     </header>
 
     <main :class="['page-main', { 'page-main--immersive': isImmersiveView }]">
+      <!-- 已迁入 RouterView 的页面（工具台 / 设置）：由路由决定渲染哪个组件 -->
+      <router-view v-if="isRouterDrivenPageActive" v-slot="{ Component }">
+        <component :is="Component" v-bind="routerDrivenPageBindings" />
+      </router-view>
+
       <PracticeHomeView
-        v-if="currentView === VIEW_MODE.HOME"
+        v-else-if="currentView === VIEW_MODE.HOME"
         v-model:challenge-grade="homeChallengeGrade"
         v-model:challenge-semester="homeChallengeSemester"
         v-model:grade-practice-grade="homeGradePracticeGrade"
@@ -225,28 +236,6 @@ export default {
         @start-review="startWrongQuestionReview"
         @review-question="startSingleWrongQuestionReview"
         @practice-knowledge="startKnowledgeTagPractice"
-      />
-
-      <ToolsView
-        v-else-if="currentView === VIEW_MODE.TOOLS"
-        v-model:admin-key="adminKey"
-        v-model:active-section-id="activeToolSectionId"
-        :catalog-prefill="catalogPrefill"
-        :return-label="toolsReturnLabel"
-        @imported="handleImportFinished"
-        @back="closeToolsView"
-      />
-
-      <SettingsView
-        v-else-if="currentView === VIEW_MODE.SETTINGS"
-        v-model:active-section-id="activeSettingsSectionId"
-        :backup-status-message="backupStatusMessage"
-        :is-backup-busy="isBackupBusy"
-        :backup-stats="backupStats"
-        @pending-state-change="handleSettingsPendingStateChange"
-        @profile-saved="handleProfileSaved"
-        @export-backup="exportBackup"
-        @import-backup="importBackup"
       />
 
       <section v-else-if="currentView === VIEW_MODE.CHALLENGE_WORLD" class="challenge-panel challenge-world-map">

@@ -1,83 +1,11 @@
 import { createRouter, createWebHashHistory } from "vue-router";
+import { APP_ROUTES, APP_ROUTE_NAME } from "./routes";
 
-const RoutePlaceholder = {
-  name: "RoutePlaceholder",
-  render() {
-    return null;
-  }
-};
-
-export const APP_ROUTE_NAME = Object.freeze({
-  HOME: "home",
-  CHALLENGE_WORLD: "challenge-world",
-  CHALLENGE: "challenge",
-  QUIZ: "quiz",
-  STUDY: "study",
-  STUDY_MAP: "study-map",
-  STUDY_PLAYER: "study-player",
-  WRONG_BOOK: "wrong-book",
-  TOOLS: "tools",
-  SETTINGS: "settings"
-});
+export { APP_ROUTE_NAME };
 
 const router = createRouter({
   history: createWebHashHistory(),
-  routes: [
-    {
-      path: "/",
-      name: APP_ROUTE_NAME.HOME,
-      component: RoutePlaceholder
-    },
-    {
-      path: "/challenge/world",
-      name: APP_ROUTE_NAME.CHALLENGE_WORLD,
-      component: RoutePlaceholder
-    },
-    {
-      path: "/challenge",
-      name: APP_ROUTE_NAME.CHALLENGE,
-      component: RoutePlaceholder
-    },
-    {
-      path: "/quiz",
-      name: APP_ROUTE_NAME.QUIZ,
-      component: RoutePlaceholder
-    },
-    {
-      path: "/study",
-      name: APP_ROUTE_NAME.STUDY,
-      component: RoutePlaceholder
-    },
-    {
-      path: "/study/map/:grade?",
-      name: APP_ROUTE_NAME.STUDY_MAP,
-      component: RoutePlaceholder
-    },
-    {
-      path: "/study/player/:lessonId?",
-      name: APP_ROUTE_NAME.STUDY_PLAYER,
-      component: RoutePlaceholder
-    },
-    {
-      path: "/wrong-book",
-      name: APP_ROUTE_NAME.WRONG_BOOK,
-      component: RoutePlaceholder
-    },
-    {
-      path: "/tools/:section?",
-      name: APP_ROUTE_NAME.TOOLS,
-      component: RoutePlaceholder
-    },
-    {
-      path: "/settings/:section?",
-      name: APP_ROUTE_NAME.SETTINGS,
-      component: RoutePlaceholder
-    },
-    {
-      path: "/:pathMatch(.*)*",
-      redirect: { name: APP_ROUTE_NAME.HOME }
-    }
-  ],
+  routes: APP_ROUTES,
   // 地图页从年级总览进入单年级时是同一路由换参数，必须回到顶部，否则会停在上一级的滚动位置
   scrollBehavior(_to, _from, savedPosition) {
     if (savedPosition) {

@@ -230,6 +230,27 @@ export function createAppRouting({
     currentView.value = VIEW_MODE.SETTINGS;
   }
 
+  // /tools/xxx 与 /settings/xxx 里出现未登记的 section 时，业务状态已回落到默认分栏，
+  // 这里把 URL 也收敛到规范值，避免地址栏与 activeSectionId 长期不一致（例如 /tools/nope）。
+  function canonicalizeSectionRoute(routeName, routeSection) {
+    const isSectionRoute =
+      routeName === APP_ROUTE_NAME.TOOLS || routeName === APP_ROUTE_NAME.SETTINGS;
+    const normalizedRouteSection = String(routeSection || "").trim();
+
+    if (!isSectionRoute || !normalizedRouteSection) {
+      return;
+    }
+
+    const canonicalLocation = buildRouteLocationForCurrentView();
+    const canonicalSection = String((canonicalLocation.params || {}).section || "").trim();
+
+    if (canonicalSection === normalizedRouteSection) {
+      return;
+    }
+
+    void router.replace(canonicalLocation);
+  }
+
   watch(
     () => [route.name, route.params.section, route.params.lessonId, route.params.grade],
     ([routeName, routeSection, routeLessonId, routeGrade]) => {
@@ -272,6 +293,8 @@ export function createAppRouting({
           currentView.value = VIEW_MODE.HOME;
           break;
       }
+
+      canonicalizeSectionRoute(routeName, routeSection);
 
       Promise.resolve().then(() => {
         isApplyingRouteState = false;

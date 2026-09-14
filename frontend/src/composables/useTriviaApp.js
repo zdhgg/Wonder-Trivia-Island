@@ -2,7 +2,7 @@ import { storeToRefs } from "pinia";
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { playAudioCue, syncAudioSettings, unlockAudioEngine } from "../audio/audioEngine";
-import { APP_ROUTE_NAME } from "../router";
+import { APP_ROUTE_NAME } from "../router/routes";
 import {
   fetchQuestionCoverage,
   fetchQuestionStats,
