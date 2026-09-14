@@ -1,14 +1,15 @@
 <script setup>
 defineProps({
-  active: {
-    type: Boolean,
-    default: false
+  // waiting = 语音还没开讲（盒子还盖着）；active = 跟着讲解走时间轴；done = 讲完定格
+  phase: {
+    type: String,
+    default: "waiting"
   }
 });
 </script>
 
 <template>
-  <div :class="['study-anim', 'study-anim--keep', { 'is-active': active }]">
+  <div :class="['study-anim', 'study-anim--keep', `is-${phase}`]">
     <svg class="study-anim__svg" viewBox="0 0 320 232" role="presentation" aria-hidden="true" focusable="false">
       <rect class="keep__backdrop" x="46" y="46" width="228" height="168" rx="34" />
 
@@ -101,6 +102,7 @@ defineProps({
   fill: var(--study-anim-ink);
 }
 
+/* 静止态 = 收好的姿势：盒子盖好、小爱心亮着。 */
 .keep__heart {
   transform-box: view-box;
   transform-origin: 160px 52px;
@@ -114,34 +116,54 @@ defineProps({
   stroke-linejoin: round;
 }
 
+/* 讲解时间轴：所有元素共享总时长（语音时长），各自在百分比窗口里出演一次 */
+.is-active .keep__lid,
+.is-active .keep__card,
+.is-active .keep__card-line,
+.is-active .keep__heart {
+  animation-duration: var(--study-anim-duration, 12s);
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: var(--study-anim-iteration, 1);
+  animation-fill-mode: var(--study-anim-fill, forwards);
+}
+
 .is-active .keep__lid {
-  animation: keep-lid 4.4s ease-in-out infinite;
+  animation-name: keep-lid;
 }
 
 .is-active .keep__card {
-  animation: keep-card 4.4s ease-in-out infinite;
+  animation-name: keep-card;
 }
 
 .is-active .keep__card-line {
-  animation: keep-line 4.4s ease-in-out infinite;
+  animation-name: keep-line;
 }
 
 .is-active .keep__heart {
-  animation: keep-heart 4.4s ease-in-out infinite;
+  animation-name: keep-heart;
+}
+
+/* waiting 态回退到开场：盒子还没打开，口令也还没写上去 */
+.is-waiting .keep__card-line {
+  opacity: 0;
+}
+
+.is-waiting .keep__heart {
+  opacity: 0;
 }
 
 @keyframes keep-lid {
   0%,
-  10% {
+  8% {
     transform: rotate(0deg);
   }
 
-  32%,
-  72% {
+  26%,
+  78% {
     transform: rotate(-28deg);
   }
 
-  94%,
+  96%,
   100% {
     transform: rotate(0deg);
   }
@@ -149,30 +171,27 @@ defineProps({
 
 @keyframes keep-card {
   0%,
-  28% {
+  22% {
     transform: translateY(0) scale(1);
-    opacity: 1;
   }
 
-  50% {
-    transform: translateY(-30px) scale(0.9);
-    opacity: 0;
+  44% {
+    transform: translateY(-12px) scale(1.04);
   }
 
-  56%,
+  64%,
   100% {
     transform: translateY(0) scale(1);
-    opacity: 1;
   }
 }
 
 @keyframes keep-line {
   0%,
-  30% {
+  40% {
     opacity: 0;
   }
 
-  48%,
+  62%,
   100% {
     opacity: 0.5;
   }
@@ -202,6 +221,15 @@ defineProps({
   .is-active .keep__card-line,
   .is-active .keep__heart {
     animation: none;
+  }
+
+  /* 减少动态偏好下不播时间轴，直接呈现讲完的教学姿态 */
+  .is-waiting .keep__card-line {
+    opacity: 0.5;
+  }
+
+  .is-waiting .keep__heart {
+    opacity: 1;
   }
 }
 </style>

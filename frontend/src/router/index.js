@@ -49,7 +49,7 @@ const router = createRouter({
       component: RoutePlaceholder
     },
     {
-      path: "/study/map",
+      path: "/study/map/:grade?",
       name: APP_ROUTE_NAME.STUDY_MAP,
       component: RoutePlaceholder
     },
@@ -77,7 +77,15 @@ const router = createRouter({
       path: "/:pathMatch(.*)*",
       redirect: { name: APP_ROUTE_NAME.HOME }
     }
-  ]
+  ],
+  // 地图页从年级总览进入单年级时是同一路由换参数，必须回到顶部，否则会停在上一级的滚动位置
+  scrollBehavior(_to, _from, savedPosition) {
+    if (savedPosition) {
+      return savedPosition;
+    }
+
+    return { top: 0 };
+  }
 });
 
 export default router;

@@ -1,14 +1,15 @@
 <script setup>
 defineProps({
-  active: {
-    type: Boolean,
-    default: false
+  // waiting = 语音还没开讲（积木还没落下来）；active = 跟着讲解走时间轴；done = 讲完定格
+  phase: {
+    type: String,
+    default: "waiting"
   }
 });
 </script>
 
 <template>
-  <div :class="['study-anim', 'study-anim--build', { 'is-active': active }]">
+  <div :class="['study-anim', 'study-anim--build', `is-${phase}`]">
     <svg class="study-anim__svg" viewBox="0 0 320 232" role="presentation" aria-hidden="true" focusable="false">
       <rect class="build__backdrop" x="20" y="34" width="280" height="172" rx="38" />
       <rect class="build__floor" x="58" y="170" width="204" height="12" rx="6" />
@@ -99,6 +100,7 @@ defineProps({
   stroke-linecap: round;
 }
 
+/* 静止态 = 搭好的姿势：三块积木都落到位、小皇冠亮着。 */
 .build__crown {
   transform-box: view-box;
   transform-origin: 160px 60px;
@@ -112,20 +114,42 @@ defineProps({
   stroke-linejoin: round;
 }
 
+/* 讲解时间轴：所有元素共享总时长（语音时长），各自在百分比窗口里出演一次 */
+.is-active .build__block--one,
+.is-active .build__block--two,
+.is-active .build__block--three,
+.is-active .build__crown {
+  animation-duration: var(--study-anim-duration, 12s);
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: var(--study-anim-iteration, 1);
+  animation-fill-mode: var(--study-anim-fill, forwards);
+}
+
 .is-active .build__block--one {
-  animation: build-drop-one 4.4s ease-in-out infinite;
+  animation-name: build-drop-one;
 }
 
 .is-active .build__block--two {
-  animation: build-drop-two 4.4s ease-in-out infinite;
+  animation-name: build-drop-two;
 }
 
 .is-active .build__block--three {
-  animation: build-drop-three 4.4s ease-in-out infinite;
+  animation-name: build-drop-three;
 }
 
 .is-active .build__crown {
-  animation: build-crown 4.4s ease-in-out infinite;
+  animation-name: build-crown;
+}
+
+/* waiting 态回退到开场：积木还悬在上方没落下来，皇冠也还没出来 */
+.is-waiting .build__block {
+  opacity: 0;
+  transform: translateY(-52px) scale(0.9);
+}
+
+.is-waiting .build__crown {
+  opacity: 0;
+  transform: scale(0.4) rotate(-18deg);
 }
 
 @keyframes build-drop-one {
@@ -209,6 +233,13 @@ defineProps({
   .is-active .build__block--three,
   .is-active .build__crown {
     animation: none;
+  }
+
+  /* 减少动态偏好下不播时间轴，直接呈现讲完的教学姿态 */
+  .is-waiting .build__block,
+  .is-waiting .build__crown {
+    opacity: 1;
+    transform: none;
   }
 }
 </style>

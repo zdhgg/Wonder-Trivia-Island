@@ -4,6 +4,7 @@ dist/
 backend/data/*.db
 backend/data/*.sqlite
 backend/data/backups/
+backend/data/staging/
 backend/node_modules/
 frontend/node_modules/
 frontend/dist/

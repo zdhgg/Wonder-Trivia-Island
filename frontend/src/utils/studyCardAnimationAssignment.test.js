@@ -40,15 +40,20 @@ describe("grade 2 step-by-step animation assignment", () => {
 
   it("keeps every lesson on the shared example and memory actions", () => {
     // 例子卡优先挂知识点概念动画（见 studyConceptAnimations.js），其余站保持共享动作
-    const EXAMPLE_CONCEPT_LESSONS = new Set(["g2-upper-math-share", "g2-lower-math-multiply"]);
+    const EXAMPLE_CONCEPT_LESSONS = {
+      // 平均分和乘法启蒙：例子卡讲的是“先平均分，再说几份、每份几个”
+      "g2-upper-math-share": "concept-share-equally",
+      // 平均分和除法起步：例子卡同样是“分一分”，平均分动画照样贴
+      "g2-lower-math-divide": "concept-share-equally",
+      // 表内乘法和口诀：例子卡讲的是“看几个几，想口诀”
+      "g2-lower-math-multiply": "concept-groups-of"
+    };
 
     for (const item of g2Items) {
       const playback = buildStudyLessonPlayback(item);
       const byId = Object.fromEntries(playback.cards.map((card) => [card.id, card.visualAnimationId]));
 
-      expect(byId.example, item.id).toBe(
-        EXAMPLE_CONCEPT_LESSONS.has(item.id) ? "concept-groups-of" : "example-try"
-      );
+      expect(byId.example, item.id).toBe(EXAMPLE_CONCEPT_LESSONS[item.id] || "example-try");
       expect(byId.memory, item.id).toBe("memory-keep");
     }
   });

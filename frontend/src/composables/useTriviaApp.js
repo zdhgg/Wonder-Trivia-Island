@@ -10,7 +10,7 @@ import {
   generateHomeWelcomeMessage
 } from "../services/questionsApi";
 import { SETTINGS_DEFAULT_SECTION_ID, SETTINGS_SECTION_IDS, getSettingsSectionById, getSettingsSectionByRouteSlug } from "../components/settings/settingsSections";
-import { TOOL_DEFAULT_SECTION_ID, TOOL_SECTION_IDS, getToolSectionById, getToolSectionByRouteSlug } from "../components/tools/toolSections";
+import { TOOL_DEFAULT_SECTION_ID, TOOL_SECTION_ID, TOOL_SECTION_IDS, getToolSectionById, getToolSectionByRouteSlug } from "../components/tools/toolSections";
 import { useAudioStore } from "../stores/useAudioStore";
 import { useQuizStore } from "../stores/useQuizStore";
 import { DEFAULT_PROFILE, useSettingsStore } from "../stores/useSettingsStore";
@@ -501,6 +501,8 @@ export function useTriviaApp() {
   const {
     currentView,
     studyInitialGradeFilter,
+    studyMapGrade,
+    studyPlayerReturn,
     selectedStudyLessonId,
     lastStudyLessonId,
     activeToolSectionId,
@@ -922,6 +924,11 @@ export function useTriviaApp() {
   );
 
   const studyProfileGrade = computed(() => String(settingsStore.profile.grade || "").trim());
+
+  // 讲解播放器的返回目标：从整册地图进来的就回地图，否则回讲堂
+  const studyPlayerReturnLabel = computed(() =>
+    studyPlayerReturn.value?.view === VIEW_MODE.STUDY_MAP ? "整册地图" : "讲堂大厅"
+  );
 
   // 首页“知识小讲堂”的续学信息：上次学到的小站仍在当前路线里才可恢复
   const homeStudyResume = computed(() => {
@@ -1778,7 +1785,7 @@ export function useTriviaApp() {
   function openCatalogView() {
     catalogPrefill.value = null;
     wrongBookFocusTag.value = "";
-    openToolsView(TOOL_SECTION_IDS[1]);
+    openToolsView(TOOL_SECTION_ID.CATALOG);
   }
 
   function openStudyView({ gradeFilter = "" } = {}) {
@@ -1791,11 +1798,11 @@ export function useTriviaApp() {
     restoreLastStudyLesson();
   }
 
-  function openStudyMapView() {
+  function openStudyMapView({ grade = "" } = {}) {
     closeQuizSettings();
     closeAudioSettings();
     void ensureKnowledgeStudyRuntime();
-    showStudyMapView();
+    showStudyMapView({ grade });
   }
 
   // 深链直达讲堂/地图页时也要装载路线数据
@@ -1893,12 +1900,12 @@ export function useTriviaApp() {
     }
 
     catalogPrefill.value = nextPrefill;
-    openToolsView(TOOL_SECTION_IDS[1]);
+    openToolsView(TOOL_SECTION_ID.CATALOG);
   }
 
   function openImportView() {
     wrongBookFocusTag.value = "";
-    openToolsView(TOOL_SECTION_IDS[2]);
+    openToolsView(TOOL_SECTION_ID.IMPORT);
   }
 
   function openQuizSettings() {
@@ -2660,6 +2667,8 @@ export function useTriviaApp() {
     wrongQuestionItems,
     homeStudyResume,
     studyProfileGrade,
+    studyMapGrade,
+    studyPlayerReturnLabel,
     homeKnowledgeSpotlight,
     homeWrongBookSpotlight,
     knowledgeStudyOverview,

@@ -1,7 +1,8 @@
 import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { DEFAULT_AUDIO_PREFERENCES } from "../audio/audioConfig";
 import { hasStudyNarrationAsset, loadStudyNarrationSrc } from "../audio/studyNarrationRegistry";
 import { prefetchStudyNarrationAssetStems, releaseStudyNarrationAssetStems } from "../audio/studyNarrationPackManager";
-import { playStudyNarration, stopStudyNarration } from "../audio/studyNarrationEngine";
+import { playStudyNarration, setStudyNarrationVolume, stopStudyNarration } from "../audio/studyNarrationEngine";
 import { useAudioStore } from "../stores/useAudioStore";
 
 const COMPLETION_CELEBRATION_MS = 2200;
@@ -148,6 +149,26 @@ export function useStudyLessonPlayer(lessonRef) {
     return Math.min(1, Math.max(0, masterVolume));
   }
 
+  const narrationVolumePercent = computed(() => Math.round(getNarrationVolume() * 100));
+  const narrationVolumeLabel = computed(() => `${narrationVolumePercent.value}%`);
+  const isNarrationMuted = computed(() => narrationVolumePercent.value <= 0);
+
+  // 页面上的音量调节只动主音量，不碰背景音乐/音效开关，讲课时不会突然冒出伴奏
+  function setNarrationVolume(nextValue) {
+    const percent = Number(nextValue);
+
+    audioStore.setMasterVolume(Number.isFinite(percent) ? percent / 100 : audioStore.masterVolume);
+  }
+
+  function toggleNarrationMute() {
+    if (isNarrationMuted.value) {
+      audioStore.setMasterVolume(audioStore.lastAudibleVolume || DEFAULT_AUDIO_PREFERENCES.masterVolume);
+      return;
+    }
+
+    audioStore.setMasterVolume(0);
+  }
+
   function createLessonPrefetchRequest() {
     lessonPrefetchRequestId.value += 1;
     return lessonPrefetchRequestId.value;
@@ -276,6 +297,11 @@ export function useStudyLessonPlayer(lessonRef) {
       return;
     }
 
+    // 没有语音时动画就按这张卡的图文节奏演一遍：和下面的解锁计时同一个时长，
+    // 动画定格的时候正好能翻页。
+    narrationDurationMs.value = currentCard.value.minDurationMs;
+    narrationPlaybackKey.value += 1;
+
     cardUnlockTimerId.value = window.setTimeout(() => {
       cardUnlockTimerId.value = 0;
       finishNarration({ clearNotice: false });
@@ -320,8 +346,13 @@ export function useStudyLessonPlayer(lessonRef) {
           return;
         }
 
+        // 时长报上来动画才开演（见 StudyLessonCard 的 isAnimationArmed）：
+        // 万一拿不到时长就退回这张卡的图文节奏，不能让动画空着。
+        const reportedMs = Math.round(Number(durationMs));
+
         narrationPlaybackKey.value += 1;
-        narrationDurationMs.value = Number(durationMs) > 0 ? Math.round(Number(durationMs)) : 0;
+        narrationDurationMs.value =
+          Number.isFinite(reportedMs) && reportedMs > 0 ? reportedMs : currentCard.value?.minDurationMs || 0;
       },
       onEnded: () => {
         if (!isNarrationRequestCurrent(requestId)) {
@@ -475,6 +506,14 @@ export function useStudyLessonPlayer(lessonRef) {
     { immediate: true }
   );
 
+  // 音量在页面上被改动时，正在播放的这一段语音也要立刻跟着变，不用等下一张卡
+  watch(
+    () => audioStore.masterVolume,
+    () => {
+      setStudyNarrationVolume(getNarrationVolume());
+    }
+  );
+
   onBeforeUnmount(() => {
     stop();
   });
@@ -499,6 +538,11 @@ export function useStudyLessonPlayer(lessonRef) {
     completionPayload,
     lessonPrefetchSummary,
     shouldAutoComplete,
+    narrationVolumePercent,
+    narrationVolumeLabel,
+    isNarrationMuted,
+    setNarrationVolume,
+    toggleNarrationMute,
     replayCurrentCard,
     startCurrentCard,
     goNext,

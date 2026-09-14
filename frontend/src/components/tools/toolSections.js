@@ -1,14 +1,12 @@
+export const TOOL_SECTION_ID = Object.freeze({
+  CATALOG: "tools-catalog",
+  IMPORT: "tools-import",
+  CACHE: "tools-cache"
+});
+
 export const TOOL_SECTIONS = Object.freeze([
   {
-    id: "tools-overview",
-    href: "#tools-overview",
-    routeSlug: "",
-    navLabel: "概览",
-    sectionTitle: "概览",
-    description: "先看工具台里有哪些管理能力。"
-  },
-  {
-    id: "tools-catalog",
+    id: TOOL_SECTION_ID.CATALOG,
     href: "#tools-catalog",
     routeSlug: "catalog",
     navLabel: "题库",
@@ -16,15 +14,15 @@ export const TOOL_SECTIONS = Object.freeze([
     description: "查看、筛选和维护现有题目。"
   },
   {
-    id: "tools-import",
+    id: TOOL_SECTION_ID.IMPORT,
     href: "#tools-import",
     routeSlug: "import",
     navLabel: "导入",
     sectionTitle: "导入",
-    description: "追加或覆盖导入题目，也支持 AI 批量生成。"
+    description: "核对外部 harness 提交的批次，确认后写入题库。"
   },
   {
-    id: "tools-cache",
+    id: TOOL_SECTION_ID.CACHE,
     href: "#tools-cache",
     routeSlug: "cache",
     navLabel: "讲堂缓存",

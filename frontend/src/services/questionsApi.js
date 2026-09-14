@@ -430,13 +430,32 @@ export async function fetchQuestionCatalog({
   return payload;
 }
 
-export async function previewQuestionImport({ rows, mode = "append", adminKey = "", signal }) {
-  const response = await fetch("/api/questions/import/preview", {
+export async function fetchPendingImportBatch({ adminKey = "", signal } = {}) {
+  const response = await fetch("/api/questions/import/pending", {
+    method: "GET",
+    headers: buildAdminHeaders(adminKey),
+    signal
+  });
+
+  const payload = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    const error = new Error(payload?.message || `读取待确认批次失败：${response.status}`);
+    error.code = payload?.code || "";
+    error.details = payload?.details || [];
+    throw error;
+  }
+
+  return payload?.batch || null;
+}
+
+export async function confirmPendingImport({ batchId = "", allowStale = false, adminKey = "", signal } = {}) {
+  const response = await fetch("/api/questions/import/confirm", {
     method: "POST",
     headers: buildAdminHeaders(adminKey, true),
     body: JSON.stringify({
-      rows,
-      mode
+      batchId,
+      allowStale
     }),
     signal
   });
@@ -444,14 +463,39 @@ export async function previewQuestionImport({ rows, mode = "append", adminKey = 
   const payload = await response.json().catch(() => null);
 
   if (!response.ok) {
-    throw new Error(payload?.message || `题库预检失败：${response.status}`);
+    const error = new Error(payload?.message || `确认导入失败：${response.status}`);
+    error.code = payload?.code || "";
+    error.details = payload?.details || [];
+    throw error;
   }
 
-  if (!payload?.summary || !Array.isArray(payload.rows) || !Array.isArray(payload.validQuestions)) {
-    throw new Error("题库预检结果格式不正确。");
+  if (typeof payload?.importedCount !== "number" || typeof payload?.totalQuestionCount !== "number") {
+    throw new Error("导入结果格式不正确。");
   }
 
   return payload;
+}
+
+export async function discardPendingImportBatch({ batchId = "", adminKey = "", signal } = {}) {
+  const response = await fetch("/api/questions/import/pending", {
+    method: "DELETE",
+    headers: buildAdminHeaders(adminKey, true),
+    body: JSON.stringify({
+      batchId
+    }),
+    signal
+  });
+
+  const payload = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    const error = new Error(payload?.message || `丢弃待确认批次失败：${response.status}`);
+    error.code = payload?.code || "";
+    error.details = payload?.details || [];
+    throw error;
+  }
+
+  return payload || { discarded: false, batchId: "" };
 }
 
 export async function createQuestion({ question, adminKey = "", signal }) {
@@ -595,32 +639,6 @@ export async function deleteQuestionsBatch({ ids, adminKey = "", signal }) {
 
   if (typeof payload?.deletedCount !== "number") {
     throw new Error("批量删除结果格式不正确。");
-  }
-
-  return payload;
-}
-
-export async function commitQuestionImport({ questions, mode = "append", adminKey = "", signal }) {
-  const response = await fetch("/api/questions/import/commit", {
-    method: "POST",
-    headers: buildAdminHeaders(adminKey, true),
-    body: JSON.stringify({
-      questions,
-      mode
-    }),
-    signal
-  });
-
-  const payload = await response.json().catch(() => null);
-
-  if (!response.ok) {
-    const error = new Error(payload?.message || `题库导入失败：${response.status}`);
-    error.details = payload?.details || [];
-    throw error;
-  }
-
-  if (typeof payload?.importedCount !== "number" || typeof payload?.totalQuestionCount !== "number") {
-    throw new Error("题库导入结果格式不正确。");
   }
 
   return payload;

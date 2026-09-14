@@ -35,7 +35,11 @@
     "backend:sync-g1-lower-stage7-images": "node backend/scripts/sync-grade-one-lower-stage-seven-image-questions.js",
     "frontend:install": "npm --prefix frontend install",
     "frontend:dev": "npm --prefix frontend run dev",
-    "frontend:build": "npm --prefix frontend run build"
+    "frontend:build": "npm --prefix frontend run build",
+    "questions:import": "node --no-warnings scripts/import-questions.js"
+  },
+  "dependencies": {
+    "read-excel-file": "^9.0.9"
   },
   "devDependencies": {
     "ffmpeg-static": "^5.3.0"

@@ -1,7 +1,6 @@
 <script setup>
 import ConfirmDialog from "../components/ConfirmDialog.vue";
-import { useQuestionImportDisplay } from "../composables/import/useQuestionImportDisplay";
-import { useQuestionImportRuntime } from "../composables/import/useQuestionImportRuntime";
+import { useQuestionImportReview } from "../composables/import/useQuestionImportReview";
 
 const props = defineProps({
   adminKey: {
@@ -11,397 +10,126 @@ const props = defineProps({
 });
 const emit = defineEmits(["imported", "update:adminKey"]);
 const {
-  AI_SUBJECT_OPTIONS,
-  AI_GRADE_OPTIONS,
-  AI_SEMESTER_OPTIONS,
-  AI_DIFFICULTY_OPTIONS,
-  AI_COUNT_OPTIONS,
-  fileInputRef,
-  importMode,
-  selectedFileName,
-  parsedRows,
-  parseMessage,
-  previewResult,
   commitResult,
-  statsErrorMessage,
-  currentQuestionCount,
-  isDragging,
-  isStatsLoading,
-  isPreviewLoading,
-  isCommitLoading,
-  isReplaceImportConfirmOpen,
-  replaceImportErrorMessage,
-  aiImportSubject,
-  aiImportGrade,
-  aiImportSemester,
-  aiImportDifficulty,
-  aiImportCount,
-  aiImportTopic,
-  aiImportGuidance,
-  aiImportReferenceText,
-  isAiGenerating,
-  aiGenerationStatusMessage,
-  aiGenerationErrorMessage,
+  errorMessage,
+  confirmErrorMessage,
+  isLoadingBatch,
+  isConfirming,
+  isDiscarding,
+  isReplaceConfirmOpen,
+  lastRefreshedLabel,
   adminKeyModel,
-  hasParsedRows,
-  parsedRowCount,
-  hasPreviewErrors,
-  hasPreviewWarnings,
+  hasBatch,
+  batchMode,
+  batchModeLabel,
+  batchSummary,
+  batchCountLabel,
+  batchSourceLabel,
+  batchCreatedAtLabel,
   previewRows,
   previewRowsToShow,
-  importModeLabel,
+  warningCountLabel,
+  canConfirm,
+  canDiscard,
   currentQuestionCountLabel,
-  selectedFileSummary,
-  canCommit,
-  handleFileChange,
-  handleDrop,
-  handleDragOver,
-  handleDragLeave,
-  handlePreview,
-  handleGenerateAiBatch,
-  handleCommit,
-  closeReplaceImportConfirm,
-  handleConfirmReplaceImport,
-  openFileDialog,
-  downloadCsvTemplate
-} = useQuestionImportRuntime({ props, emit });
-const {
-  previewStatusTone,
-  previewStatusText,
-  replaceImportDescription,
-  importResultTone,
-  importResultEyebrow,
-  importResultStatusLabel,
-  importResultTitle,
-  importResultText,
-  importResultStats,
-  importResultHint
-} = useQuestionImportDisplay({
-  importMode,
-  selectedFileName,
-  parseMessage,
-  previewResult,
-  commitResult,
-  statsErrorMessage,
-  currentQuestionCountLabel,
-  isPreviewLoading,
-  isCommitLoading,
-  isAiGenerating,
-  aiImportSubject,
-  aiImportGrade,
-  aiImportCount,
-  hasPreviewErrors,
-  hasPreviewWarnings,
-  canCommit,
-  importModeLabel
-});
+  currentQuestionCount,
+  reviewStatusTone,
+  reviewStatusText,
+  replaceConfirmDescription,
+  resultTone,
+  resultEyebrow,
+  resultStatusLabel,
+  resultTitle,
+  resultText,
+  resultStats,
+  resultHint,
+  refreshPendingBatch,
+  handleConfirm,
+  handleConfirmReplace,
+  closeReplaceConfirm,
+  handleDiscard
+} = useQuestionImportReview({ props, emit });
 </script>
 
 <template>
   <section class="import-view">
-    <article class="import-overview">
-      <div class="import-overview__copy">
-        <p class="import-card__eyebrow">Knowledge Supply Station</p>
-        <h2 class="import-card__title">知识补给站</h2>
-        <p class="import-card__text">
-          把 AI 生成或人工整理好的 CSV / XLSX 题库拖进来，先做预检，再确认入库。
-          当前工作流会保留追加和覆盖两种导入方式，但把准备、校验和结果分成更清楚的三个层级。
-        </p>
+    <div class="import-summary">
+      <div class="import-summary__line">
+        <span class="import-summary__item">
+          <span class="import-summary__label">当前题库</span>
+          <strong class="import-summary__value">{{ currentQuestionCountLabel }}</strong>
+        </span>
+
+        <span class="import-summary__item">
+          <span class="import-summary__label">待确认批次</span>
+          <strong class="import-summary__value">{{ batchCountLabel }}</strong>
+        </span>
+
+        <span class="import-summary__item">
+          <span class="import-summary__label">批次来源</span>
+          <strong class="import-summary__value">{{ batchSourceLabel }}</strong>
+        </span>
       </div>
 
-      <div class="import-overview__stats">
-        <div class="import-overview__stat">
-          <span class="import-overview__stat-label">当前题库</span>
-          <strong class="import-overview__stat-value">{{ currentQuestionCountLabel }}</strong>
-        </div>
+      <details class="import-summary__details">
+        <summary class="import-summary__toggle">导入流程</summary>
 
-        <div class="import-overview__stat">
-          <span class="import-overview__stat-label">当前模式</span>
-          <strong class="import-overview__stat-value">{{ importModeLabel }}</strong>
-        </div>
-
-        <div class="import-overview__stat">
-          <span class="import-overview__stat-label">文件状态</span>
-          <strong class="import-overview__stat-value">{{ selectedFileSummary }}</strong>
-        </div>
-      </div>
-
-      <div class="import-overview__route" aria-label="导入流程">
-        <div class="import-overview__step">
-          <span class="import-overview__step-index">01</span>
-          <strong class="import-overview__step-title">准备表格</strong>
-          <span class="import-overview__step-text">确认访问方式、导入模式和字段格式。</span>
-        </div>
-
-        <div class="import-overview__step">
-          <span class="import-overview__step-index">02</span>
-          <strong class="import-overview__step-title">预检数据</strong>
-          <span class="import-overview__step-text">检查错误、重复项和可导入题目数量。</span>
-        </div>
-
-        <div class="import-overview__step">
-          <span class="import-overview__step-index">03</span>
-          <strong class="import-overview__step-title">写入题库</strong>
-          <span class="import-overview__step-text">确认后再导入，覆盖模式会自动备份旧数据。</span>
-        </div>
-      </div>
-    </article>
+        <ol class="import-summary__steps">
+          <li class="import-summary__step">
+            <strong>harness 提交</strong>
+            <span>命令行解析表格并预检，有错误的批次不会进入队列。</span>
+          </li>
+          <li class="import-summary__step">
+            <strong>页面核对</strong>
+            <span>逐行查看重复题、相似题和系统给出的处理建议。</span>
+          </li>
+          <li class="import-summary__step">
+            <strong>人工确认</strong>
+            <span>确认后才写入题库，覆盖模式会先自动备份旧数据。</span>
+          </li>
+        </ol>
+      </details>
+    </div>
 
     <div class="import-view__workspace">
       <div class="import-view__main">
-        <article class="import-card import-card--controls">
-          <div class="import-card__header">
-            <div>
-              <p class="import-card__eyebrow">Import Flow</p>
-              <h3 class="import-card__subtitle">准备导入</h3>
-            </div>
-
-            <div class="summary-chips">
-              <span class="summary-chips__item">{{ adminKeyModel ? "已输入口令" : "本机模式可直接访问" }}</span>
-              <span class="summary-chips__item">{{ importModeLabel }}</span>
-              <span class="summary-chips__item">{{ selectedFileName ? "文件已选择" : "等待上传" }}</span>
-            </div>
-          </div>
-
-          <div class="import-card__section-grid">
-            <section class="import-card__section">
-              <div class="import-card__section-head">
-                <div>
-                  <p class="import-card__section-step">01</p>
-                  <h3 class="import-card__section-title">管理访问</h3>
-                </div>
-              </div>
-
-              <label class="import-card__label" for="import-admin-key">管理口令</label>
-              <input
-                id="import-admin-key"
-                v-model.trim="adminKeyModel"
-                class="import-card__input"
-                type="password"
-                placeholder="线上环境建议配置 ADMIN_IMPORT_KEY"
-              />
-              <p class="import-card__hint">
-                如果后端未配置 `ADMIN_IMPORT_KEY`，当前功能只允许本机访问。
-              </p>
-            </section>
-
-            <section class="import-card__section">
-              <div class="import-card__section-head">
-                <div>
-                  <p class="import-card__section-step">02</p>
-                  <h3 class="import-card__section-title">导入模式</h3>
-                </div>
-              </div>
-
-              <span class="import-card__label">导入模式</span>
-              <div class="mode-switch">
-                <button
-                  class="mode-switch__button"
-                  :class="{ 'mode-switch__button--active': importMode === 'append' }"
-                  type="button"
-                  @click="importMode = 'append'"
-                >
-                  追加导入
-                </button>
-                <button
-                  class="mode-switch__button"
-                  :class="{ 'mode-switch__button--active': importMode === 'replace' }"
-                  type="button"
-                  @click="importMode = 'replace'"
-                >
-                  覆盖导入
-                </button>
-              </div>
-              <p class="import-card__hint">
-                `append` 会把新题追加进题库；`replace` 会先备份数据库，再用新题整体替换。
-              </p>
-            </section>
-          </div>
-
-          <section class="import-card__section import-card__section--ai">
-            <div class="import-card__section-head">
-              <div>
-                <p class="import-card__section-step">03</p>
-                <h3 class="import-card__section-title">AI 批量生成</h3>
-              </div>
-              <span class="summary-chips__item">先生成，再预检</span>
-            </div>
-
-            <div class="ai-import-grid ai-import-grid--meta">
-              <label class="import-card__field">
-                <span class="import-card__label">学科</span>
-                <select v-model="aiImportSubject" class="import-card__input import-card__select">
-                  <option v-for="subject in AI_SUBJECT_OPTIONS" :key="subject" :value="subject">
-                    {{ subject }}
-                  </option>
-                </select>
-              </label>
-
-              <label class="import-card__field">
-                <span class="import-card__label">年级</span>
-                <select v-model="aiImportGrade" class="import-card__input import-card__select">
-                  <option v-for="grade in AI_GRADE_OPTIONS" :key="grade" :value="grade">
-                    {{ grade }}
-                  </option>
-                </select>
-              </label>
-
-              <label class="import-card__field">
-                <span class="import-card__label">学期</span>
-                <select v-model="aiImportSemester" class="import-card__input import-card__select">
-                  <option v-for="semester in AI_SEMESTER_OPTIONS" :key="semester" :value="semester">
-                    {{ semester }}
-                  </option>
-                </select>
-              </label>
-
-              <label class="import-card__field">
-                <span class="import-card__label">难度</span>
-                <select v-model="aiImportDifficulty" class="import-card__input import-card__select">
-                  <option v-for="difficulty in AI_DIFFICULTY_OPTIONS" :key="difficulty" :value="difficulty">
-                    {{ difficulty }} 星
-                  </option>
-                </select>
-              </label>
-
-              <label class="import-card__field">
-                <span class="import-card__label">数量</span>
-                <select v-model="aiImportCount" class="import-card__input import-card__select">
-                  <option v-for="count in AI_COUNT_OPTIONS" :key="count" :value="count">
-                    {{ count }} 题
-                  </option>
-                </select>
-              </label>
-            </div>
-
-            <label class="import-card__field">
-              <span class="import-card__label">主题</span>
-              <input
-                v-model.trim="aiImportTopic"
-                class="import-card__input"
-                type="text"
-                placeholder="例如：世界地球日、校园节水、春季运动会"
-              />
-            </label>
-
-            <label class="import-card__field">
-              <span class="import-card__label">补充要求</span>
-              <textarea
-                v-model.trim="aiImportGuidance"
-                class="import-card__textarea import-card__textarea--compact"
-                rows="2"
-                placeholder="例如：题目要生活化一些，适合三年级，不要太书面。"
-              ></textarea>
-            </label>
-
-            <label class="import-card__field">
-              <span class="import-card__label">参考材料</span>
-              <textarea
-                v-model.trim="aiImportReferenceText"
-                class="import-card__textarea"
-                rows="4"
-                placeholder="适合节日、活动、新闻等更强调时效性的题目。粘贴材料后，AI 会优先依据材料生成。"
-              ></textarea>
-            </label>
-
-            <div class="import-card__actions">
-              <button
-                class="btn-cartoon btn-cartoon--yellow"
-                type="button"
-                :disabled="isAiGenerating || isPreviewLoading || isCommitLoading"
-                @click="handleGenerateAiBatch"
-              >
-                {{ isAiGenerating ? "生成中..." : "生成并预检 AI 题库" }}
-              </button>
-            </div>
-
-            <p v-if="aiGenerationStatusMessage" class="import-card__message import-card__message--success">
-              {{ aiGenerationStatusMessage }}
-            </p>
-            <p v-if="aiGenerationErrorMessage" class="import-card__message import-card__message--error">
-              {{ aiGenerationErrorMessage }}
-            </p>
-            <p class="import-card__hint">
-              这一步不会直接写入题库。生成后的题目仍会先进入下方预检，再由你决定是否导入。
-            </p>
-          </section>
-
-          <section class="import-card__section import-card__section--upload">
-            <div class="import-card__section-head">
-              <div>
-                <p class="import-card__section-step">04</p>
-                <h3 class="import-card__section-title">上传题库文件</h3>
-              </div>
-              <span class="summary-chips__item">{{ selectedFileSummary }}</span>
-            </div>
-
-            <div
-              class="upload-dropzone"
-              :class="{ 'upload-dropzone--active': isDragging }"
-              @drop="handleDrop"
-              @dragover="handleDragOver"
-              @dragleave="handleDragLeave"
-            >
-              <input
-                ref="fileInputRef"
-                class="upload-dropzone__input"
-                type="file"
-                accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                @change="handleFileChange"
-              />
-              <p class="upload-dropzone__title">把知识卷轴拖到这里</p>
-              <p class="upload-dropzone__text">
-                或者点击按钮选择 CSV / XLSX 文件。建议先用 CSV 模板生成内容，或者按同样字段新建 Excel。
-              </p>
-              <p v-if="selectedFileName" class="upload-dropzone__file">
-                已选择：{{ selectedFileName }}
-                <span v-if="hasParsedRows"> · 已解析 {{ parsedRowCount }} 行</span>
-              </p>
-
-              <div class="upload-dropzone__actions">
-                <button class="btn-cartoon btn-cartoon--mint" type="button" @click="openFileDialog">
-                  选择文件
-                </button>
-                <button class="btn-cartoon" type="button" @click="downloadCsvTemplate">
-                  CSV 模板
-                </button>
-                <button
-                  class="btn-cartoon btn-cartoon--pink"
-                  type="button"
-                  :disabled="isPreviewLoading || !hasParsedRows"
-                  @click="handlePreview"
-                >
-                  {{ isPreviewLoading ? "预检中..." : "开始预检" }}
-                </button>
-              </div>
-            </div>
-
-            <p v-if="parseMessage" class="import-card__message import-card__message--error">
-              {{ parseMessage }}
-            </p>
-            <p v-else-if="statsErrorMessage" class="import-card__message import-card__message--error">
-              {{ statsErrorMessage }}
-            </p>
-          </section>
-        </article>
-
         <article class="import-card import-card--preview">
           <div class="import-card__header">
             <div>
-              <p class="import-card__eyebrow">Preview</p>
-              <h3 class="import-card__subtitle">导入预检</h3>
+              <p class="import-card__eyebrow">Import Review</p>
+              <h3 class="import-card__subtitle">待确认批次</h3>
             </div>
 
             <div class="summary-chips">
-              <span class="summary-chips__item">模式 {{ importModeLabel }}</span>
-              <span v-if="hasParsedRows" class="summary-chips__item">待检 {{ parsedRowCount }} 行</span>
+              <span v-if="hasBatch" class="summary-chips__item">模式 {{ batchModeLabel }}</span>
+              <span v-if="hasBatch" class="summary-chips__item">{{ warningCountLabel }}</span>
+              <span class="summary-chips__item">刷新于 {{ lastRefreshedLabel }}</span>
             </div>
           </div>
 
-          <div v-if="!previewResult" class="placeholder-panel">
-            <p class="placeholder-panel__title">还没有预检结果</p>
+          <div v-if="!hasBatch" class="placeholder-panel">
+            <p class="placeholder-panel__title">
+              {{ isLoadingBatch ? "正在检查待确认批次..." : "当前没有待确认批次" }}
+            </p>
             <p class="placeholder-panel__text">
-              当前支持 CSV / XLSX；字段顺序推荐为：学科、年级、学期、题型、题目、题目图片、选项A、选项B、选项C、选项D、答案、解析、难度。
+              在项目根目录运行
+              <code class="command-hint">npm run questions:import &lt;文件.csv&gt; --stage</code>，
+              预检通过后批次会出现在这里，等你在页面上确认。
+            </p>
+
+            <div class="import-card__actions">
+              <button
+                class="btn-cartoon btn-cartoon--mint"
+                type="button"
+                :disabled="isLoadingBatch"
+                @click="refreshPendingBatch()"
+              >
+                {{ isLoadingBatch ? "刷新中..." : "刷新批次" }}
+              </button>
+            </div>
+
+            <p v-if="errorMessage" class="import-card__message import-card__message--error">
+              {{ errorMessage }}
             </p>
           </div>
 
@@ -409,24 +137,29 @@ const {
             <div class="preview-summary">
               <div class="preview-summary__item">
                 <span class="preview-summary__label">总行数</span>
-                <strong class="preview-summary__value">{{ previewResult.summary.totalRows }}</strong>
+                <strong class="preview-summary__value">{{ batchSummary.totalRows }}</strong>
               </div>
               <div class="preview-summary__item preview-summary__item--success">
                 <span class="preview-summary__label">可导入</span>
-                <strong class="preview-summary__value">{{ previewResult.summary.validRows }}</strong>
-              </div>
-              <div class="preview-summary__item preview-summary__item--error">
-                <span class="preview-summary__label">错误</span>
-                <strong class="preview-summary__value">{{ previewResult.summary.errorRows }}</strong>
+                <strong class="preview-summary__value">{{ batchSummary.validRows }}</strong>
               </div>
               <div class="preview-summary__item preview-summary__item--warning">
                 <span class="preview-summary__label">警告</span>
-                <strong class="preview-summary__value">{{ previewResult.summary.warningRows }}</strong>
+                <strong class="preview-summary__value">{{ batchSummary.warningRows }}</strong>
+              </div>
+              <div class="preview-summary__item preview-summary__item--error">
+                <span class="preview-summary__label">错误</span>
+                <strong class="preview-summary__value">{{ batchSummary.errorRows }}</strong>
               </div>
             </div>
 
-            <p class="import-card__message" :class="`import-card__message--${previewStatusTone}`">
-              {{ previewStatusText }}
+            <div class="batch-meta">
+              <span class="batch-meta__item">提交于 {{ batchCreatedAtLabel }}</span>
+              <span class="batch-meta__item">预检时题库 {{ batchSummary.currentQuestionCount }} 题</span>
+            </div>
+
+            <p class="import-card__message" :class="`import-card__message--${reviewStatusTone}`">
+              {{ reviewStatusText }}
             </p>
 
             <div class="preview-table">
@@ -490,19 +223,29 @@ const {
               </div>
             </div>
 
+            <p v-if="confirmErrorMessage" class="import-card__message import-card__message--error">
+              {{ confirmErrorMessage }}
+            </p>
+
             <div class="import-card__footer">
               <p v-if="previewRows.length > previewRowsToShow.length" class="import-card__hint">
                 仅展示前 {{ previewRowsToShow.length }} 行，完整校验已覆盖全部数据。
               </p>
+              <p v-else class="import-card__hint">
+                批次由 harness 提交，这里只负责核对与放行。
+              </p>
 
               <div class="import-card__actions">
+                <button class="btn-cartoon" type="button" :disabled="!canDiscard" @click="handleDiscard">
+                  {{ isDiscarding ? "丢弃中..." : "丢弃批次" }}
+                </button>
                 <button
                   class="btn-cartoon btn-cartoon--pink"
                   type="button"
-                  :disabled="!canCommit"
-                  @click="handleCommit"
+                  :disabled="!canConfirm"
+                  @click="handleConfirm"
                 >
-                  {{ isCommitLoading ? "导入中..." : importMode === "replace" ? "确认覆盖导入" : "确认追加导入" }}
+                  {{ isConfirming ? "导入中..." : batchMode === "replace" ? "确认覆盖导入" : "确认追加导入" }}
                 </button>
               </div>
             </div>
@@ -511,6 +254,27 @@ const {
       </div>
 
       <div class="import-view__sidebar">
+        <article class="import-card import-card--access">
+          <div class="import-card__header">
+            <div>
+              <p class="import-card__eyebrow">Access</p>
+              <h3 class="import-card__subtitle">管理口令</h3>
+            </div>
+          </div>
+
+          <input
+            id="import-admin-key"
+            v-model.trim="adminKeyModel"
+            class="import-card__input"
+            type="password"
+            aria-label="管理口令"
+            placeholder="可选：ADMIN_IMPORT_KEY"
+          />
+          <p class="import-card__hint">
+            后端未配置 `ADMIN_IMPORT_KEY` 时，只有本机可以查看和确认批次。
+          </p>
+        </article>
+
         <article class="import-card import-card--reference">
           <div class="import-card__header">
             <div>
@@ -555,20 +319,20 @@ const {
             </div>
           </div>
 
-          <div :class="['result-panel', `result-panel--${importResultTone}`]">
+          <div :class="['result-panel', `result-panel--${resultTone}`]">
             <div class="result-panel__head">
               <div class="result-panel__copy">
-                <p class="result-panel__eyebrow">{{ importResultEyebrow }}</p>
-                <h3 class="result-panel__title">{{ importResultTitle }}</h3>
-                <p class="result-panel__text">{{ importResultText }}</p>
+                <p class="result-panel__eyebrow">{{ resultEyebrow }}</p>
+                <h3 class="result-panel__title">{{ resultTitle }}</h3>
+                <p class="result-panel__text">{{ resultText }}</p>
               </div>
 
-              <span class="result-panel__status">{{ importResultStatusLabel }}</span>
+              <span class="result-panel__status">{{ resultStatusLabel }}</span>
             </div>
 
-            <div class="result-panel__metrics">
+            <div v-if="resultStats.length" class="result-panel__metrics">
               <div
-                v-for="item in importResultStats"
+                v-for="item in resultStats"
                 :key="item.label"
                 class="result-panel__metric"
               >
@@ -577,7 +341,7 @@ const {
               </div>
             </div>
 
-            <p class="result-panel__hint">{{ importResultHint }}</p>
+            <p class="result-panel__hint">{{ resultHint }}</p>
 
             <p v-if="commitResult?.backupPath" class="result-panel__backup">
               备份路径：{{ commitResult.backupPath }}
@@ -588,28 +352,28 @@ const {
     </div>
 
     <ConfirmDialog
-      v-model="isReplaceImportConfirmOpen"
+      v-model="isReplaceConfirmOpen"
       title-id="import-replace-confirm-title"
       semantic-tone="warning"
       heading-eyebrow="Import Guard"
       heading-title="确认覆盖导入"
-      :heading-description="replaceImportDescription"
+      :heading-description="replaceConfirmDescription"
       close-label="关闭覆盖导入确认弹窗"
       panel-class="import-confirm-dialog"
       notice-text="覆盖导入会清空当前题库内容并写入新题。系统会先生成备份，但当前站点内容会立刻切换到新题库。"
       :chips="[
         `当前题库 ${currentQuestionCount} 题`,
-        `本次导入 ${previewResult?.summary?.validRows || 0} 题`
+        `本次导入 ${batchSummary?.validRows || 0} 题`
       ]"
       confirm-text="确认覆盖导入"
       confirm-loading-text="覆盖导入中..."
-      :confirm-loading="isCommitLoading"
-      :confirm-disabled="!canCommit"
-      :cancel-disabled="isCommitLoading"
-      :status-text="replaceImportErrorMessage"
+      :confirm-loading="isConfirming"
+      :confirm-disabled="!canConfirm"
+      :cancel-disabled="isConfirming"
+      :status-text="confirmErrorMessage"
       status-tone="error"
-      @confirm="handleConfirmReplaceImport"
-      @cancel="closeReplaceImportConfirm"
+      @confirm="handleConfirmReplace"
+      @cancel="closeReplaceConfirm"
     >
       <template
         #actions="{
@@ -649,120 +413,135 @@ const {
 
 .import-view {
   display: grid;
-  gap: 24px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  min-width: 0;
 }
 
-.import-overview {
-  position: relative;
+.import-summary {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.95fr);
-  gap: 18px 20px;
-  padding: 28px;
-  border: 1.5px solid rgba(36, 50, 74, 0.14);
-  border-radius: 32px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  min-width: 0;
+  padding: 14px 18px;
+  border: 1.5px solid rgba(36, 50, 74, 0.12);
+  border-radius: 22px;
   background: linear-gradient(180deg, rgba(255, 253, 248, 0.92) 0%, rgba(255, 255, 255, 0.82) 100%);
   box-shadow: var(--shadow-soft);
-  overflow: hidden;
 }
 
-.import-overview::after {
-  content: "";
-  position: absolute;
-  top: -44px;
-  right: -34px;
-  width: 220px;
-  height: 220px;
-  border-radius: 50%;
-  background:
-    radial-gradient(circle, rgba(173, 235, 255, 0.46) 0%, rgba(173, 235, 255, 0) 68%);
-  pointer-events: none;
+.import-summary__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 18px;
 }
 
-.import-overview__copy,
-.import-overview__stats,
-.import-overview__route {
-  position: relative;
-  z-index: 1;
+.import-summary__item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
 }
 
-.import-overview__copy {
-  max-width: 42rem;
-}
-
-.import-overview__stats {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  grid-column: 1 / -1;
-}
-
-.import-overview__stat {
-  display: grid;
-  gap: 6px;
-  min-height: 92px;
-  padding: 16px 18px;
-  border: 1.5px solid rgba(36, 50, 74, 0.1);
-  border-radius: 22px;
-  background: rgba(255, 255, 255, 0.72);
-}
-
-.import-overview__stat-label {
-  color: var(--color-ink-soft);
-  font-size: 0.78rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.import-overview__stat-value {
-  color: var(--color-ink);
-  font-size: 1rem;
-  line-height: 1.45;
-}
-
-.import-overview__route {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  grid-column: 1 / -1;
-}
-
-.import-overview__step {
-  display: grid;
-  gap: 6px;
-  padding: 14px 16px;
-  border: 1.5px solid rgba(36, 50, 74, 0.1);
-  border-radius: 22px;
-  background: rgba(255, 255, 255, 0.62);
-}
-
-.import-overview__step-index {
+.import-summary__label {
   color: var(--color-ink-soft);
   font-size: 0.76rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
-.import-overview__step-title {
+.import-summary__value {
   color: var(--color-ink);
   font-size: 1rem;
+  line-height: 1.35;
+  word-break: break-word;
 }
 
-.import-overview__step-text {
+/* 注意：不要在 <details> 上设置 display，Chromium 下会破坏原生折叠；
+   这里显式控制内容显隐，不依赖 UA 实现。 */
+.import-summary__details:not([open]) .import-summary__steps {
+  display: none;
+}
+
+.import-summary__toggle {
+  width: fit-content;
   color: var(--color-ink-soft);
-  font-size: 0.9rem;
+  font-size: 0.86rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.import-summary__toggle::-webkit-details-marker {
+  display: none;
+}
+
+.import-summary__toggle::before {
+  content: "▸";
+  display: inline-block;
+  margin-right: 6px;
+  transition: transform 160ms ease;
+}
+
+.import-summary__details[open] .import-summary__toggle::before {
+  transform: rotate(90deg);
+}
+
+.import-summary__toggle:hover,
+.import-summary__toggle:focus-visible {
+  color: var(--color-ink);
+  outline: none;
+}
+
+.import-summary__steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 12px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.import-summary__step {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1.5px solid rgba(36, 50, 74, 0.1);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.import-summary__step strong {
+  color: var(--color-ink);
+  font-size: 0.94rem;
+}
+
+.import-summary__step span {
+  color: var(--color-ink-soft);
+  font-size: 0.86rem;
   line-height: 1.5;
 }
 
 .import-view__workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1.42fr) minmax(300px, 0.9fr);
+  /* 预检表格需要约 960px 才读得舒服：宽度够时并排侧栏，不够时自动改成上下布局。 */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 940px), 1fr));
   gap: 20px;
 }
 
 .import-view__main,
 .import-view__sidebar {
   display: grid;
+  /* 隐式列默认 auto，会被内部宽表格的 min-content 撑破；显式允许收缩。 */
+  grid-template-columns: minmax(0, 1fr);
   gap: 20px;
+  align-content: start;
+  min-width: 0;
+}
+
+.import-view__sidebar {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  align-items: start;
 }
 
 .import-confirm-footer {
@@ -793,8 +572,8 @@ const {
   backdrop-filter: blur(10px);
 }
 
-.import-card--controls,
 .import-card--preview,
+.import-card--access,
 .import-card--reference,
 .import-card--result {
   padding: 24px;
@@ -838,6 +617,11 @@ const {
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
+  flex-wrap: wrap;
+}
+
+.import-card__header > div {
+  min-width: 0;
 }
 
 .import-card__text,
@@ -856,12 +640,12 @@ const {
 }
 
 .summary-chips {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: max-content;
+  display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   align-content: start;
-  justify-content: end;
+  justify-content: flex-end;
+  min-width: 0;
 }
 
 .summary-chips__item {
@@ -877,65 +661,18 @@ const {
   line-height: 1.4;
 }
 
-.import-card__section-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-  margin-top: 18px;
-}
-
-.import-card__section {
-  display: grid;
-  gap: 12px;
-  padding: 18px;
-  border: 1.5px solid rgba(36, 50, 74, 0.1);
-  border-radius: 24px;
-  background: rgba(255, 255, 255, 0.72);
-}
-
-.import-card__section--ai {
-  margin-top: 14px;
-  background: linear-gradient(180deg, rgba(255, 249, 226, 0.9) 0%, rgba(255, 255, 255, 0.84) 100%);
-}
-
-.import-card__section--upload {
-  margin-top: 14px;
-}
-
-.import-card__section-step {
-  margin: 0;
-  color: var(--color-ink-soft);
-  font-size: 0.78rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.import-card__section-title {
-  margin: 4px 0 0;
-  color: var(--color-ink);
-  font-size: 1.08rem;
-}
-
-.import-card__section-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
 .import-card__label {
   display: block;
   color: var(--color-ink);
   font-size: 0.95rem;
 }
 
-.import-card__field {
+.import-card--access {
   display: grid;
-  gap: 8px;
+  gap: 12px;
 }
 
-.import-card__input,
-.import-card__textarea {
+.import-card__input {
   width: 100%;
   min-height: 50px;
   padding: 12px 14px;
@@ -949,33 +686,10 @@ const {
     background-color 160ms ease;
 }
 
-.import-card__textarea {
-  min-height: 112px;
-  resize: vertical;
-}
-
-.import-card__textarea--compact {
-  min-height: 78px;
-}
-
-.import-card__input:focus-visible,
-.import-card__textarea:focus-visible {
+.import-card__input:focus-visible {
   outline: none;
   border-color: rgba(124, 216, 184, 0.78);
   box-shadow: 0 0 0 3px rgba(124, 216, 184, 0.18);
-}
-
-.import-card__select {
-  appearance: none;
-  background-image:
-    linear-gradient(45deg, transparent 50%, rgba(36, 50, 74, 0.55) 50%),
-    linear-gradient(135deg, rgba(36, 50, 74, 0.55) 50%, transparent 50%);
-  background-position:
-    calc(100% - 21px) calc(50% - 2px),
-    calc(100% - 15px) calc(50% - 2px);
-  background-size: 6px 6px, 6px 6px;
-  background-repeat: no-repeat;
-  padding-right: 44px;
 }
 
 .import-card__hint {
@@ -984,102 +698,43 @@ const {
   line-height: 1.55;
 }
 
-.ai-import-grid {
-  display: grid;
-  gap: 12px;
+.command-hint {
+  display: inline-block;
+  padding: 2px 8px;
+  border: 1px solid rgba(36, 50, 74, 0.12);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--color-ink);
+  font-family: "SFMono-Regular", "Consolas", "Menlo", monospace;
+  font-size: 0.88rem;
+  word-break: break-all;
 }
 
-.ai-import-grid--meta {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-}
-
-.mode-switch {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+.batch-meta {
+  display: flex;
+  flex-wrap: wrap;
   gap: 10px;
+  margin-top: 12px;
 }
 
-.mode-switch__button {
-  min-height: 46px;
-  padding: 10px 14px;
-  border: 1.5px solid rgba(36, 50, 74, 0.14);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.84);
-  color: var(--color-ink);
-  font-weight: 800;
-  cursor: pointer;
-  transition:
-    transform 160ms ease,
-    background-color 180ms ease,
-    border-color 180ms ease,
-    box-shadow 180ms ease;
+.batch-meta__item {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 5px 12px;
+  border: 1.5px solid rgba(36, 50, 74, 0.1);
+  border-radius: 999px;
+  background: rgba(248, 251, 253, 0.9);
+  color: var(--color-ink-soft);
+  font-size: 0.84rem;
+  line-height: 1.4;
 }
 
-.mode-switch__button:hover {
-  transform: translateY(-1px);
-  border-color: rgba(124, 216, 184, 0.44);
-}
-
-.mode-switch__button:focus-visible {
-  outline: none;
-  border-color: rgba(124, 216, 184, 0.78);
-  box-shadow: 0 0 0 3px rgba(124, 216, 184, 0.18);
-}
-
-.mode-switch__button--active {
-  border-color: rgba(255, 184, 42, 0.42);
-  background: linear-gradient(180deg, rgba(255, 231, 156, 0.94) 0%, rgba(255, 255, 255, 0.92) 100%);
-  box-shadow: 0 14px 24px -24px rgba(36, 50, 74, 0.38);
-}
-
-.upload-dropzone {
-  position: relative;
-  display: grid;
-  gap: 12px;
-  justify-items: start;
-  padding: 24px;
-  border: 1.5px dashed rgba(36, 50, 74, 0.22);
-  border-radius: 26px;
-  background: linear-gradient(180deg, rgba(255, 253, 248, 0.86) 0%, rgba(242, 253, 249, 0.8) 100%);
-  transition:
-    transform 160ms ease,
-    border-color 160ms ease,
-    background-color 160ms ease,
-    box-shadow 160ms ease;
-}
-
-.upload-dropzone--active {
-  transform: translateY(-2px);
-  border-color: rgba(124, 216, 184, 0.62);
-  background: linear-gradient(180deg, rgba(242, 253, 249, 0.96) 0%, rgba(255, 251, 230, 0.94) 100%);
-  box-shadow: 0 22px 34px -34px rgba(36, 50, 74, 0.4);
-}
-
-.upload-dropzone__input {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.upload-dropzone__title,
-.placeholder-panel__title {
-  margin: 0;
-  color: var(--color-ink);
-  font-size: 1.12rem;
-}
-
-.upload-dropzone__text,
-.upload-dropzone__file,
-.placeholder-panel__text {
-  margin: 0;
-}
-
-.upload-dropzone__actions,
 .import-card__actions {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
+  margin-top: 16px;
 }
 
 .import-card__footer {
@@ -1088,6 +743,10 @@ const {
   justify-content: space-between;
   gap: 14px;
   margin-top: 18px;
+}
+
+.import-card__footer .import-card__actions {
+  margin-top: 0;
 }
 
 .import-card__message {
@@ -1165,10 +824,16 @@ const {
 .preview-table__head,
 .preview-table__row {
   display: grid;
-  grid-template-columns: 72px 88px 88px 88px minmax(0, 2fr) 88px minmax(0, 1.5fr);
-  gap: 14px;
+  grid-template-columns: 56px 76px 76px 76px minmax(0, 2fr) 64px minmax(0, 1.8fr);
+  gap: 12px;
   align-items: start;
-  padding: 14px 16px;
+  padding: 14px 14px;
+}
+
+/* 表格列是固定语义宽度，窄屏时改为横向滚动，避免题干被压成一字一行。 */
+.preview-table__head,
+.preview-table__row {
+  min-width: 880px;
 }
 
 .preview-table__head {
@@ -1322,13 +987,22 @@ const {
 }
 
 .placeholder-panel {
+  position: relative;
+  z-index: 1;
   padding: 20px;
   border-radius: 24px;
   background: linear-gradient(180deg, rgba(255, 251, 230, 0.84) 0%, rgba(255, 255, 255, 0.78) 100%);
 }
 
-.placeholder-panel--soft {
-  background: rgba(255, 255, 255, 0.74);
+.placeholder-panel__title {
+  margin: 0;
+  color: var(--color-ink);
+  font-size: 1.12rem;
+}
+
+.placeholder-panel__text {
+  margin: 10px 0 0;
+  line-height: 1.6;
 }
 
 .field-grid {
@@ -1348,7 +1022,10 @@ const {
 
 .result-panel {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
   gap: 16px;
+  margin-top: 18px;
   padding: 20px;
   border-radius: 24px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.88) 0%, rgba(248, 251, 253, 0.84) 100%);
@@ -1358,7 +1035,6 @@ const {
   background: linear-gradient(180deg, rgba(255, 251, 230, 0.9) 0%, rgba(255, 255, 255, 0.84) 100%);
 }
 
-.result-panel--progress,
 .result-panel--pending {
   background: linear-gradient(180deg, rgba(240, 247, 255, 0.94) 0%, rgba(255, 255, 255, 0.86) 100%);
 }
@@ -1433,6 +1109,7 @@ const {
   color: var(--color-ink);
   font-size: 0.96rem;
   line-height: 1.45;
+  word-break: break-word;
 }
 
 .result-panel__hint,
@@ -1451,13 +1128,25 @@ const {
   word-break: break-word;
 }
 
+/* 工具台内容区负责滚动，操作按钮固定在卡片底部，表格滚动时仍然可见。 */
+@media (min-width: 1081px) {
+  .import-card__footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    padding: 18px 0 6px;
+    background: linear-gradient(
+      180deg,
+      rgba(255, 253, 248, 0) 0%,
+      rgba(255, 253, 248, 0.97) 30%,
+      rgba(255, 253, 248, 1) 100%
+    );
+  }
+}
+
 @media (max-width: 980px) {
-  .import-overview__stats,
-  .import-overview__route,
-  .import-view__workspace,
-  .import-card__section-grid,
+  .import-summary__steps,
   .preview-summary,
-  .ai-import-grid--meta,
   .result-panel__metrics {
     grid-template-columns: 1fr;
   }
@@ -1476,17 +1165,15 @@ const {
 }
 
 @media (max-width: 720px) {
-  .import-overview,
-  .upload-dropzone,
-  .import-card--controls,
+  .import-summary,
   .import-card--preview,
+  .import-card--access,
   .import-card--reference,
   .import-card--result {
     padding: 20px;
   }
 
-  .import-card__header,
-  .import-card__section-head {
+  .import-card__header {
     flex-direction: column;
     align-items: flex-start;
   }
@@ -1502,25 +1189,9 @@ const {
   }
 
   .import-confirm-footer__actions,
-  .import-card__actions,
-  .upload-dropzone__actions {
+  .import-card__actions {
     flex-direction: column;
     align-items: stretch;
-  }
-
-  .preview-table__head,
-  .preview-table__row {
-    min-width: 960px;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .mode-switch__button,
-  .upload-dropzone,
-  .mode-switch__button:hover,
-  .upload-dropzone--active {
-    transition: none;
-    transform: none;
   }
 }
 </style>

@@ -1,14 +1,15 @@
 <script setup>
 defineProps({
-  active: {
-    type: Boolean,
-    default: false
+  // waiting = 语音还没开讲（小方块还在小窝里）；active = 跟着讲解走时间轴；done = 讲完定格
+  phase: {
+    type: String,
+    default: "waiting"
   }
 });
 </script>
 
 <template>
-  <div :class="['study-anim', 'study-anim--try', { 'is-active': active }]">
+  <div :class="['study-anim', 'study-anim--try', `is-${phase}`]">
     <svg class="study-anim__svg" viewBox="0 0 320 232" role="presentation" aria-hidden="true" focusable="false">
       <rect class="try__backdrop" x="20" y="28" width="280" height="178" rx="38" />
       <rect class="try__floor" x="46" y="172" width="228" height="12" rx="6" />
@@ -97,8 +98,7 @@ defineProps({
   fill: var(--study-anim-line);
 }
 
-/* 静止态 = 做完的姿势：小方块已经落进槽位、三个进度点亮起。
-   讲解中才叠加循环动画，讲完回到这个定格状态。 */
+/* 静止态 = 做完的姿势：小方块已经落进槽位、三个进度点亮起。 */
 .try__token-x {
   transform-box: view-box;
   transform-origin: 0 0;
@@ -138,28 +138,51 @@ defineProps({
   opacity: 1;
 }
 
+/* 讲解时间轴：所有元素共享总时长（语音时长），各自在百分比窗口里出演一次 */
+.is-active .try__token-x,
+.is-active .try__token-y,
+.is-active .try__token-spin,
+.is-active .try__pip--one,
+.is-active .try__pip--two,
+.is-active .try__pip--three {
+  animation-duration: var(--study-anim-duration, 12s);
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: var(--study-anim-iteration, 1);
+  animation-fill-mode: var(--study-anim-fill, forwards);
+}
+
 .is-active .try__token-x {
-  animation: try-travel-x 4.6s ease-in-out infinite;
+  animation-name: try-travel-x;
 }
 
 .is-active .try__token-y {
-  animation: try-travel-y 4.6s ease-in-out infinite;
+  animation-name: try-travel-y;
 }
 
 .is-active .try__token-spin {
-  animation: try-token-spin 4.6s ease-in-out infinite;
+  animation-name: try-token-spin;
 }
 
 .is-active .try__pip--one {
-  animation: try-pip-one 4.6s ease-in-out infinite;
+  animation-name: try-pip-one;
 }
 
 .is-active .try__pip--two {
-  animation: try-pip-two 4.6s ease-in-out infinite;
+  animation-name: try-pip-two;
 }
 
 .is-active .try__pip--three {
-  animation: try-pip-three 4.6s ease-in-out infinite;
+  animation-name: try-pip-three;
+}
+
+/* waiting 态回退到开场：小方块还在小窝里，进度点也没亮 */
+.is-waiting .try__token-x,
+.is-waiting .try__token-y {
+  transform: translate(0, 0);
+}
+
+.is-waiting .try__pip {
+  opacity: 0.3;
 }
 
 @keyframes try-travel-x {
@@ -262,6 +285,19 @@ defineProps({
   .is-active .try__pip--two,
   .is-active .try__pip--three {
     animation: none;
+  }
+
+  /* 减少动态偏好下不播时间轴，直接呈现讲完的教学姿态 */
+  .is-waiting .try__token-x {
+    transform: translate(174px, 0);
+  }
+
+  .is-waiting .try__token-y {
+    transform: translate(0, 30px);
+  }
+
+  .is-waiting .try__pip {
+    opacity: 1;
   }
 }
 </style>

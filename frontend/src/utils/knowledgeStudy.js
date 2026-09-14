@@ -1125,3 +1125,55 @@ export function getSubjectTheme(subject) {
 export function getSubjectGlyph(subject) {
   return SUBJECT_THEME_MAP[subject]?.glyph || "学";
 }
+
+// 每个学科主题的配色，新增学科时只在这里补一行，视图无需再加样式类
+const SUBJECT_THEME_STYLE_MAP = Object.freeze({
+  chinese: {
+    accentRgb: "255, 154, 158",
+    accentStrongRgb: "171, 79, 83",
+    glyphBackground: "linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%)",
+    glyphInk: "#ffffff"
+  },
+  math: {
+    accentRgb: "161, 196, 253",
+    accentStrongRgb: "69, 117, 191",
+    glyphBackground: "linear-gradient(120deg, #a1c4fd 0%, #c2e9fb 100%)",
+    glyphInk: "#ffffff"
+  },
+  english: {
+    accentRgb: "253, 203, 241",
+    accentStrongRgb: "161, 104, 148",
+    glyphBackground: "linear-gradient(120deg, #fdcbf1 0%, #e6dee9 100%)",
+    glyphInk: "rgba(120, 80, 110, 0.9)"
+  },
+  science: {
+    accentRgb: "150, 226, 199",
+    accentStrongRgb: "23, 107, 84",
+    glyphBackground: "linear-gradient(135deg, #96e6a1 0%, #d4fc79 100%)",
+    glyphInk: "#14532d"
+  },
+  civic: {
+    accentRgb: "255, 209, 128",
+    accentStrongRgb: "161, 98, 7",
+    glyphBackground: "linear-gradient(135deg, #ffe29f 0%, #ffa99f 100%)",
+    glyphInk: "#7c2d12"
+  },
+  general: {
+    accentRgb: "124, 216, 184",
+    accentStrongRgb: "31, 107, 81",
+    glyphBackground: "linear-gradient(120deg, #84fab0 0%, #8fd3f4 100%)",
+    glyphInk: "#ffffff"
+  }
+});
+
+// 供学科容器以行内 CSS 变量注入配色，避免为每个学科写一份选择器
+export function getSubjectThemeStyle(subject) {
+  const style = SUBJECT_THEME_STYLE_MAP[getSubjectTheme(subject)] || SUBJECT_THEME_STYLE_MAP.general;
+
+  return {
+    "--map-accent-rgb": style.accentRgb,
+    "--map-accent-strong-rgb": style.accentStrongRgb,
+    "--map-glyph-background": style.glyphBackground,
+    "--map-glyph-ink": style.glyphInk
+  };
+}

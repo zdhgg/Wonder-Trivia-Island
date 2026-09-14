@@ -1,14 +1,15 @@
 <script setup>
 defineProps({
-  active: {
-    type: Boolean,
-    default: false
+  // waiting = 语音还没开讲（两个小家伙还没靠近）；active = 跟着讲解走时间轴；done = 讲完定格
+  phase: {
+    type: String,
+    default: "waiting"
   }
 });
 </script>
 
 <template>
-  <div :class="['study-anim', 'study-anim--connect', { 'is-active': active }]">
+  <div :class="['study-anim', 'study-anim--connect', `is-${phase}`]">
     <svg class="study-anim__svg" viewBox="0 0 320 232" role="presentation" aria-hidden="true" focusable="false">
       <rect class="connect__backdrop" x="20" y="30" width="280" height="176" rx="38" />
       <rect class="connect__floor" x="52" y="172" width="216" height="12" rx="6" />
@@ -157,28 +158,58 @@ defineProps({
   fill: var(--study-anim-warm);
 }
 
-.is-active .connect__link {
-  animation: connect-draw 4.4s ease-in-out infinite;
+/* 讲解时间轴：所有元素共享总时长（语音时长），各自在百分比窗口里出演一次 */
+.is-active .connect__link,
+.is-active .connect__link--second,
+.is-active .connect__knot,
+.is-active .connect__buddy--left,
+.is-active .connect__buddy--right,
+.is-active .connect__spark {
+  animation-duration: var(--study-anim-duration, 12s);
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: var(--study-anim-iteration, 1);
+  animation-fill-mode: var(--study-anim-fill, forwards);
 }
 
+.is-active .connect__link {
+  animation-name: connect-draw;
+}
+
+/* 第二条连线晚一点才拉出来，用错开的关键帧而不是固定 delay，
+   这样总时长变成语音长度后，两条线的先后间隔也跟着一起缩放。 */
 .is-active .connect__link--second {
-  animation-delay: 320ms;
+  animation-name: connect-draw-second;
 }
 
 .is-active .connect__knot {
-  animation: connect-knot 4.4s ease-in-out infinite;
+  animation-name: connect-knot;
 }
 
 .is-active .connect__buddy--left {
-  animation: connect-nudge-left 4.4s ease-in-out infinite;
+  animation-name: connect-nudge-left;
 }
 
 .is-active .connect__buddy--right {
-  animation: connect-nudge-right 4.4s ease-in-out infinite;
+  animation-name: connect-nudge-right;
 }
 
 .is-active .connect__spark {
-  animation: connect-spark 4.4s ease-in-out infinite;
+  animation-name: connect-spark;
+}
+
+/* waiting 态回退到开场：两个小家伙还没靠近，连线也没画出来 */
+.is-waiting .connect__buddy--left,
+.is-waiting .connect__buddy--right {
+  transform: translate(0, 0) rotate(0deg);
+}
+
+.is-waiting .connect__link {
+  stroke-dashoffset: 130;
+}
+
+.is-waiting .connect__knot,
+.is-waiting .connect__spark {
+  opacity: 0;
 }
 
 @keyframes connect-draw {
@@ -187,6 +218,18 @@ defineProps({
   }
 
   50%,
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes connect-draw-second {
+  0%,
+  8% {
+    stroke-dashoffset: 130;
+  }
+
+  58%,
   100% {
     stroke-dashoffset: 0;
   }
@@ -261,6 +304,24 @@ defineProps({
   .is-active .connect__buddy--right,
   .is-active .connect__spark {
     animation: none;
+  }
+
+  /* 减少动态偏好下不播时间轴，直接呈现讲完的教学姿态 */
+  .is-waiting .connect__buddy--left {
+    transform: translate(9px, 0) rotate(3deg);
+  }
+
+  .is-waiting .connect__buddy--right {
+    transform: translate(-9px, 0) rotate(-3deg);
+  }
+
+  .is-waiting .connect__link {
+    stroke-dashoffset: 0;
+  }
+
+  .is-waiting .connect__knot,
+  .is-waiting .connect__spark {
+    opacity: 1;
   }
 }
 </style>

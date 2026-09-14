@@ -7,10 +7,18 @@ const {
   MAX_KNOWLEDGE_TAG_LENGTH,
   createDatabaseBackup,
   ensureQuestionsTable,
+  getQuestionBankFingerprint,
   getQuestionCount,
   getQuestionPolicyIssues,
   insertQuestions
 } = require("../questions/repository");
+const {
+  clearPendingBatch,
+  createBatchId,
+  pendingBatchPath,
+  readPendingBatch,
+  writePendingBatch
+} = require("./questionImportStaging");
 
 const ALLOWED_GRADE_SET = new Set(ALLOWED_GRADES);
 const ALLOWED_SEMESTER_SET = new Set(ALLOWED_SEMESTERS);
@@ -21,6 +29,9 @@ const OPTION_KEYS = ["A", "B", "C", "D"];
 const SIMILARITY_WARNING_THRESHOLD = 0.7;
 const STRONG_SIMILARITY_RECOMMENDATION_THRESHOLD = 0.9;
 const REVIEW_SIMILARITY_RECOMMENDATION_THRESHOLD = 0.82;
+const IMPORT_ERROR_STAGE_BLOCKED = "IMPORT_STAGE_BLOCKED";
+const IMPORT_ERROR_STALE_BATCH = "IMPORT_STALE_BATCH";
+const IMPORT_ERROR_BATCH_MISSING = "IMPORT_BATCH_MISSING";
 
 const FIELD_ALIASES = Object.freeze({
   subject: ["subject", "学科", "科目"],
@@ -1073,8 +1084,178 @@ function commitQuestionImport(questions, mode = "append", db = null) {
   }
 }
 
+function buildImportStageError(code, message, details = []) {
+  const error = new Error(message);
+  error.code = code;
+  error.details = details;
+  return error;
+}
+
+function isSameFingerprint(left, right) {
+  if (!left || !right) {
+    return false;
+  }
+
+  return (
+    Number(left.questionCount) === Number(right.questionCount) &&
+    Number(left.maxId) === Number(right.maxId) &&
+    String(left.maxUpdatedAt || "") === String(right.maxUpdatedAt || "")
+  );
+}
+
+function summarizeStagedBatch(batch) {
+  return {
+    batchId: batch.batchId,
+    createdAt: batch.createdAt,
+    source: batch.source,
+    mode: batch.mode,
+    summary: batch.summary,
+    fingerprint: batch.fingerprint,
+    rowCount: Array.isArray(batch.validQuestions) ? batch.validQuestions.length : 0
+  };
+}
+
+// 外部 harness 的唯一入口：预检通过后落盘为待确认批次，不直接写题库。
+function stageQuestionImport({ rows, mode = "append", source = "", db = null } = {}) {
+  const activeDb = db || createDatabaseConnection();
+
+  try {
+    const previewResult = previewQuestionImport(rows, mode, activeDb);
+
+    if (previewResult.summary.errorRows > 0) {
+      const blockingIssues = previewResult.rows
+        .filter((row) => row.status === "error")
+        .flatMap((row) =>
+          row.issues
+            .filter((issue) => issue.level === "error")
+            .map((issue) => ({
+              rowNumber: row.rowNumber,
+              field: issue.field,
+              message: issue.message
+            }))
+        );
+
+      throw buildImportStageError(
+        IMPORT_ERROR_STAGE_BLOCKED,
+        `预检发现 ${previewResult.summary.errorRows} 行错误，请先修正源数据再提交暂存。`,
+        blockingIssues
+      );
+    }
+
+    const batch = {
+      batchId: createBatchId(),
+      createdAt: new Date().toISOString(),
+      source: String(source || "").trim() || "unknown",
+      mode: previewResult.mode,
+      summary: previewResult.summary,
+      rows: previewResult.rows,
+      validQuestions: previewResult.validQuestions,
+      fingerprint: getQuestionBankFingerprint(activeDb)
+    };
+
+    writePendingBatch(batch);
+
+    return batch;
+  } finally {
+    if (!db) {
+      closeDatabaseConnection(activeDb);
+    }
+  }
+}
+
+// 供审核页面读取，故意不带 validQuestions：页面只负责展示。
+function getPendingImportBatch() {
+  const batch = readPendingBatch();
+
+  if (!batch) {
+    return null;
+  }
+
+  return {
+    ...summarizeStagedBatch(batch),
+    rows: Array.isArray(batch.rows) ? batch.rows : [],
+    stagedPath: pendingBatchPath
+  };
+}
+
+function discardPendingImportBatch({ batchId = "" } = {}) {
+  const batch = readPendingBatch();
+
+  if (!batch) {
+    return { discarded: false, batchId: "" };
+  }
+
+  const requestedBatchId = String(batchId || "").trim();
+
+  if (requestedBatchId && requestedBatchId !== batch.batchId) {
+    throw buildImportStageError(IMPORT_ERROR_BATCH_MISSING, "待确认批次已经变化，请刷新后重试。");
+  }
+
+  clearPendingBatch();
+
+  return { discarded: true, batchId: batch.batchId };
+}
+
+// 人对暂存批次点确认时调用；写库前比对指纹，防止覆盖掉期间新增的数据。
+function commitPendingImport({ batchId = "", allowStale = false, db = null } = {}) {
+  const batch = readPendingBatch();
+
+  if (!batch) {
+    throw buildImportStageError(IMPORT_ERROR_BATCH_MISSING, "当前没有待确认的导入批次。");
+  }
+
+  const requestedBatchId = String(batchId || "").trim();
+
+  if (requestedBatchId && requestedBatchId !== batch.batchId) {
+    throw buildImportStageError(IMPORT_ERROR_BATCH_MISSING, "待确认批次已经变化，请刷新后重试。");
+  }
+
+  const activeDb = db || createDatabaseConnection();
+
+  try {
+    const currentFingerprint = getQuestionBankFingerprint(activeDb);
+    const fingerprintDrift = !isSameFingerprint(batch.fingerprint, currentFingerprint);
+
+    if (fingerprintDrift && batch.mode === "replace" && !allowStale) {
+      throw buildImportStageError(
+        IMPORT_ERROR_STALE_BATCH,
+        "题库在预检之后发生了变化，覆盖导入已暂停。请重新预检后再确认。",
+        [
+          {
+            field: "fingerprint",
+            message: `预检时 ${batch.fingerprint?.questionCount ?? "未知"} 题，当前 ${currentFingerprint.questionCount} 题。`
+          }
+        ]
+      );
+    }
+
+    const commitResult = commitQuestionImport(batch.validQuestions, batch.mode, activeDb);
+
+    clearPendingBatch();
+
+    return {
+      ...commitResult,
+      batchId: batch.batchId,
+      source: batch.source,
+      fingerprintDrift
+    };
+  } finally {
+    if (!db) {
+      closeDatabaseConnection(activeDb);
+    }
+  }
+}
+
 module.exports = {
+  IMPORT_ERROR_BATCH_MISSING,
+  IMPORT_ERROR_STALE_BATCH,
+  IMPORT_ERROR_STAGE_BLOCKED,
+  commitPendingImport,
   commitQuestionImport,
+  discardPendingImportBatch,
+  getPendingImportBatch,
   previewQuestionImport,
+  stageQuestionImport,
+  summarizeStagedBatch,
   validatePreparedQuestion
 };

@@ -18,56 +18,47 @@ export default {
 
 <template>
   <section class="catalog-view">
-    <article class="catalog-card catalog-card--hero">
-      <div class="catalog-hero">
-        <div class="catalog-hero__heading">
-          <div class="catalog-hero__copy">
-            <p class="catalog-card__eyebrow">Question Archive</p>
-            <h2 class="catalog-card__title catalog-card__title--compact">题库档案室</h2>
-          </div>
+    <article class="catalog-card catalog-card--summary">
+      <div class="catalog-summary">
+        <div class="catalog-summary__line">
+          <span v-for="item in catalogHeroMetrics" :key="item.key" class="catalog-summary__item">
+            <span class="catalog-summary__label">{{ item.label }}</span>
+            <strong class="catalog-summary__value">{{ item.value }}</strong>
+          </span>
 
-          <div class="catalog-hero__status">
-            <span class="catalog-status-pill">
-              {{ isStatsLoading ? "题库加载中..." : `当前 ${currentQuestionCount} 题` }}
-            </span>
-            <span v-if="hasActiveFilters" class="catalog-status-pill catalog-status-pill--accent">
-              {{ filterSummary }}
-            </span>
-          </div>
+          <span v-if="hasActiveFilters" class="catalog-status-pill catalog-status-pill--accent">
+            {{ filterSummary }}
+          </span>
         </div>
 
-        <div class="catalog-hero__metrics">
-          <article
-            v-for="item in catalogHeroMetrics"
-            :key="item.key"
-            :class="['catalog-hero-metric', `catalog-hero-metric--${item.tone}`]"
-          >
-            <span class="catalog-hero-metric__label">{{ item.label }}</span>
-            <strong class="catalog-hero-metric__value">{{ item.value }}</strong>
-            <p class="catalog-hero-metric__note">{{ item.note }}</p>
-          </article>
-        </div>
+        <p v-if="questionListErrorMessage" class="catalog-card__message catalog-card__message--error">
+          {{ questionListErrorMessage }}
+        </p>
 
-        <div class="catalog-stats-grid">
-          <section v-for="group in groupedStats" :key="group.key" class="catalog-stat-cluster">
-            <div class="catalog-stat-cluster__head">
-              <p class="catalog-stat-cluster__title">{{ group.label }}</p>
-              <p class="catalog-stat-cluster__caption">{{ group.caption }}</p>
-            </div>
+        <details class="catalog-summary__details">
+          <summary class="catalog-summary__toggle">展开分布统计</summary>
 
-            <div class="catalog-stat-cluster__items">
-              <div v-for="item in group.items" :key="`${group.key}-${item.label}`" class="catalog-stat-row">
-                <div class="catalog-stat-row__meta">
-                  <span class="catalog-stat-row__label">{{ item.label }}</span>
-                  <strong class="catalog-stat-row__value">{{ item.count }}</strong>
-                </div>
-                <div class="catalog-stat-row__track" aria-hidden="true">
-                  <span class="catalog-stat-row__fill" :style="{ width: `${item.share}%` }"></span>
+          <div class="catalog-stats-grid">
+            <section v-for="group in groupedStats" :key="group.key" class="catalog-stat-cluster">
+              <div class="catalog-stat-cluster__head">
+                <p class="catalog-stat-cluster__title">{{ group.label }}</p>
+                <p class="catalog-stat-cluster__caption">{{ group.caption }}</p>
+              </div>
+
+              <div class="catalog-stat-cluster__items">
+                <div v-for="item in group.items" :key="`${group.key}-${item.label}`" class="catalog-stat-row">
+                  <div class="catalog-stat-row__meta">
+                    <span class="catalog-stat-row__label">{{ item.label }}</span>
+                    <strong class="catalog-stat-row__value">{{ item.count }}</strong>
+                  </div>
+                  <div class="catalog-stat-row__track" aria-hidden="true">
+                    <span class="catalog-stat-row__fill" :style="{ width: `${item.share}%` }"></span>
+                  </div>
                 </div>
               </div>
-            </div>
-          </section>
-        </div>
+            </section>
+          </div>
+        </details>
       </div>
     </article>
 

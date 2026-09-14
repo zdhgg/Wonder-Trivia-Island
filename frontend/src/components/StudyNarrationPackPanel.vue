@@ -315,25 +315,30 @@ onMounted(() => {
       </div>
     </div>
 
-    <p class="study-audio-panel__summary">{{ panelSummary }}</p>
+    <div class="study-audio-panel__overview">
+      <div v-if="internalMode && packStore.persistentCacheSupported" class="study-audio-panel__stats" aria-label="缓存概览">
+        <span class="study-audio-panel__stat">
+          <span class="study-audio-panel__stat-label">已缓存包</span>
+          <strong class="study-audio-panel__stat-value">{{ cachedPackCount }}</strong>
+        </span>
+        <span class="study-audio-panel__stat">
+          <span class="study-audio-panel__stat-label">实际语音</span>
+          <strong class="study-audio-panel__stat-value">{{ persistentCacheSummary.cachedAssetCount }}</strong>
+        </span>
+        <span class="study-audio-panel__stat">
+          <span class="study-audio-panel__stat-label">预估占用</span>
+          <strong class="study-audio-panel__stat-value">{{ formatPackSize(persistentCacheSummary.totalBytes) }}</strong>
+        </span>
+        <span class="study-audio-panel__stat">
+          <span class="study-audio-panel__stat-label">满量包</span>
+          <strong class="study-audio-panel__stat-value">{{ downloadedPackCount }}</strong>
+        </span>
+      </div>
 
-    <div v-if="internalMode && packStore.persistentCacheSupported" class="study-audio-panel__stats" aria-label="缓存概览">
-      <article class="study-audio-panel__stat">
-        <span class="study-audio-panel__stat-label">已缓存包</span>
-        <strong class="study-audio-panel__stat-value">{{ cachedPackCount }}</strong>
-      </article>
-      <article class="study-audio-panel__stat">
-        <span class="study-audio-panel__stat-label">实际语音</span>
-        <strong class="study-audio-panel__stat-value">{{ persistentCacheSummary.cachedAssetCount }}</strong>
-      </article>
-      <article class="study-audio-panel__stat">
-        <span class="study-audio-panel__stat-label">预估占用</span>
-        <strong class="study-audio-panel__stat-value">{{ formatPackSize(persistentCacheSummary.totalBytes) }}</strong>
-      </article>
-      <article class="study-audio-panel__stat">
-        <span class="study-audio-panel__stat-label">满量包</span>
-        <strong class="study-audio-panel__stat-value">{{ downloadedPackCount }}</strong>
-      </article>
+      <details class="study-audio-panel__more">
+        <summary class="study-audio-panel__more-toggle">缓存说明</summary>
+        <p class="study-audio-panel__summary">{{ panelSummary }}</p>
+      </details>
     </div>
 
     <p v-if="packStore.loadError" class="study-audio-panel__notice study-audio-panel__notice--warning">
@@ -429,7 +434,9 @@ onMounted(() => {
 <style scoped>
 .study-audio-panel {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
+  min-width: 0;
   padding: 18px;
   border: 1px solid rgba(36, 50, 74, 0.1);
   border-radius: 26px;
@@ -542,19 +549,28 @@ onMounted(() => {
   line-height: 1.6;
 }
 
-.study-audio-panel__stats {
+.study-audio-panel__more .study-audio-panel__summary {
+  margin-top: 8px;
+}
+
+.study-audio-panel__overview {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 12px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  min-width: 0;
+}
+
+.study-audio-panel__stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 20px;
 }
 
 .study-audio-panel__stat {
-  display: grid;
-  gap: 6px;
-  padding: 14px 16px;
-  border: 1px solid rgba(36, 50, 74, 0.08);
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.82);
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
 }
 
 .study-audio-panel__stat-label {
@@ -567,6 +583,41 @@ onMounted(() => {
 .study-audio-panel__stat-value {
   color: var(--color-ink);
   font-size: 1rem;
+}
+
+/* 注意：不要在 <details> 上设置 display，Chromium 下会破坏原生折叠；
+   这里显式控制内容显隐，不依赖 UA 实现。 */
+.study-audio-panel__more:not([open]) .study-audio-panel__summary {
+  display: none;
+}
+
+.study-audio-panel__more-toggle {
+  width: fit-content;
+  color: var(--color-ink-soft);
+  font-size: 0.86rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.study-audio-panel__more-toggle::-webkit-details-marker {
+  display: none;
+}
+
+.study-audio-panel__more-toggle::before {
+  content: "▸";
+  display: inline-block;
+  margin-right: 6px;
+  transition: transform 160ms ease;
+}
+
+.study-audio-panel__more[open] .study-audio-panel__more-toggle::before {
+  transform: rotate(90deg);
+}
+
+.study-audio-panel__more-toggle:hover,
+.study-audio-panel__more-toggle:focus-visible {
+  color: var(--color-ink);
+  outline: none;
 }
 
 .study-audio-panel__notice--warning {
@@ -584,7 +635,9 @@ onMounted(() => {
 
 .study-audio-pack {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
+  min-width: 0;
   padding: 16px;
   border: 1px solid rgba(36, 50, 74, 0.08);
   border-radius: 22px;

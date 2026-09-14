@@ -42,22 +42,44 @@ const props = defineProps({
 
 const animationComponent = computed(() => resolveStudyCardAnimationComponent(props.card.visualAnimationId));
 
+// 动画要等语音时长报到（playbackKey 已装填、narrationDurationMs 已知）才开始演，
+// 否则会先用兜底时长跑一遍，等真正的时长到了再重来一次。
+const isAnimationArmed = computed(() => props.playbackKey > 0 && props.narrationDurationMs > 0);
+
 const animationPhase = computed(() => {
+  if (!isAnimationArmed.value) {
+    return "waiting";
+  }
+
   if (props.narrationStatus === "playing" || props.narrationStatus === "fallback") {
     return "active";
   }
 
-  return props.playbackKey > 0 ? "done" : "waiting";
+  return "done";
 });
 
-// 语音时长已知时，把它作为动画时间轴的总时长：动画讲完正好语音讲完
+// 动画时间轴的总时长：有语音就用语音时长，没语音就用这张卡的图文节奏，
+// 和卡片解锁计时是同一个数，讲完正好动画也定格。
+const animationDurationMs = computed(() => {
+  const narrationMs = Math.round(Number(props.narrationDurationMs));
+
+  if (Number.isFinite(narrationMs) && narrationMs > 0) {
+    return narrationMs;
+  }
+
+  const pacingMs = Math.round(Number(props.card?.minDurationMs));
+
+  return Number.isFinite(pacingMs) && pacingMs > 0 ? pacingMs : 0;
+});
+
+// 动画讲完正好语音讲完：一遍演到底，演完停在教学姿态
 const visualStyle = computed(() => {
-  if (!(props.narrationDurationMs > 0)) {
+  if (!(animationDurationMs.value > 0)) {
     return undefined;
   }
 
   return {
-    "--study-anim-duration": `${(props.narrationDurationMs / 1000).toFixed(2)}s`,
+    "--study-anim-duration": `${(animationDurationMs.value / 1000).toFixed(2)}s`,
     "--study-anim-iteration": "1",
     "--study-anim-fill": "forwards"
   };
@@ -103,7 +125,6 @@ const visualStyle = computed(() => {
         v-if="animationComponent"
         :key="`anim-${playbackKey}`"
         class="study-lesson-card__animation"
-        :active="isNarrating"
         :phase="animationPhase"
       />
 

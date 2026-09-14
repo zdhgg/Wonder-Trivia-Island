@@ -103,10 +103,10 @@ defineProps({
         <path class="groups-of__callout-spark" d="M212 24 L216 34 L226 38 L216 42 L212 52 L208 42 L198 38 L208 34 Z" />
       </g>
 
-      <g class="groups-of__equation">
-        <text class="groups-of__equation-text" x="160" y="212">3 × 4 = 12</text>
-        <rect class="groups-of__equation-line" x="106" y="218" width="108" height="5" rx="2.5" />
-        <path class="groups-of__equation-spark" d="M236 196 L240 205 L249 208 L240 211 L236 220 L232 211 L223 208 L232 205 Z" />
+      <g class="groups-of__mnemonic">
+        <text class="groups-of__mnemonic-text" x="160" y="212">三四十二</text>
+        <rect class="groups-of__mnemonic-line" x="106" y="218" width="108" height="5" rx="2.5" />
+        <path class="groups-of__mnemonic-spark" d="M236 196 L240 205 L249 208 L240 211 L236 220 L232 211 L223 208 L232 205 Z" />
       </g>
     </svg>
   </div>
@@ -210,7 +210,7 @@ defineProps({
   opacity: 0;
 }
 
-.groups-of__equation-text {
+.groups-of__mnemonic-text {
   fill: var(--study-anim-ink);
   font-family: "ZCOOL KuaiLe", "Baloo 2", "Trebuchet MS", sans-serif;
   font-size: 23px;
@@ -218,16 +218,16 @@ defineProps({
   text-anchor: middle;
 }
 
-.groups-of__equation-line {
+.groups-of__mnemonic-line {
   fill: var(--study-anim-warm);
 }
 
-.groups-of__equation-spark {
+.groups-of__mnemonic-spark {
   fill: var(--study-anim-warm);
 }
 
-/* 静止态（done）就是最终姿态：三盘合拢、算式亮出。
-   waiting 态回退到开场：盘子分开、苹果还没放、算式没出现。 */
+/* 静止态（done）就是最终姿态：三盘合拢、口诀亮出。
+   waiting 态回退到开场：盘子分开、苹果还没放、口诀没出现。 */
 .is-waiting .groups-of__plate--one {
   transform: translateX(-28px);
 }
@@ -240,7 +240,7 @@ defineProps({
   opacity: 0;
 }
 
-.is-waiting .groups-of__equation {
+.is-waiting .groups-of__mnemonic {
   opacity: 0;
 }
 
@@ -253,12 +253,12 @@ defineProps({
 .is-active .groups-of__badge-text,
 .is-active .groups-of__count,
 .is-active .groups-of__callout,
-.is-active .groups-of__equation,
+.is-active .groups-of__mnemonic,
 .is-active .groups-of__callout-spark,
-.is-active .groups-of__equation-spark {
+.is-active .groups-of__mnemonic-spark {
   animation-duration: var(--study-anim-duration, 12s);
   animation-timing-function: ease-in-out;
-  animation-iteration-count: var(--study-anim-iteration, infinite);
+  animation-iteration-count: var(--study-anim-iteration, 1);
   animation-fill-mode: var(--study-anim-fill, none);
 }
 
@@ -300,16 +300,16 @@ defineProps({
   animation-name: groups-of-callout;
 }
 
-.is-active .groups-of__equation {
-  animation-name: groups-of-equation;
+.is-active .groups-of__mnemonic {
+  animation-name: groups-of-mnemonic;
 }
 
 .is-active .groups-of__callout-spark {
   animation-name: groups-of-callout-spark;
 }
 
-.is-active .groups-of__equation-spark {
-  animation-name: groups-of-equation-spark;
+.is-active .groups-of__mnemonic-spark {
+  animation-name: groups-of-mnemonic-spark;
 }
 
 @keyframes groups-of-plate-one {
@@ -541,8 +541,8 @@ defineProps({
   }
 }
 
-/* 最后一句话把“几个几”接成乘法算式，星星跟着算式一起亮 */
-@keyframes groups-of-equation-spark {
+/* 最后一句把“几个几”接成乘法口诀，星星跟着口诀一起亮 */
+@keyframes groups-of-mnemonic-spark {
   0%,
   92% {
     opacity: 0;
@@ -560,8 +560,8 @@ defineProps({
   }
 }
 
-/* 盘子合拢，最后一句话把“几个几”接成乘法算式 */
-@keyframes groups-of-equation {
+/* 盘子合拢，最后一句把“几个几”接成乘法口诀 */
+@keyframes groups-of-mnemonic {
   0%,
   88% {
     opacity: 0;
@@ -589,9 +589,9 @@ defineProps({
   .is-active .groups-of__badge-text,
   .is-active .groups-of__count,
   .is-active .groups-of__callout,
-  .is-active .groups-of__equation,
+  .is-active .groups-of__mnemonic,
   .is-active .groups-of__callout-spark,
-  .is-active .groups-of__equation-spark {
+  .is-active .groups-of__mnemonic-spark {
     animation: none;
   }
 
@@ -605,7 +605,7 @@ defineProps({
     opacity: 1;
   }
 
-  .is-waiting .groups-of__equation {
+  .is-waiting .groups-of__mnemonic {
     opacity: 1;
   }
 }

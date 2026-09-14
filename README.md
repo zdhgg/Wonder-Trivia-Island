@@ -1,7 +1,7 @@
 # Wonder Trivia Island
 
 面向小学生的趣味答题系统，前端使用 Vite + Vue 3，后端使用 Node.js + Express + SQLite。
-当前正式版本为 `v1.4.0`，已经覆盖答题冒险、闯关世界地图、讲堂地图、弱项专项练习、题库管理、AI 草稿出题、AI 点评与语音、首页欢迎语、错题温习、知识学习、闯关进度和设置中心。
+当前正式版本为 `v1.5.0`，已经覆盖答题冒险、闯关世界地图、讲堂地图、弱项专项练习、题库管理、AI 草稿出题、AI 点评与语音、首页欢迎语、错题温习、知识学习、闯关进度和设置中心。
 
 当前实现使用 Node.js 24+ 自带的 `node:sqlite` 访问 SQLite 数据库，避免额外安装原生驱动带来的兼容问题。
 
@@ -165,8 +165,12 @@ npm run backend:start
 - `POST /api/questions/batch/delete`：批量删除题目
 - `PATCH /api/questions/:id`：更新指定题目
 - `DELETE /api/questions/:id`：删除指定题目
-- `POST /api/questions/import/preview`：预检题库数据
-- `POST /api/questions/import/commit`：确认导入题库数据
+- `POST /api/questions/import/stage`：预检并暂存为待确认批次（不写题库）
+- `GET /api/questions/import/pending`：读取当前待确认批次
+- `POST /api/questions/import/confirm`：确认待确认批次并写入题库
+- `DELETE /api/questions/import/pending`：丢弃当前待确认批次
+- `POST /api/questions/import/preview`：预检题库数据（harness 与调试使用）
+- `POST /api/questions/import/commit`：直接提交已预检的题目（保留兼容，页面已不再使用）
 - `GET /api/challenge-progress` / `PUT /api/challenge-progress`：读取或保存闯关进度
 - `GET /api/study-record-book` / `PUT /api/study-record-book`：读取或保存错题温习档案
 - `GET /health`：服务健康检查
@@ -184,7 +188,7 @@ npm run backend:start
 - `设置中心`
 - `工具台`
 
-其中“题库查看”和“题库导入”共享同一套管理访问规则。`v1.4.0` 当前支持：
+其中“题库查看”和“题库导入”共享同一套管理访问规则。`v1.5.0` 当前支持：
 
 - 初始化脚本当前会写入 `2146` 道示例题
 - 答题页支持独立的出题设置面板，可设置每轮题数、每题限时、每题分值和抽题难度
@@ -204,7 +208,7 @@ npm run backend:start
 - 支持弱项专项练习，把薄弱点翻成知识标签后定向抽题
 - 讲堂卡片支持步骤与概念动画，动画时间轴跟随旁白时长
 - 设置中心支持按模型资产 ID 管理自定义 AI 模型库
-- 上传 `CSV`、`XLSX`
+- 通过命令行 harness 导入 `CSV`、`XLSX`（`npm run questions:import`）
 - 查看当前题库
 - 按学科筛选当前题目
 - 按年级筛选当前题目
@@ -214,10 +218,12 @@ npm run backend:start
 - 直接在题库列表里编辑题目
 - 直接在题库列表里删除题目
 - 在“新增题目”面板里使用 AI 生成草稿，再人工确认保存
-- 在“题库导入”页里批量生成 AI 题目，并自动进入预检流程
 - 支持多选后批量修改学科 / 年级 / 学期 / 难度
 - 支持多选后批量删除题目
 - 预检并展示错误 / 警告
+- 在“导入”页核对外部 harness 提交的待确认批次
+- 逐行查看重复题 / 相似题的处理建议
+- 确认入库或丢弃批次
 - `append` 追加导入
 - `replace` 覆盖导入
 
@@ -225,6 +231,44 @@ npm run backend:start
 `GET /api/questions` 与导入接口共用同一套管理访问规则：未配置 `ADMIN_IMPORT_KEY` 时仅允许本机访问，配置后需要通过 `x-admin-key` 请求头访问。
 `POST /api/questions/generate` 也沿用同一套管理访问规则，并且只会生成草稿，不会直接写入题库。
 `POST /api/questions/ai/runtime-check` 可以测试服务端默认 AI 配置，或测试“自带 API Key 的自定义运行时”；仅提供 `Base URL` 而不提供 `API Key` 的请求会被拒绝。
+
+### 导入流程：harness 提交，页面确认
+
+导入能力被拆成“机器做搬运、人做判断”两半：
+
+1. 命令行 harness 解析表格并完成预检；
+2. 预检通过后，批次被暂存到 `backend/data/staging/pending.json`，此时还没有写入题库；
+3. “工具台 → 导入”页面只展示这个待确认批次，逐行列出错误、重复题和相似题的处理建议；
+4. 人在页面上点确认，才会真正写入题库。
+
+有错误的批次不会被暂存，需要先修正源数据再重新提交。
+
+```bash
+# 只预检并打印报告，不写任何东西
+npm run questions:import -- backend/data/question-seed.csv --limit 1000
+
+# 预检并提交到导入页面，等待人工确认
+npm run questions:import -- backend/data/question-seed.csv --limit 1000 --mode replace --stage
+
+# 直接用种子数据作为来源
+npm run questions:import -- --from-seed --limit 20
+```
+
+`npm run` 会把 `--limit 1000`、`--mode replace` 这类“参数名 + 值”的写法当成自己的配置吃掉，只把值当位置参数传给脚本，所以 harness 参数必须用 `--` 和 npm 自身参数隔开（如上例），或者直接调用 `node scripts/import-questions.js <参数>`。
+
+常用参数：`--mode append|replace`、`--source <标记>`、`--limit <n>`、`--stage`、`--json`、`--from-seed`。单次上限 `1000` 行，仓库自带的 `backend/data/question-seed.csv` 有 2146 行，需要配合 `--limit` 分批。
+默认是 dry-run，只有显式加 `--stage` 才会暂存；预检有错误时退出码为 `1`，行数超限时退出码为 `2`，`--json` 方便在脚本或 CI 里断言预检结果。
+
+导入页面不再解析文件，也不再决定导入模式，这些都属于 harness 的职责。
+
+#### 过期批次保护
+
+批次在暂存时会记录当时的题库指纹（题量、最大 id、最新更新时间）。如果预检之后题库被其他写入路径改动过：
+
+- `replace` 模式的确认会被拒绝，需要重新预检，避免覆盖掉期间新增的数据；
+- `append` 模式可以继续确认，但结果里会带 `fingerprintDrift: true` 供调用方提示。
+
+`backend/scripts/sync-*-image-questions.js` 这类脚本仍然直接写库，会绕过预检和人工确认，使用时需要自行承担风险。
 
 ### AI 出题草稿
 
@@ -239,7 +283,7 @@ AI 草稿支持补充：
 其中：
 
 - 题库查看页更适合生成单题草稿，再人工微调后保存
-- 题库导入页更适合一次生成 3 / 5 / 10 道题，并直接走现有预检与导入流程
+- 批量生成建议先通过 `POST /api/questions/generate` 拿到草稿，再走 harness 的预检与暂存流程入库
 
 如果你想做节日、校园活动、热点阅读等更强调时效性的题目，建议把原始材料粘贴进“参考材料”后再生成。这样模型会优先依据你提供的内容出题，而不是自行猜测最新事实。
 

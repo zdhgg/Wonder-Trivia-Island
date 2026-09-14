@@ -16,6 +16,10 @@ export function createAppRouting({
 }) {
   const currentView = ref(VIEW_MODE.HOME);
   const studyInitialGradeFilter = ref("");
+  // 整册地图当前展开的年级，空串代表停在年级总览
+  const studyMapGrade = ref("");
+  // 进入讲解播放器时记下的来路，关闭后回到原处
+  const studyPlayerReturn = ref(null);
   const selectedStudyLessonId = ref("");
   // 最后学习的小站：进入讲堂播放器时写入 localStorage，供首页“继续学习”恢复
   const STUDY_LAST_LESSON_STORAGE_KEY = "wonder-trivia-island.study.last-lesson-id";
@@ -60,7 +64,7 @@ export function createAppRouting({
       return normalizedSectionId;
     }
 
-    return TOOL_SECTION_IDS[0];
+    return TOOL_DEFAULT_SECTION_ID;
   }
 
   function normalizeSettingsSectionId(sectionId = "") {
@@ -92,7 +96,12 @@ export function createAppRouting({
       case VIEW_MODE.STUDY:
         return { name: APP_ROUTE_NAME.STUDY };
       case VIEW_MODE.STUDY_MAP:
-        return { name: APP_ROUTE_NAME.STUDY_MAP };
+        return {
+          name: APP_ROUTE_NAME.STUDY_MAP,
+          params: {
+            grade: String(studyMapGrade.value || "").trim() || undefined
+          }
+        };
       case VIEW_MODE.STUDY_PLAYER:
         return {
           name: APP_ROUTE_NAME.STUDY_PLAYER,
@@ -169,7 +178,8 @@ export function createAppRouting({
     currentView.value = VIEW_MODE.STUDY;
   }
 
-  function showStudyMapView() {
+  function showStudyMapView({ grade = "" } = {}) {
+    studyMapGrade.value = String(grade || "").trim();
     currentView.value = VIEW_MODE.STUDY_MAP;
   }
 
@@ -177,10 +187,27 @@ export function createAppRouting({
     const normalizedLessonId = String(lessonId || "").trim();
     selectedStudyLessonId.value = normalizedLessonId;
     persistLastStudyLessonId(normalizedLessonId);
+
+    // 只在第一次进入播放器时记来路；站内切下一站不覆盖
+    if (currentView.value !== VIEW_MODE.STUDY_PLAYER) {
+      studyPlayerReturn.value = {
+        view: currentView.value,
+        mapGrade: String(studyMapGrade.value || "").trim()
+      };
+    }
+
     currentView.value = VIEW_MODE.STUDY_PLAYER;
   }
 
   function closeStudyLessonPlayerView() {
+    const returnTarget = studyPlayerReturn.value;
+    studyPlayerReturn.value = null;
+
+    if (returnTarget?.view === VIEW_MODE.STUDY_MAP) {
+      showStudyMapView({ grade: returnTarget.mapGrade });
+      return;
+    }
+
     currentView.value = VIEW_MODE.STUDY;
   }
 
@@ -190,7 +217,7 @@ export function createAppRouting({
 
   function showToolsView(sectionId = "") {
     activeToolSectionId.value = normalizeToolSectionId(
-      sectionId || (currentView.value === VIEW_MODE.TOOLS ? activeToolSectionId.value : TOOL_SECTION_IDS[0])
+      sectionId || (currentView.value === VIEW_MODE.TOOLS ? activeToolSectionId.value : TOOL_DEFAULT_SECTION_ID)
     );
     currentView.value = VIEW_MODE.TOOLS;
   }
@@ -204,8 +231,8 @@ export function createAppRouting({
   }
 
   watch(
-    () => [route.name, route.params.section, route.params.lessonId],
-    ([routeName, routeSection, routeLessonId]) => {
+    () => [route.name, route.params.section, route.params.lessonId, route.params.grade],
+    ([routeName, routeSection, routeLessonId, routeGrade]) => {
       isApplyingRouteState = true;
 
       switch (routeName) {
@@ -222,6 +249,7 @@ export function createAppRouting({
           currentView.value = VIEW_MODE.STUDY;
           break;
         case APP_ROUTE_NAME.STUDY_MAP:
+          studyMapGrade.value = String(routeGrade || "").trim();
           currentView.value = VIEW_MODE.STUDY_MAP;
           break;
         case APP_ROUTE_NAME.STUDY_PLAYER:
@@ -253,7 +281,7 @@ export function createAppRouting({
   );
 
   watch(
-    [currentView, activeToolSectionId, activeSettingsSectionId, selectedStudyLessonId],
+    [currentView, activeToolSectionId, activeSettingsSectionId, selectedStudyLessonId, studyMapGrade],
     async () => {
       if (isApplyingRouteState) {
         return;
@@ -265,7 +293,15 @@ export function createAppRouting({
         return;
       }
 
-      const navigationMethod = String(targetLocation.name || "") === String(route.name || "") ? "replace" : "push";
+      // 地图页换年级走 push，让浏览器后退能回到上一级，而不是直接离开地图
+      const isStudyMapGradeChange =
+        String(targetLocation.name || "") === APP_ROUTE_NAME.STUDY_MAP &&
+        String(route.name || "") === APP_ROUTE_NAME.STUDY_MAP;
+      const navigationMethod =
+        String(targetLocation.name || "") === String(route.name || "") && !isStudyMapGradeChange
+          ? "replace"
+          : "push";
+
       await router[navigationMethod](targetLocation);
     },
     { immediate: true }
@@ -274,6 +310,8 @@ export function createAppRouting({
   return {
     currentView,
     studyInitialGradeFilter,
+    studyMapGrade,
+    studyPlayerReturn,
     selectedStudyLessonId,
     lastStudyLessonId,
     activeToolSectionId,

@@ -265,6 +265,26 @@ function getQuestionCount(db) {
   return Number(row?.count || 0);
 }
 
+// 用于比对"预检时"和"确认时"题库是否被其他写入路径改动过。
+function getQuestionBankFingerprint(db) {
+  const row = get(
+    db,
+    `
+      SELECT
+        COUNT(*) AS questionCount,
+        IFNULL(MAX(id), 0) AS maxId,
+        IFNULL(MAX(updatedAt), '') AS maxUpdatedAt
+      FROM ${QUESTIONS_TABLE}
+    `
+  );
+
+  return {
+    questionCount: Number(row?.questionCount || 0),
+    maxId: Number(row?.maxId || 0),
+    maxUpdatedAt: String(row?.maxUpdatedAt || "")
+  };
+}
+
 function createDatabaseBackup() {
   if (!fs.existsSync(dbPath)) {
     return null;
@@ -299,6 +319,7 @@ module.exports = {
   createDatabaseBackup,
   createTableSql,
   ensureQuestionsTable,
+  getQuestionBankFingerprint,
   getQuestionCount,
   getQuestionPolicyIssues,
   insertQuestion,

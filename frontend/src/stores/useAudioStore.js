@@ -40,6 +40,8 @@ function normalizePreferences(savedPreferences = {}) {
 export const useAudioStore = defineStore("audio", {
   state: () => ({
     ...DEFAULT_AUDIO_PREFERENCES,
+    // 记住静音前的主音量，重新开声时还原回去，而不是直接跳到 100%
+    lastAudibleVolume: DEFAULT_AUDIO_PREFERENCES.masterVolume,
     audioReady: false,
     isSupported: false,
     hasHydrated: false
@@ -76,7 +78,14 @@ export const useAudioStore = defineStore("audio", {
         }
       }
 
+      this.rememberAudibleVolume();
       this.hasHydrated = true;
+    },
+
+    rememberAudibleVolume() {
+      if (this.masterVolume > 0) {
+        this.lastAudibleVolume = this.masterVolume;
+      }
     },
 
     persistPreferences() {
@@ -96,7 +105,13 @@ export const useAudioStore = defineStore("audio", {
     },
 
     setMasterVolume(nextValue) {
-      this.masterVolume = clampVolume(nextValue, this.masterVolume);
+      const clampedVolume = clampVolume(nextValue, this.masterVolume);
+
+      if (clampedVolume > 0) {
+        this.lastAudibleVolume = clampedVolume;
+      }
+
+      this.masterVolume = clampedVolume;
       this.persistPreferences();
     },
 
@@ -122,7 +137,20 @@ export const useAudioStore = defineStore("audio", {
 
     replacePreferences(nextPreferences = {}) {
       Object.assign(this, normalizePreferences(nextPreferences));
+      this.rememberAudibleVolume();
       this.persistPreferences();
+    },
+
+    muteAll() {
+      this.setMasterVolume(0);
+      this.setMusicEnabled(false);
+      this.setSfxEnabled(false);
+    },
+
+    unmuteAll() {
+      this.setMasterVolume(this.lastAudibleVolume || DEFAULT_AUDIO_PREFERENCES.masterVolume);
+      this.setMusicEnabled(true);
+      this.setSfxEnabled(true);
     }
   }
 });

@@ -1,14 +1,29 @@
 export const APP_META = Object.freeze({
   productName: "奇妙知识岛",
-  version: "1.4.0",
-  releaseTag: "v1.4.0",
-  releaseLabel: "1.4 讲堂地图与专项强化版",
-  releasedAt: "2026-09-13",
+  version: "1.5.0",
+  releaseTag: "v1.5.0",
+  releaseLabel: "1.5 导入流程与整册地图版",
+  releasedAt: "2026-09-14",
   repositoryUrl: "https://github.com/zdhgg/Wonder-Trivia-Island",
-  releaseUrl: "https://github.com/zdhgg/Wonder-Trivia-Island/releases/tag/v1.4.0",
+  releaseUrl: "https://github.com/zdhgg/Wonder-Trivia-Island/releases/tag/v1.5.0",
   architectureSummary: "Vue 3 + Vite 8 · Node.js 24 + Express 5 · SQLite",
   dataModeLabel: "单学习档案 · 本机优先",
   changelog: Object.freeze([
+    Object.freeze({
+      version: "1.5.0",
+      tag: "v1.5.0",
+      date: "2026-09-14",
+      channel: "正式版",
+      title: "题库导入重构与讲堂整册地图",
+      summary: "把题库导入拆成命令行预检暂存加页面人工确认两段，讲堂地图改为按年级整册铺开，并补齐讲堂概念动画与音频状态。",
+      highlights: Object.freeze([
+        "题库导入改由命令行 harness 解析和预检，批次暂存后由导入页面人工确认写入，页面不再解析文件也不决定导入模式。",
+        "批次会记录当时的题库指纹，预检后题库若被改动，覆盖导入会被拒绝，追加导入会返回指纹漂移提示。",
+        "讲堂地图按年级整册重排，新增整册总览和分册站点面板，可直接进入任意年级册页。",
+        "讲堂新增平均分概念动画，多个步骤动画跟随旁白时长调整节奏。",
+        "工具台去掉概览分区，题库与导入入口直接并列。"
+      ])
+    }),
     Object.freeze({
       version: "1.4.0",
       tag: "v1.4.0",

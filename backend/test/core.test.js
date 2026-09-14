@@ -17,6 +17,16 @@ const { all, closeDatabaseConnection, createDatabaseConnection, dbPath, run } = 
 const { getKnowledgeTagSearchTerms } = require("../src/questions/knowledgeTagAliases");
 const { ensureQuestionsTable, insertQuestions } = require("../src/questions/repository");
 const { commitQuestionImport, previewQuestionImport, validatePreparedQuestion } = require("../src/services/questionImport");
+const {
+  IMPORT_ERROR_BATCH_MISSING,
+  IMPORT_ERROR_STALE_BATCH,
+  IMPORT_ERROR_STAGE_BLOCKED,
+  commitPendingImport,
+  discardPendingImportBatch,
+  getPendingImportBatch,
+  stageQuestionImport
+} = require("../src/services/questionImport");
+const { pendingBatchPath } = require("../src/services/questionImportStaging");
 const { setOpenAIClientFactoryForTesting } = require("../src/services/questionGeneration");
 const { setOpenAIHomeWelcomeClientFactoryForTesting } = require("../src/services/homeWelcomeMessage");
 const { setOpenAIReviewClientFactoryForTesting } = require("../src/services/questionReview");
@@ -1993,4 +2003,125 @@ test("challenge progress route migrates legacy grade two to six chapter ids into
   assert.equal(getPayload.progressBook.chapters["chapter-grade-5-lower"].bestResults["stage-5"].rewardEarned, true);
   assert.equal(getPayload.progressBook.chapters["chapter-grade-6-upper"].bestResults["stage-6"].bestScore, 360);
   assert.equal(getPayload.progressBook.chapters["chapter-grade-6-lower"].bestResults["stage-6"].rewardEarned, true);
+});
+
+test("stageQuestionImport refuses batches with blocking errors", () => {
+  discardPendingImportBatch();
+
+  assert.throws(
+    () =>
+      stageQuestionImport({
+        rows: [
+          {
+            学科: "火星文",
+            年级: "一年级",
+            学期: "上册",
+            题型: "词语分类",
+            题目: "这个学科不在枚举里",
+            选项A: "甲",
+            选项B: "乙",
+            选项C: "丙",
+            选项D: "丁",
+            答案: "A",
+            解析: "解析",
+            难度: "1"
+          }
+        ],
+        mode: "append",
+        source: "test:blocked"
+      }),
+    (error) => error.code === IMPORT_ERROR_STAGE_BLOCKED
+  );
+
+  assert.equal(getPendingImportBatch(), null);
+  assert.equal(fs.existsSync(pendingBatchPath), false);
+});
+
+test("stageQuestionImport stages a clean batch and commitPendingImport appends it", () => {
+  discardPendingImportBatch();
+
+  const rows = [questionToImportRow(makeUniqueQuestion(questions[0], "[stage-append]"))];
+  const batch = stageQuestionImport({ rows, mode: "append", source: "test:append" });
+
+  assert.equal(batch.summary.errorRows, 0);
+  assert.equal(batch.validQuestions.length, 1);
+  assert.ok(batch.batchId);
+  assert.ok(fs.existsSync(pendingBatchPath));
+
+  const pending = getPendingImportBatch();
+  assert.equal(pending.batchId, batch.batchId);
+  assert.equal(pending.rows.length, 1);
+  assert.equal(pending.validQuestions, undefined);
+
+  const result = commitPendingImport({ batchId: batch.batchId });
+
+  assert.equal(result.importedCount, 1);
+  assert.equal(result.fingerprintDrift, false);
+  assert.equal(result.source, "test:append");
+  assert.equal(getPendingImportBatch(), null);
+  assert.equal(fs.existsSync(pendingBatchPath), false);
+});
+
+test("commitPendingImport rejects a confirmation for an outdated batch id", () => {
+  discardPendingImportBatch();
+
+  const batch = stageQuestionImport({
+    rows: [questionToImportRow(makeUniqueQuestion(questions[1], "[stage-mismatch]"))],
+    mode: "append",
+    source: "test:mismatch"
+  });
+
+  assert.throws(
+    () => commitPendingImport({ batchId: "00000000-0000-0000-0000-000000000000" }),
+    (error) => error.code === IMPORT_ERROR_BATCH_MISSING
+  );
+
+  discardPendingImportBatch();
+  assert.equal(getPendingImportBatch(), null);
+  assert.ok(batch.batchId);
+});
+
+test("commitPendingImport blocks replace mode when the bank changed after staging", () => {
+  discardPendingImportBatch();
+
+  const batch = stageQuestionImport({
+    rows: [questionToImportRow(makeUniqueQuestion(questions[2], "[stage-replace]"))],
+    mode: "replace",
+    source: "test:replace"
+  });
+
+  // 模拟预检之后被 sync 脚本或另一次导入改动过题库。
+  seedQuestions([makeUniqueQuestion(questions[3], "[drift-after-stage]")]);
+
+  assert.throws(
+    () => commitPendingImport({ batchId: batch.batchId }),
+    (error) => error.code === IMPORT_ERROR_STALE_BATCH
+  );
+
+  // 批次仍然保留，可以由人重新预检，或显式强制确认。
+  assert.equal(getPendingImportBatch()?.batchId, batch.batchId);
+
+  const forced = commitPendingImport({ batchId: batch.batchId, allowStale: true });
+
+  assert.equal(forced.fingerprintDrift, true);
+  assert.equal(forced.importedCount, 1);
+  assert.equal(forced.totalQuestionCount, 1);
+  assert.ok(forced.backupPath);
+  assert.equal(getPendingImportBatch(), null);
+});
+
+test("discardPendingImportBatch clears the staged batch", () => {
+  discardPendingImportBatch();
+
+  const batch = stageQuestionImport({
+    rows: [questionToImportRow(makeUniqueQuestion(questions[4], "[stage-discard]"))],
+    mode: "append",
+    source: "test:discard"
+  });
+
+  assert.deepEqual(discardPendingImportBatch({ batchId: batch.batchId }), {
+    discarded: true,
+    batchId: batch.batchId
+  });
+  assert.equal(getPendingImportBatch(), null);
 });

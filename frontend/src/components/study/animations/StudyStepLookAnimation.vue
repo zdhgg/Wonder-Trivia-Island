@@ -1,14 +1,15 @@
 <script setup>
 defineProps({
-  active: {
-    type: Boolean,
-    default: false
+  // waiting = 语音还没开讲（放大镜还没动）；active = 跟着讲解走时间轴；done = 讲完定格
+  phase: {
+    type: String,
+    default: "waiting"
   }
 });
 </script>
 
 <template>
-  <div :class="['study-anim', 'study-anim--look', { 'is-active': active }]">
+  <div :class="['study-anim', 'study-anim--look', `is-${phase}`]">
     <svg class="study-anim__svg" viewBox="0 0 320 232" role="presentation" aria-hidden="true" focusable="false">
       <rect class="look__backdrop" x="22" y="30" width="276" height="176" rx="38" />
       <rect class="look__floor" x="54" y="170" width="212" height="12" rx="6" />
@@ -152,24 +153,55 @@ defineProps({
   fill: var(--study-anim-warm);
 }
 
+/* 讲解时间轴：所有元素共享总时长（语音时长），各自在百分比窗口里出演一次 */
+.is-active .look__glass,
+.is-active .look__pal--one,
+.is-active .look__pal--two,
+.is-active .look__pal--three,
+.is-active .look__spark {
+  animation-duration: var(--study-anim-duration, 12s);
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: var(--study-anim-iteration, 1);
+  animation-fill-mode: var(--study-anim-fill, forwards);
+}
+
 .is-active .look__glass {
-  animation: look-sweep 4.6s ease-in-out infinite;
+  animation-name: look-sweep;
 }
 
 .is-active .look__pal--one {
-  animation: look-pop-one 4.6s ease-in-out infinite;
+  animation-name: look-pop-one;
 }
 
 .is-active .look__pal--two {
-  animation: look-pop-two 4.6s ease-in-out infinite;
+  animation-name: look-pop-two;
 }
 
 .is-active .look__pal--three {
-  animation: look-pop-three 4.6s ease-in-out infinite;
+  animation-name: look-pop-three;
 }
 
 .is-active .look__spark {
-  animation: look-spark 4.6s ease-in-out infinite;
+  animation-name: look-spark;
+}
+
+/* waiting 态回退到开场：放大镜还在最左边，一个都还没看过 */
+.is-waiting .look__glass {
+  transform: translate(0, 0);
+}
+
+.is-waiting .look__pal--one {
+  transform: scale(1.1);
+  opacity: 1;
+}
+
+.is-waiting .look__pal--three {
+  transform: scale(1);
+  opacity: 0.82;
+}
+
+.is-waiting .look__spark {
+  opacity: 0;
 }
 
 @keyframes look-sweep {
@@ -260,6 +292,25 @@ defineProps({
   .is-active .look__pal--three,
   .is-active .look__spark {
     animation: none;
+  }
+
+  /* 减少动态偏好下不播时间轴，直接呈现讲完的教学姿态 */
+  .is-waiting .look__glass {
+    transform: translate(140px, 0);
+  }
+
+  .is-waiting .look__pal--one {
+    transform: scale(1);
+    opacity: 0.82;
+  }
+
+  .is-waiting .look__pal--three {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+
+  .is-waiting .look__spark {
+    opacity: 1;
   }
 }
 </style>

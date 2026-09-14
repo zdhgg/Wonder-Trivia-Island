@@ -52,19 +52,18 @@ export default {
     });
 
     async function toggleGlobalMute() {
-      const currentlyMuted = isMuted.value;
-      if (currentlyMuted) {
-        audioStore.setMasterVolume(1);
-        audioStore.setMusicEnabled(true);
-        audioStore.setSfxEnabled(true);
+      if (isMuted.value) {
+        // 还原静音前的主音量，而不是一律拉满
+        audioStore.unmuteAll();
+
         if (typeof app.ensureAudioReady === "function") {
           await app.ensureAudioReady();
         }
-      } else {
-        audioStore.setMasterVolume(0);
-        audioStore.setMusicEnabled(false);
-        audioStore.setSfxEnabled(false);
+
+        return;
       }
+
+      audioStore.muteAll();
     }
 
     function handleHomeNavigation() {
@@ -202,6 +201,8 @@ export default {
         :study-resume="homeStudyResume"
         :selected-lesson-id="selectedStudyLessonId"
         :profile-grade="studyProfileGrade"
+        :active-grade="studyMapGrade"
+        @select-grade="openStudyMapView({ grade: $event })"
         @continue-lesson="openStudyLessonPlayer"
         @open-lesson="openStudyLessonPlayer"
         @back="openStudyView"
@@ -211,6 +212,7 @@ export default {
         v-else-if="currentView === VIEW_MODE.STUDY_PLAYER"
         :lesson="selectedStudyLesson"
         :next-lesson="nextStudyLesson"
+        :return-label="studyPlayerReturnLabel"
         @close="closeStudyLessonPlayer"
         @complete="completeStudyLesson"
       />

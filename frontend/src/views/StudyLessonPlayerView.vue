@@ -1,5 +1,5 @@
 <script setup>
-import { computed, reactive, watch } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 import { hasStudyNarrationAsset } from "../audio/studyNarrationRegistry";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
 import StudyLessonCard from "../components/StudyLessonCard.vue";
@@ -14,6 +14,11 @@ const props = defineProps({
   nextLesson: {
     type: Object,
     default: null
+  },
+  // 返回目标名称，从整册地图进来时是“整册地图”，否则是“讲堂大厅”
+  returnLabel: {
+    type: String,
+    default: "讲堂大厅"
   }
 });
 
@@ -21,6 +26,8 @@ const emit = defineEmits(["close", "complete"]);
 
 const playbackLesson = computed(() => buildStudyLessonPlayback(props.lesson));
 const player = reactive(useStudyLessonPlayer(playbackLesson));
+// 这页是沉浸式全屏，顶栏那个全局静音按钮在这看不到，所以音量控制放在底部工具栏里
+const isVolumeSliderOpen = ref(false);
 const nextLessonTitle = computed(() => props.nextLesson?.label || props.nextLesson?.title || "");
 const nextLessonScopeLabel = computed(() => {
   const next = props.nextLesson;
@@ -76,6 +83,10 @@ watch(
 function handleCloseConfirm() {
   player.confirmExit();
   emit("close");
+}
+
+function closeVolumeSlider() {
+  isVolumeSliderOpen.value = false;
 }
 
 function handleReturnToHall() {
@@ -142,28 +153,73 @@ function handleReturnToHall() {
             </span>
           </p>
           <p v-else class="study-player__celebration-text">
-            {{ playbackLesson.title }} 已经听完啦，这一门这册到这里告一段落，回讲堂看看整体地图。
+            {{ playbackLesson.title }} 已经听完啦，这一门这册到这里告一段落，回{{ returnLabel }}接着看吧。
           </p>
           <button
             class="study-player__celebration-escape"
             type="button"
             @click="handleReturnToHall"
           >
-            {{ nextLesson ? "先回讲堂看地图" : "回讲堂看地图" }}
+            {{ nextLesson ? "先回" : "回" }}{{ returnLabel }}
           </button>
         </div>
       </Transition>
     </main>
 
     <footer class="study-player__controls">
-      <button
-        class="study-player__secondary"
-        type="button"
-        :disabled="player.isCelebrating || !player.currentCard"
-        @click="player.replayCurrentCard"
-      >
-        {{ player.secondaryActionLabel }}
-      </button>
+      <div class="study-player__controls-group">
+        <button
+          class="study-player__secondary"
+          type="button"
+          :disabled="player.isCelebrating || !player.currentCard"
+          @click="player.replayCurrentCard"
+        >
+          {{ player.secondaryActionLabel }}
+        </button>
+
+        <div class="study-player__volume" @keydown.escape="closeVolumeSlider">
+          <div class="study-player__volume-main">
+            <button
+              :class="['study-player__volume-toggle', { 'study-player__volume-toggle--muted': player.isNarrationMuted }]"
+              type="button"
+              :title="player.isNarrationMuted ? '开启讲解声音' : '静音讲解'"
+              :aria-label="player.isNarrationMuted ? '开启讲解声音' : '静音讲解'"
+              @click="player.toggleNarrationMute"
+            >
+              <span aria-hidden="true">{{ player.isNarrationMuted ? "🔇" : "🔊" }}</span>
+              <span class="study-player__volume-readout">{{ player.narrationVolumeLabel }}</span>
+            </button>
+
+            <button
+              class="study-player__volume-caret"
+              type="button"
+              :aria-expanded="isVolumeSliderOpen"
+              aria-controls="study-player-volume-slider"
+              :aria-label="isVolumeSliderOpen ? '收起音量滑块' : '调节讲解音量'"
+              :title="isVolumeSliderOpen ? '收起音量' : '调节音量'"
+              @click="isVolumeSliderOpen = !isVolumeSliderOpen"
+            >
+              <span aria-hidden="true">{{ isVolumeSliderOpen ? "▾" : "▴" }}</span>
+            </button>
+          </div>
+
+          <div v-if="isVolumeSliderOpen" id="study-player-volume-slider" class="study-player__volume-panel">
+            <label class="study-player__volume-field">
+              <span class="study-player__volume-field-label">讲解音量</span>
+              <input
+                class="study-player__volume-range"
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+                :value="player.narrationVolumePercent"
+                :aria-valuetext="player.narrationVolumeLabel"
+                @input="player.setNarrationVolume($event.target.value)"
+              />
+            </label>
+          </div>
+        </div>
+      </div>
 
       <button
         :class="['btn-cartoon', 'btn-cartoon--yellow', 'study-player__primary', { 'study-player__primary--ready': player.canGoNext }]"
@@ -180,7 +236,7 @@ function handleReturnToHall() {
       :model-value="player.isExitDialogOpen"
       heading-eyebrow="暂时离开"
       heading-title="这一站还没听完"
-      heading-description="现在退出会回到讲堂大厅，这一轮讲解会从头重新开始。"
+      :heading-description="`现在退出会回到${returnLabel}，这一轮讲解会从头重新开始。`"
       notice-text="建议先把这一站听完，再切去别的小站。"
       preview-label="当前小站"
       :preview-text="playbackLesson.title"
@@ -196,10 +252,10 @@ function handleReturnToHall() {
   <section v-else class="study-player study-player--empty">
     <div class="study-player__empty">
       <p class="study-player__eyebrow">还没选中小站</p>
-      <h2 class="study-player__empty-title">先回讲堂大厅选一个学习站</h2>
-      <button class="btn-cartoon btn-cartoon--yellow" type="button" @click="$emit('close')">
-        返回讲堂
-      </button>
+        <h2 class="study-player__empty-title">先回{{ returnLabel }}选一个学习站</h2>
+        <button class="btn-cartoon btn-cartoon--yellow" type="button" @click="$emit('close')">
+          返回{{ returnLabel }}
+        </button>
     </div>
   </section>
 </template>
@@ -396,6 +452,107 @@ function handleReturnToHall() {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+}
+
+.study-player__controls-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.study-player__volume {
+  position: relative;
+}
+
+.study-player__volume-main {
+  display: flex;
+  align-items: stretch;
+  overflow: hidden;
+  border: 1.5px solid rgba(36, 50, 74, 0.12);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.study-player__volume-toggle,
+.study-player__volume-caret {
+  display: inline-flex;
+  align-items: center;
+  min-height: 48px;
+  border: none;
+  background: transparent;
+  color: var(--color-ink);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 160ms ease;
+}
+
+.study-player__volume-toggle {
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.study-player__volume-caret {
+  padding: 0 10px;
+  border-left: 1.5px solid rgba(36, 50, 74, 0.1);
+  color: var(--color-ink-soft);
+  font-size: 0.86rem;
+}
+
+.study-player__volume-toggle:hover,
+.study-player__volume-caret:hover {
+  background: rgba(124, 216, 184, 0.14);
+}
+
+.study-player__volume-toggle:focus-visible,
+.study-player__volume-caret:focus-visible {
+  outline: none;
+  background: rgba(124, 216, 184, 0.18);
+  box-shadow: inset 0 0 0 3px rgba(124, 216, 184, 0.32);
+}
+
+.study-player__volume-toggle--muted {
+  color: rgba(176, 84, 84, 0.98);
+}
+
+.study-player__volume-readout {
+  min-width: 3.4ch;
+  font-size: 0.92rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.study-player__volume-panel {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 0;
+  z-index: 2;
+  min-width: 232px;
+  padding: 14px 16px;
+  border: 1.5px solid rgba(36, 50, 74, 0.12);
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.72) 0%, rgba(255, 255, 255, 0) 42%),
+    linear-gradient(180deg, rgba(255, 253, 248, 0.98) 0%, rgba(255, 255, 255, 0.94) 100%);
+  box-shadow: 0 28px 48px -40px rgba(36, 50, 74, 0.42);
+}
+
+.study-player__volume-field {
+  display: grid;
+  gap: 8px;
+}
+
+.study-player__volume-field-label {
+  color: var(--color-ink-soft);
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.study-player__volume-range {
+  width: 100%;
+  accent-color: rgba(86, 173, 255, 0.92);
+  cursor: pointer;
 }
 
 .study-player__primary {

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { STUDY_CONCEPT_ANIMATION_IDS, resolveStudyConceptAnimationId } from "./studyConceptAnimations.js";
 import { buildStudyLessonPlayback } from "./studyLessonBlueprint.js";
 
-function buildGroupsOfLessonItem(overrides = {}) {
+function buildShareEquallyLessonItem(overrides = {}) {
   return {
     id: "g2-upper-math-share",
     label: "平均分和乘法启蒙",
@@ -27,16 +27,37 @@ function buildGroupsOfLessonItem(overrides = {}) {
 
 describe("studyConceptAnimations", () => {
   it("maps multiplication knowledge tags onto the groups-of concept animation", () => {
-    expect(
-      resolveStudyConceptAnimationId({ knowledgeTags: ["平均分", "乘法初步", "乘法口诀"], cardId: "example" })
-    ).toBe(STUDY_CONCEPT_ANIMATION_IDS.GROUPS_OF);
+    expect(resolveStudyConceptAnimationId({ knowledgeTags: ["乘法初步"], cardId: "example" })).toBe(
+      STUDY_CONCEPT_ANIMATION_IDS.GROUPS_OF
+    );
     expect(resolveStudyConceptAnimationId({ knowledgeTags: ["乘法口诀"], cardId: "example" })).toBe(
+      STUDY_CONCEPT_ANIMATION_IDS.GROUPS_OF
+    );
+  });
+
+  it("maps the 平均分 tag onto the share-equally concept animation", () => {
+    expect(resolveStudyConceptAnimationId({ knowledgeTags: ["平均分"], cardId: "example" })).toBe(
+      STUDY_CONCEPT_ANIMATION_IDS.SHARE_EQUALLY
+    );
+  });
+
+  it("settles multi-tag cards by rule priority instead of tag order", () => {
+    // “平均分和乘法启蒙”同时带两个标签，例子卡讲的是平均分，
+    // 所以不管数据里先写哪个标签，都该拿平均分动画。
+    expect(resolveStudyConceptAnimationId({ knowledgeTags: ["平均分", "乘法初步", "乘法口诀"], cardId: "example" })).toBe(
+      STUDY_CONCEPT_ANIMATION_IDS.SHARE_EQUALLY
+    );
+    expect(resolveStudyConceptAnimationId({ knowledgeTags: ["乘法口诀", "乘法初步", "平均分"], cardId: "example" })).toBe(
+      STUDY_CONCEPT_ANIMATION_IDS.SHARE_EQUALLY
+    );
+    expect(resolveStudyConceptAnimationId({ knowledgeTags: ["乘法口诀", "乘法初步"], cardId: "example" })).toBe(
       STUDY_CONCEPT_ANIMATION_IDS.GROUPS_OF
     );
   });
 
   it("hosts concept animations on the example card only", () => {
     expect(resolveStudyConceptAnimationId({ knowledgeTags: ["乘法初步"], cardId: "step-1" })).toBe("");
+    expect(resolveStudyConceptAnimationId({ knowledgeTags: ["平均分"], cardId: "step-1" })).toBe("");
     expect(resolveStudyConceptAnimationId({ knowledgeTags: ["乘法初步"], cardId: "memory" })).toBe("");
     expect(resolveStudyConceptAnimationId({ knowledgeTags: ["乘法初步"], cardId: "" })).toBe("");
   });
@@ -49,19 +70,19 @@ describe("studyConceptAnimations", () => {
   });
 
   it("prefers the concept animation on the example card while other cards keep action animations", () => {
-    const playback = buildStudyLessonPlayback(buildGroupsOfLessonItem());
+    const playback = buildStudyLessonPlayback(buildShareEquallyLessonItem());
     const byId = Object.fromEntries(playback.cards.map((card) => [card.id, card.visualAnimationId]));
 
     expect(byId["step-1"]).toBe("example-try");
     expect(byId["step-2"]).toBe("step-connect");
     expect(byId["step-3"]).toBe("step-build");
-    expect(byId.example).toBe(STUDY_CONCEPT_ANIMATION_IDS.GROUPS_OF);
+    expect(byId.example).toBe(STUDY_CONCEPT_ANIMATION_IDS.SHARE_EQUALLY);
     expect(byId.memory).toBe("memory-keep");
   });
 
   it("keeps the shared action animation on the example card when no concept is registered", () => {
     const playback = buildStudyLessonPlayback(
-      buildGroupsOfLessonItem({ id: "g2-upper-math-mental", knowledgeTags: ["口算加法", "口算减法", "大小比较"] })
+      buildShareEquallyLessonItem({ id: "g2-upper-math-mental", knowledgeTags: ["口算加法", "口算减法", "大小比较"] })
     );
     const exampleCard = playback.cards.find((card) => card.id === "example");
 

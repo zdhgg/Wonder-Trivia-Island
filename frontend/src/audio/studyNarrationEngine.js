@@ -80,6 +80,15 @@ export async function playStudyNarration(src, options = {}) {
   }
 }
 
+export function setStudyNarrationVolume(volume) {
+  if (!activeAudio) {
+    return false;
+  }
+
+  activeAudio.volume = Math.min(1, Math.max(0, Number(volume) || 0));
+  return true;
+}
+
 export function stopStudyNarration() {
   if (!activeAudio) {
     return;
