@@ -28,8 +28,8 @@ const emit = defineEmits(["open-backpack"]);
     <ul class="growth-summary__stats">
       <li class="growth-summary__stat growth-summary__stat--star">
         <span class="growth-summary__stat-icon" aria-hidden="true">⭐</span>
-        <strong class="growth-summary__stat-value">{{ growth.totalStars }}</strong>
-        <span class="growth-summary__stat-label">星星</span>
+        <strong class="growth-summary__stat-value">{{ growth.starText }}</strong>
+        <span class="growth-summary__stat-label">本章星星</span>
       </li>
       <li class="growth-summary__stat growth-summary__stat--reward">
         <span class="growth-summary__stat-icon" aria-hidden="true">🎒</span>

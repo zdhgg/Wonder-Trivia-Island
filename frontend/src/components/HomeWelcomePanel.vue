@@ -19,7 +19,8 @@ const props = defineProps({
     type: String,
     default: "morning"
   },
-  // 动态行动建议：来自 homeWelcomeSummary，也就是首页真正的“今天该做什么”。
+  // 行动建议：由首页聚合层的确定性规则给出（homeDashboard.advice.text）。
+  // 旧的 AI 欢迎文案不再参与“今天先做什么”的决策，可以之后再作为陪伴文案复用。
   summary: {
     type: String,
     default: ""

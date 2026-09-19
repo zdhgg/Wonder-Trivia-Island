@@ -30,6 +30,7 @@ const props = defineProps({
 
 const emit = defineEmits([
   "start-challenge",
+  "open-challenge-world",
   "start-grade-practice",
   "start-subject-practice",
   "start-free-practice",
@@ -49,9 +50,22 @@ const dailyTasks = computed(() => props.homeDashboard.dailyTasks || []);
 const exploreItems = computed(() => props.homeDashboard.exploreItems || []);
 const practiceScope = computed(() => props.homeDashboard.practiceScope || []);
 
-// 专项强化面板的默认年级跟随真实档案；档案年级没铺内容时交给弹窗提示“准备中”。
+// 专项强化面板只认纯年级：gradeLabel 是“三年级 · 上册”，不能当年级传进弹窗。
 const weakPointPickerGrade = computed(() => String(weakPoint.value.grade || "").trim());
+const weakPointPreferredGrade = computed(() => String(weakPoint.value.preferredGrade || "").trim());
 const isWeakPointPreparing = computed(() => weakPoint.value.status === "preparing");
+
+// 整章通关后 CTA 换成“回到大地图看看”，不能再打开最后一关。
+const isChapterComplete = computed(() => Boolean(adventure.value.isChapterComplete));
+
+function handleAdventureContinue() {
+  if (isChapterComplete.value) {
+    emit("open-challenge-world");
+    return;
+  }
+
+  emit("start-challenge");
+}
 
 function openWeakPointPicker() {
   isWeakPointPickerOpen.value = true;
@@ -123,7 +137,7 @@ function handleTeacherTip(tip) {
     <HomeAdventureCard
       :adventure="adventure"
       :is-disabled="props.isChallengeLoading"
-      @continue="emit('start-challenge')"
+      @continue="handleAdventureContinue"
     />
 
     <div class="home-board__support">
@@ -147,7 +161,7 @@ function handleTeacherTip(tip) {
   <WeakPointPickerDialog
     v-model="isWeakPointPickerOpen"
     :default-grade="weakPointPickerGrade"
-    :preferred-grade="greeting.gradeLabel"
+    :preferred-grade="weakPointPreferredGrade"
     :is-preparing-for-preferred-grade="isWeakPointPreparing"
     @start-practice="handleWeakPointPractice"
   />

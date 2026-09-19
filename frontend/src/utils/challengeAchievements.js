@@ -299,3 +299,37 @@ export function evaluateChallengeAchievements(
 }
 
 export { CHALLENGE_ACHIEVEMENTS, CHALLENGE_ACHIEVEMENT_IDS };
+
+// ---------------------------------------------------------------------------
+// 章节成长摘要：一套判定给多处复用（挑战页背包、首页成长区等）。
+//
+// 关键点：这些函数只看传进来的 progress（某一章的最好成绩 + 成就状态），
+// 不读任何“当前选中章节”的全局状态。所以首页可以在自己那一章上算，
+// 挑战页继续在它自己那一章上算，两边互不干扰。
+// ---------------------------------------------------------------------------
+
+// 已收下的航海收藏数：某一关 bestResults.rewardEarned 为真就算收下了。
+export function countChapterRewards(progress = {}, stageIds = []) {
+  const rawBestResults = progress?.bestResults && typeof progress.bestResults === "object" ? progress.bestResults : {};
+  const resolvedStageIds = Array.isArray(stageIds) && stageIds.length > 0 ? stageIds : Object.keys(rawBestResults);
+
+  return resolvedStageIds.filter((stageId) => Boolean(rawBestResults[stageId]?.rewardEarned)).length;
+}
+
+// 某一章的成就视图：不传本次结算上下文，因此不会凭空产生 fresh 解锁；
+// 只把本次结算真正新解锁的 id 标记为 fresh（首页不传，就是纯当前状态）。
+export function evaluateChapterAchievements(
+  progress = {},
+  { totalStageCount = 7, freshAchievementIds = [] } = {}
+) {
+  const freshIds =
+    freshAchievementIds instanceof Set
+      ? freshAchievementIds
+      : new Set(Array.isArray(freshAchievementIds) ? freshAchievementIds : []);
+  const achievementEvaluation = evaluateChallengeAchievements(progress, {}, { totalStageCount });
+
+  return achievementEvaluation.achievements.map((achievement) => ({
+    ...achievement,
+    fresh: freshIds.has(achievement.id)
+  }));
+}

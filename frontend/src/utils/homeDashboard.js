@@ -8,6 +8,8 @@ import {
   getWeakPointSubjects,
   getWeakPoints
 } from "./studyWeakPoints";
+import { countChapterRewards, evaluateChapterAchievements } from "./challengeAchievements";
+import { CHALLENGE_STAGES } from "../composables/challenge/challengeConfig";
 
 const CHINESE_DIGITS = Object.freeze(["零", "一", "二", "三", "四", "五", "六", "七", "八", "九"]);
 
@@ -46,7 +48,7 @@ export function formatHomeCountText(value) {
 }
 
 // ---------------------------------------------------------------------------
-// 专项强化年级：必须跟随真实档案，不再固定落在二年级。
+// 专项强化年级：有档案年级就严格跟随档案，绝不串到别的年级。
 // ---------------------------------------------------------------------------
 
 export function countWeakPointsForGrade(grade) {
@@ -62,31 +64,55 @@ export function countWeakPointsForGrade(grade) {
   );
 }
 
+// - preferredGrade 有内容 → ready，用该年级的专项；
+// - preferredGrade 没内容 → preparing，年级保持档案年级、数量为 0，
+//   不 fallback、不给别的年级的知识点、也不允许打开别的年级专项；
+// - 只有在没有明确 preferredGrade 的特殊场景（例如档案没填），
+//   才考虑 fallbackGrades / 目录里已有的年级。
 export function resolveWeakPointContext({ preferredGrade = "", fallbackGrades = [] } = {}) {
   const normalizedPreferredGrade = normalizeText(preferredGrade, 16);
-  const candidates = [normalizedPreferredGrade, ...fallbackGrades, ...WEAK_POINT_GRADE_OPTIONS]
+
+  if (normalizedPreferredGrade) {
+    const preferredWeakPointCount = countWeakPointsForGrade(normalizedPreferredGrade);
+
+    return {
+      preferredGrade: normalizedPreferredGrade,
+      grade: normalizedPreferredGrade,
+      fallbackGrade: "",
+      weakPointCount: preferredWeakPointCount,
+      isPreferredGrade: preferredWeakPointCount > 0,
+      status: preferredWeakPointCount > 0 ? "ready" : "preparing",
+      note:
+        preferredWeakPointCount > 0
+          ? `${normalizedPreferredGrade} · 共 ${preferredWeakPointCount} 个知识点`
+          : "专项内容准备中"
+    };
+  }
+
+  const fallbackCandidates = [...fallbackGrades, ...WEAK_POINT_GRADE_OPTIONS]
     .map((grade) => normalizeText(grade, 16))
     .filter((grade, index, list) => grade && list.indexOf(grade) === index);
 
-  for (const grade of candidates) {
+  for (const grade of fallbackCandidates) {
     const weakPointCount = countWeakPointsForGrade(grade);
 
     if (weakPointCount > 0) {
       return {
+        preferredGrade: "",
         grade,
+        fallbackGrade: grade,
         weakPointCount,
-        isPreferredGrade: Boolean(normalizedPreferredGrade) && grade === normalizedPreferredGrade,
-        status: grade === normalizedPreferredGrade || !normalizedPreferredGrade ? "ready" : "preparing",
-        note:
-          grade === normalizedPreferredGrade || !normalizedPreferredGrade
-            ? `${grade} · 共 ${weakPointCount} 个知识点`
-            : "专项内容准备中"
+        isPreferredGrade: false,
+        status: "ready",
+        note: `${grade} · 共 ${weakPointCount} 个知识点`
       };
     }
   }
 
   return {
+    preferredGrade: "",
     grade: "",
+    fallbackGrade: "",
     weakPointCount: 0,
     isPreferredGrade: false,
     status: "unavailable",
@@ -183,6 +209,7 @@ export function selectNextAchievement(achievements = []) {
 
 export function buildHomeGrowth({
   totalStars = 0,
+  starTotal = 0,
   rewardCount = 0,
   rewardTotal = 0,
   achievements = []
@@ -190,9 +217,14 @@ export function buildHomeGrowth({
   const achievementList = Array.isArray(achievements) ? achievements : [];
   const unlockedCount = achievementList.filter((achievement) => achievement?.isUnlocked).length;
   const nextAchievement = selectNextAchievement(achievementList);
+  const normalizedStars = toNonNegativeInteger(totalStars);
+  const normalizedStarTotal = toNonNegativeInteger(starTotal);
 
   return {
-    totalStars: toNonNegativeInteger(totalStars),
+    totalStars: normalizedStars,
+    starTotal: normalizedStarTotal,
+    // 星星和收藏一样给出分母，三个指标才是一致的“当前章节 n / m”口径。
+    starText: normalizedStarTotal > 0 ? `${normalizedStars} / ${normalizedStarTotal}` : `${normalizedStars}`,
     rewardCount: toNonNegativeInteger(rewardCount),
     rewardTotal: toNonNegativeInteger(rewardTotal),
     rewardText: `${toNonNegativeInteger(rewardCount)} / ${toNonNegativeInteger(rewardTotal)}`,
@@ -214,12 +246,15 @@ export function buildHomeAdventure({
   chapterTotalStars = 0,
   currentStage = null,
   nextStage = null,
-  stageCount = 0
+  stageCount = 0,
+  isChapterComplete = false
 } = {}) {
-  const resolvedStage = nextStage || currentStage || null;
+  // 整章通关后不再有“下一关”，否则会出现“7 关都过了还让孩子继续第 7 关”。
+  const resolvedStage = isChapterComplete ? null : nextStage || currentStage || null;
   const totalStars = toNonNegativeInteger(chapterTotalStars);
   const rawStarsEarned = toNonNegativeInteger(chapterStarsEarned);
   const starsEarned = totalStars > 0 ? Math.min(rawStarsEarned, totalStars) : rawStarsEarned;
+  const hasRemainingStars = totalStars > 0 && starsEarned < totalStars;
 
   return {
     chapterId: normalizeText(chapter?.id, 60),
@@ -233,16 +268,20 @@ export function buildHomeAdventure({
     stageOrder: resolvedStage ? toNonNegativeInteger(resolvedStage.order) || 1 : 0,
     stageTitle: normalizeText(resolvedStage?.title, 24),
     stageCount: toNonNegativeInteger(stageCount),
+    isChapterComplete: Boolean(isChapterComplete),
     stageLabel: resolvedStage
       ? `第 ${toNonNegativeInteger(resolvedStage.order) || 1} 关 · ${normalizeText(resolvedStage.title, 24)}`
-      : "这条路线已经走完啦",
+      : "这一章已经全部通关",
     starsEarned,
     totalStars,
     starText: `${starsEarned} / ${totalStars}`,
     goLabel: resolvedStage ? `继续第 ${toNonNegativeInteger(resolvedStage.order) || 1} 关` : "回到大地图看看",
+    // 通关但没满星时，仍然提示星星，让孩子知道可以回头补。
     goalText: resolvedStage
-      ? `再获得 1 颗星，就离下一站更近啦`
-      : "这一章已经全部通关，可以去别的岛看看",
+      ? "再获得 1 颗星，就离下一站更近啦"
+      : hasRemainingStars
+        ? "这一章已经全部通关，还有星星可以回头补哦"
+        : "这一章已经全部通关，可以去别的岛看看",
     goalAction: resolvedStage ? "再拿 1 颗星" : "换一座岛"
   };
 }
@@ -294,6 +333,16 @@ export function buildHomeAdvice({
       contextKey: "challenge-stage",
       icon: "🌋",
       text: `${adventure.title}${stageOrder}还等着你，再拿 1 颗星就能继续前进。`
+    };
+  }
+
+  // 整章通关后不能再推荐“继续下一关”。
+  if (adventure?.isChapterComplete) {
+    return {
+      id: "explore",
+      contextKey: "chapter-complete",
+      icon: "🧭",
+      text: "这一章已经全部通关啦，可以回大地图看看别的岛。"
     };
   }
 
@@ -351,14 +400,11 @@ export function buildTeacherTips({
 }
 
 // ---------------------------------------------------------------------------
-// 今日小任务：目标固定，进度来自本地日进度 + 今日真实记录。
+// 今日小任务：目标固定，进度只来自本地日进度（单一口径，不做双来源 max）。
 // ---------------------------------------------------------------------------
 
-export function buildDailyTasks({ tasks = {}, reviewedTodayCount = 0 } = {}) {
-  const storedReviewedCount = (Array.isArray(tasks?.reviewedQuestionIds)
-    ? tasks.reviewedQuestionIds.length
-    : 0);
-  const reviewedCount = Math.max(storedReviewedCount, toNonNegativeInteger(reviewedTodayCount));
+export function buildDailyTasks({ tasks = {} } = {}) {
+  const reviewedCount = Array.isArray(tasks?.reviewedQuestionIds) ? tasks.reviewedQuestionIds.length : 0;
   const clearedCount = toNonNegativeInteger(tasks?.stagesCleared);
   const lessonCount = Array.isArray(tasks?.completedLessonIds) ? tasks.completedLessonIds.length : 0;
 
@@ -396,6 +442,38 @@ export function buildDailyTasks({ tasks = {}, reviewedTodayCount = 0 } = {}) {
     ...item,
     progressText: `${item.value} / ${item.target}`
   }));
+}
+
+// ---------------------------------------------------------------------------
+// 首页成长口径：某一章的星星 / 收藏 / 成就，全部从“这一个章节”的 progress 算出来。
+//
+// 关键点：只认传进来的 chapterProgress（通常来自 homeAdventureChapterProgress），
+// 不读 challengeRuntime 当前选中的章节。否则首页档案是二年级、挑战页停在三年级时，
+// 会出现“二年级星星 + 三年级收藏/成就”的混口径。
+// ---------------------------------------------------------------------------
+export function buildChapterGrowthSource({
+  chapterProgress = {},
+  stageIds = [],
+  totalStageCount = 0
+} = {}) {
+  const resolvedStageIds = Array.isArray(stageIds) ? stageIds : [];
+  // 关卡数兜底到真实关卡数，不要退化成 0：
+  // 0 会让 route-unlocked 这类“解锁数 >= 关卡数”的判定在空进度下误判为已达成。
+  const resolvedTotalStageCount =
+    toNonNegativeInteger(totalStageCount) || resolvedStageIds.length || CHALLENGE_STAGES.length;
+
+  return {
+    totalStars: Object.values(chapterProgress?.bestResults ?? {}).reduce(
+      (total, result) => total + Number(result?.starCount || 0),
+      0
+    ),
+    starTotal: resolvedTotalStageCount * 3,
+    rewardCount: countChapterRewards(chapterProgress, resolvedStageIds),
+    rewardTotal: resolvedTotalStageCount,
+    achievements: evaluateChapterAchievements(chapterProgress, {
+      totalStageCount: resolvedTotalStageCount
+    })
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -487,7 +565,6 @@ export function buildHomeDashboard({
   grade = "",
   semester = "",
   reviewDueCount = 0,
-  reviewedTodayCount = 0,
   dailyTasks = {},
   knowledgeSummary = "",
   wrongBookSummary = "",
@@ -500,11 +577,9 @@ export function buildHomeDashboard({
   achievements = []
 } = {}) {
   const gradeLabel = [normalizeText(grade, 16), normalizeText(semester, 16)].filter(Boolean).join(" · ");
+  // 专项强化只跟档案年级：不走章节年级 fallback，避免三年级看到二年级专项。
   const weakPointContext = {
-    ...resolveWeakPointContext({
-      preferredGrade: grade,
-      fallbackGrades: [adventureSource?.chapter?.grade]
-    }),
+    ...resolveWeakPointContext({ preferredGrade: grade }),
     knowledgeTag: normalizeText(weakPointKnowledgeTag, 24),
     lessonId: normalizeText(weakPointKnowledgeLessonId, 60)
   };
@@ -512,6 +587,13 @@ export function buildHomeDashboard({
   const growth = buildHomeGrowth({
     ...growthSource,
     achievements
+  });
+  // 行动建议是唯一的“今天先做什么”口径，AI 欢迎文案不参与决策。
+  const advice = buildHomeAdvice({
+    reviewDueCount,
+    resume,
+    weakPointContext,
+    adventure
   });
 
   return {
@@ -522,21 +604,13 @@ export function buildHomeDashboard({
       profileChip: normalizeText(welcome.profileChip, 24) || gradeLabel,
       gradeLabel,
       themeTone: normalizeText(welcome.themeTone, 16) || "morning",
-      summary: normalizeText(welcome.summary, 60),
-      summarySource: normalizeText(welcome.summarySource, 16)
+      summary: advice.text,
+      summarySource: "advice"
     },
-    advice: buildHomeAdvice({
-      reviewDueCount,
-      resume,
-      weakPointContext,
-      adventure
-    }),
+    advice,
     adventure,
     growth,
-    dailyTasks: buildDailyTasks({
-      tasks: dailyTasks,
-      reviewedTodayCount
-    }),
+    dailyTasks: buildDailyTasks({ tasks: dailyTasks }),
     teacherTips: buildTeacherTips({
       reviewDueCount,
       weakPointContext,

@@ -20,6 +20,11 @@ const stageProgressPercent = computed(() => {
   const stageCount = Number(props.adventure?.stageCount || 0);
   const stageOrder = Number(props.adventure?.stageOrder || 0);
 
+  // 整章通关后进度条就是满的，不再停在最后一关的比例上。
+  if (props.adventure?.isChapterComplete) {
+    return 100;
+  }
+
   if (stageCount <= 0 || stageOrder <= 0) {
     return 0;
   }
@@ -89,9 +94,9 @@ function handleContinue() {
 
         <div class="adventure-card__stage">
           <span class="adventure-card__stage-index">
-            {{ adventure.stageOrder ? `第 ${adventure.stageOrder} 关` : "全部走完" }}
+            {{ adventure.stageOrder ? `第 ${adventure.stageOrder} 关` : "全部通关" }}
           </span>
-          <strong class="adventure-card__stage-title">{{ adventure.stageTitle || adventure.routeTitle }}</strong>
+          <strong class="adventure-card__stage-title">{{ adventure.stageTitle || "这一章已经全部通关" }}</strong>
         </div>
 
         <div class="adventure-card__stage-track" aria-hidden="true">

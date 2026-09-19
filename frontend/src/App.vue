@@ -175,6 +175,7 @@ export default {
         :home-dashboard="homeDashboard"
         :is-challenge-loading="isLoading"
         @start-challenge="startHomeChallenge"
+        @open-challenge-world="openChallengeWorld"
         @start-grade-practice="startHomeGradePractice"
         @start-subject-practice="startHomeSubjectPractice"
         @start-free-practice="startHomeFreePractice"

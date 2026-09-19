@@ -197,3 +197,29 @@ export function recordHomeDailyTaskLessonCompleted(lessonId, referenceDate = new
     referenceDate
   );
 }
+
+// “温习一道”的口径判断（纯函数，便于直接测）：
+// 只有“在错题温习里做完了某一道题”才算——答对、答错、超时都算，
+// 因为超时同样会走完整套结算（判题 + 写错题本 + 推进进度），说明这一题确实做过了。
+// 普通自由练习 / 闯关不算；没有题目 id 不算；不是今天的作答也不算。
+// 去重交给 recordHomeDailyTaskQuestionsReviewed（同一道题当天多次作答只留一条）。
+export function resolveReviewedQuestionIdForToday(
+  { isWrongBookPractice = false, questionId = "", answeredAt = "" } = {},
+  referenceDate = new Date()
+) {
+  if (!isWrongBookPractice) {
+    return "";
+  }
+
+  const normalizedQuestionId = String(questionId ?? "").trim();
+
+  if (!normalizedQuestionId) {
+    return "";
+  }
+
+  if (getHomeDailyTaskDateKey(answeredAt) !== getHomeDailyTaskDateKey(referenceDate)) {
+    return "";
+  }
+
+  return normalizedQuestionId;
+}

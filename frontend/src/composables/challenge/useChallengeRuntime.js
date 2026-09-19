@@ -1,5 +1,6 @@
 import { computed, ref } from "vue";
 import { fetchChallengeProgress, saveChallengeProgress } from "../../services/challengeProgressApi";
+import { countChapterRewards, evaluateChapterAchievements } from "../../utils/challengeAchievements";
 
 export function createChallengeRuntime({
   CHALLENGE_PERSISTENCE_STATE,
@@ -17,7 +18,6 @@ export function createChallengeRuntime({
   getNormalizedChallengeActiveChapterId,
   getDifficultyLabel,
   CHALLENGE_ACHIEVEMENTS,
-  evaluateChallengeAchievements,
   selectedSubjectValue,
   CHALLENGE_COVERAGE_STATUS,
   fetchQuestionCoverage,
@@ -51,20 +51,19 @@ export function createChallengeRuntime({
   const currentStageLabel = computed(() => `第 ${currentStageIndex.value + 1} 关 · ${currentStage.value.title}`);
   const currentStageBestResult = computed(() => challengeProgress.value.bestResults[currentStage.value.id] ?? null);
 
-  const challengeRewardCount = computed(
-    () => CHALLENGE_STAGES.filter((stage) => Boolean(challengeProgress.value.bestResults[stage.id]?.rewardEarned)).length
+  const challengeRewardCount = computed(() =>
+    countChapterRewards(challengeProgress.value, CHALLENGE_STAGES.map((stage) => stage.id))
   );
   const challengeRewardProgressLabel = computed(() => `航海册 ${challengeRewardCount.value} / ${CHALLENGE_STAGES.length}`);
   const challengeAchievements = computed(() => {
     const freshAchievementIds = new Set(
       (latestChallengeOutcome.value?.newAchievements ?? []).map((achievement) => achievement.id)
     );
-    const achievementEvaluation = evaluateChallengeAchievements(challengeProgress.value, {}, { totalStageCount: CHALLENGE_STAGES.length });
 
-    return achievementEvaluation.achievements.map((achievement) => ({
-      ...achievement,
-      fresh: freshAchievementIds.has(achievement.id)
-    }));
+    return evaluateChapterAchievements(challengeProgress.value, {
+      totalStageCount: CHALLENGE_STAGES.length,
+      freshAchievementIds
+    });
   });
   const challengeAchievementCount = computed(
     () => challengeAchievements.value.filter((achievement) => achievement.isUnlocked).length

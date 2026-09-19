@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildChapterGrowthSource,
   buildDailyTasks,
   buildHomeAdvice,
   buildHomeAdventure,
@@ -13,6 +14,28 @@ import {
   resolveWeakPointContext,
   selectNextAchievement
 } from "./homeDashboard.js";
+
+const STAGE_IDS = Object.freeze(["stage-1", "stage-2", "stage-3", "stage-4", "stage-5", "stage-6", "stage-7"]);
+
+// 构造一份“真实形状”的章节 progress：starCount > 0 才算过关。
+function buildChapterProgress({ starCounts = [], rewards = [] } = {}) {
+  return {
+    unlockedStageIds: [...STAGE_IDS],
+    bestResults: Object.fromEntries(
+      STAGE_IDS.map((stageId, index) => [
+        stageId,
+        {
+          starCount: starCounts[index] ?? 0,
+          bestAccuracy: (starCounts[index] ?? 0) > 0 ? 80 : 0,
+          attempts: 1,
+          bestScore: 100,
+          rewardEarned: Boolean(rewards[index])
+        }
+      ])
+    ),
+    achievements: {}
+  };
+}
 
 const ACHIEVEMENTS = Object.freeze([
   {
@@ -52,39 +75,66 @@ function buildAdviceFor({ reviewDueCount = 0, resume = null, weakPointContext = 
 }
 
 describe("homeDashboard · 专项强化年级", () => {
-  it("三年级档案不会拿到二年级的专项描述", () => {
-    const context = resolveWeakPointContext({ preferredGrade: "三年级" });
+  it("三年级档案不会 fallback 到二年级：年级保持三年级、数量为 0", () => {
+    const context = resolveWeakPointContext({
+      preferredGrade: "三年级",
+      fallbackGrades: ["二年级"]
+    });
 
     expect(context.status).toBe("preparing");
+    expect(context.preferredGrade).toBe("三年级");
+    expect(context.grade).toBe("三年级");
+    expect(context.weakPointCount).toBe(0);
     expect(context.note).toBe("专项内容准备中");
     expect(context.note).not.toContain("二年级");
+    expect(context.fallbackGrade).toBe("");
     expect(context.isPreferredGrade).toBe(false);
   });
 
-  it("档案年级有专项内容时直接用档案年级", () => {
+  it("有明确档案年级时完全不看 fallbackGrades", () => {
+    const withFallback = resolveWeakPointContext({
+      preferredGrade: "三年级",
+      fallbackGrades: ["二年级"]
+    });
+    const withoutFallback = resolveWeakPointContext({ preferredGrade: "三年级" });
+
+    expect(withFallback).toEqual(withoutFallback);
+  });
+
+  it("档案年级有专项内容时就直接用档案年级", () => {
     const context = resolveWeakPointContext({ preferredGrade: "二年级" });
 
     expect(context.grade).toBe("二年级");
+    expect(context.preferredGrade).toBe("二年级");
     expect(context.status).toBe("ready");
     expect(context.isPreferredGrade).toBe(true);
-    expect(context.weakPointCount).toBe(
-      countWeakPointsForGrade("二年级")
-    );
+    expect(context.weakPointCount).toBe(countWeakPointsForGrade("二年级"));
     expect(context.note).toContain("二年级");
+    expect(context.note).not.toContain("准备中");
   });
 
-  it("某年级没有专项数据时不崩溃，也能给出容错结果", () => {
+  it("只有没有档案年级时才允许 fallback 到目录里已有的年级", () => {
+    const context = resolveWeakPointContext({ preferredGrade: "", fallbackGrades: ["二年级"] });
+
+    expect(context.status).toBe("ready");
+    expect(context.preferredGrade).toBe("");
+    expect(context.grade).toBe("二年级");
+    expect(context.fallbackGrade).toBe("二年级");
+    expect(context.isPreferredGrade).toBe(false);
+  });
+
+  it("某年级没有专项数据时不崩溃，数量为 0 而不是借别的年级", () => {
     expect(countWeakPointsForGrade("完全没铺的年级")).toBe(0);
     expect(countWeakPointsForGrade("")).toBe(0);
 
     const context = resolveWeakPointContext({ preferredGrade: "完全没铺的年级" });
 
-    expect(context).toBeTruthy();
-    expect(context.weakPointCount).toBeGreaterThan(0);
     expect(context.status).toBe("preparing");
+    expect(context.grade).toBe("完全没铺的年级");
+    expect(context.weakPointCount).toBe(0);
   });
 
-  it("整个专项库都取不到内容时返回 unavailable 而不是报错", () => {
+  it("档案年级为空且目录也取不到内容时返回 unavailable", () => {
     const context = resolveWeakPointContext({});
 
     expect(["ready", "preparing", "unavailable"]).toContain(context.status);
@@ -169,33 +219,116 @@ describe("homeDashboard · 今天的探险", () => {
     expect(adventure.starText).toBe("21 / 21");
   });
 
-  it("章节全部通关时给出换岛的引导", () => {
+  it("未全部通关时仍然正常继续当前关", () => {
+    const adventure = buildHomeAdventure({
+      chapter: { islandName: "火山岛" },
+      chapterStarsEarned: 16,
+      chapterTotalStars: 21,
+      nextStage: { order: 7, title: "终极冲刺" },
+      stageCount: 7,
+      isChapterComplete: false
+    });
+
+    expect(adventure.isChapterComplete).toBe(false);
+    expect(adventure.stageLabel).toBe("第 7 关 · 终极冲刺");
+    expect(adventure.goLabel).toBe("继续第 7 关");
+    expect(adventure.goalText).toContain("再获得 1 颗星");
+  });
+
+  it("整章通关后不再显示继续最后一关，CTA 指向大地图", () => {
+    const adventure = buildHomeAdventure({
+      chapter: { islandName: "火山岛" },
+      // 7 关全过、但只有 17 / 21 星：仍然算通关。
+      chapterStarsEarned: 17,
+      chapterTotalStars: 21,
+      nextStage: { order: 7, title: "终极冲刺" },
+      stageCount: 7,
+      isChapterComplete: true
+    });
+
+    expect(adventure.isChapterComplete).toBe(true);
+    expect(adventure.stageOrder).toBe(0);
+    expect(adventure.stageTitle).toBe("");
+    expect(adventure.stageLabel).toBe("这一章已经全部通关");
+    expect(adventure.goLabel).toBe("回到大地图看看");
+    expect(adventure.goLabel).not.toContain("继续");
+    expect(adventure.goalText).not.toContain("再获得 1 颗星");
+    // 通关但没满星：星星照常显示 17 / 21，并提示还有星星可以回头补。
+    expect(adventure.starText).toBe("17 / 21");
+    expect(adventure.goalText).toContain("星星可以回头补");
+  });
+
+  it("整章通关且满星时提示可以去别的岛", () => {
     const adventure = buildHomeAdventure({
       chapter: { islandName: "火山岛" },
       chapterStarsEarned: 21,
       chapterTotalStars: 21,
-      nextStage: null,
-      stageCount: 7
+      nextStage: { order: 7, title: "终极冲刺" },
+      stageCount: 7,
+      isChapterComplete: true
     });
 
-    expect(adventure.stageLabel).toBe("这条路线已经走完啦");
+    expect(adventure.goLabel).toBe("回到大地图看看");
     expect(adventure.goalText).toContain("别的岛");
+    expect(adventure.goalText).not.toContain("回头补");
+  });
+
+  it("整章通关后行动建议不再推主线闯关", () => {
+    const adventure = buildHomeAdventure({
+      chapter: { islandName: "火山岛" },
+      chapterStarsEarned: 17,
+      chapterTotalStars: 21,
+      nextStage: { order: 7, title: "终极冲刺" },
+      stageCount: 7,
+      isChapterComplete: true
+    });
+    const advice = buildAdviceFor({ reviewDueCount: 0, adventure });
+
+    expect(advice.id).toBe("explore");
+    expect(advice.contextKey).toBe("chapter-complete");
+    expect(advice.text).toContain("别的岛");
+    expect(advice.text).not.toContain("还等着你");
   });
 });
 
 describe("homeDashboard · 我的成长", () => {
-  it("正确统计已有成就数量", () => {
+  it("三个指标都是当前章节口径，星星带分母", () => {
     const growth = buildHomeGrowth({
-      totalStars: 18,
+      totalStars: 6,
+      starTotal: 21,
       rewardCount: 4,
       rewardTotal: 7,
       achievements: ACHIEVEMENTS
     });
 
-    expect(growth.achievementCount).toBe(1);
-    expect(growth.achievementText).toBe("1 / 3");
+    expect(growth.totalStars).toBe(6);
+    expect(growth.starTotal).toBe(21);
+    expect(growth.starText).toBe("6 / 21");
     expect(growth.rewardText).toBe("4 / 7");
-    expect(growth.totalStars).toBe(18);
+    expect(growth.achievementText).toBe("1 / 3");
+    expect(growth.achievementCount).toBe(1);
+  });
+
+  it("其他章节的星星不会污染当前章节成长卡", () => {
+    // 当前章节 6 / 21；如果把全世界的星星（再加 20）算进来，就会变成 26。
+    const growth = buildHomeGrowth({
+      totalStars: 6,
+      starTotal: 21,
+      rewardCount: 4,
+      rewardTotal: 7,
+      achievements: ACHIEVEMENTS
+    });
+
+    expect(growth.starText).toBe("6 / 21");
+    expect(growth.totalStars).toBe(6);
+    expect(growth.totalStars).not.toBe(26);
+  });
+
+  it("没有星星总数时只显示星数，不显示 0 / 0", () => {
+    const growth = buildHomeGrowth({ totalStars: 3 });
+
+    expect(growth.starText).toBe("3");
+    expect(growth.starTotal).toBe(0);
   });
 
   it("能找出最接近完成的未解锁成就", () => {
@@ -251,10 +384,9 @@ describe("homeDashboard · 我的成长", () => {
 });
 
 describe("homeDashboard · 今日小任务与老师提醒", () => {
-  it("今日小任务按真实进度展示，不伪造完成状态", () => {
+  it("今日小任务只按本地日进度计算，不伪造完成状态", () => {
     const tasks = buildDailyTasks({
-      tasks: { stagesCleared: 1, reviewedQuestionIds: ["11"], completedLessonIds: [] },
-      reviewedTodayCount: 2
+      tasks: { stagesCleared: 1, reviewedQuestionIds: ["11", "12"], completedLessonIds: [] }
     });
 
     const byId = Object.fromEntries(tasks.map((task) => [task.id, task]));
@@ -265,6 +397,17 @@ describe("homeDashboard · 今日小任务与老师提醒", () => {
     expect(byId.review.progressText).toBe("2 / 3");
     expect(byId.study.done).toBe(false);
     expect(byId.study.progressText).toBe("0 / 1");
+  });
+
+  it("错题温习达到 3 道就算完成", () => {
+    const tasks = buildDailyTasks({
+      tasks: { stagesCleared: 0, reviewedQuestionIds: ["11", "12", "13"], completedLessonIds: [] }
+    });
+
+    const review = tasks.find((task) => task.id === "review");
+
+    expect(review.done).toBe(true);
+    expect(review.progressText).toBe("3 / 3");
   });
 
   it("没有到期错题和薄弱点时不给提醒", () => {
@@ -292,6 +435,134 @@ describe("homeDashboard · 今日小任务与老师提醒", () => {
   });
 });
 
+describe("homeDashboard · 首页成长口径只认首页那一章", () => {
+  // 二年级：6 / 21 星、2 / 7 收藏、2 / 8 成就。
+  const gradeTwoProgress = buildChapterProgress({
+    starCounts: [3, 2, 1, 0, 0, 0, 0],
+    rewards: [true, true, false, false, false, false, false]
+  });
+  // 三年级：数据明显不同（20 / 21 星、5 / 7 收藏、多解锁好几个成就）。
+  const gradeThreeProgress = buildChapterProgress({
+    starCounts: [3, 3, 3, 3, 3, 3, 2],
+    rewards: [true, true, true, true, true, false, false]
+  });
+
+  it("拿到的成就按真实关卡数评估（二年级 3 关有成绩时解锁 2 个）", () => {
+    const source = buildChapterGrowthSource({
+      chapterProgress: gradeTwoProgress,
+      stageIds: STAGE_IDS,
+      totalStageCount: 7
+    });
+
+    const unlockedIds = source.achievements.filter((achievement) => achievement.isUnlocked).map((a) => a.id);
+
+    // 通过 3 关（first-clear）、7 关全部解锁（route-unlocked）成立；
+    // 最高正确率只有 80%，所以 perfect-accuracy 不算解锁；收藏 2 / 3 也还差 1 件。
+    expect(unlockedIds.sort()).toEqual(["first-clear", "route-unlocked"]);
+    expect(source.achievements.find((achievement) => achievement.id === "perfect-accuracy").isUnlocked).toBe(false);
+    expect(source.achievements.find((achievement) => achievement.id === "collector-3").isUnlocked).toBe(false);
+    expect(source.achievements.find((achievement) => achievement.id === "collector-3").progressText).toBe("收藏 2 / 3");
+  });
+
+  it("两个章节的成长数据确实明显不同（证明混口径会看得出来）", () => {
+    const gradeTwo = buildChapterGrowthSource({
+      chapterProgress: gradeTwoProgress,
+      stageIds: STAGE_IDS,
+      totalStageCount: 7
+    });
+    const gradeThree = buildChapterGrowthSource({
+      chapterProgress: gradeThreeProgress,
+      stageIds: STAGE_IDS,
+      totalStageCount: 7
+    });
+
+    expect(gradeTwo.totalStars).toBe(6);
+    expect(gradeThree.totalStars).toBe(20);
+    expect(gradeTwo.rewardCount).toBe(2);
+    expect(gradeThree.rewardCount).toBe(5);
+    expect(gradeThree.achievements.filter((achievement) => achievement.isUnlocked).length).toBeGreaterThan(
+      gradeTwo.achievements.filter((achievement) => achievement.isUnlocked).length
+    );
+  });
+
+  it("挑战页停在三年级、首页档案是二年级时，首页只显示二年级数据", () => {
+    // 模拟真实场景：challengeRuntime 的 challengeProgress 停在三年级，
+    // 而首页 homeChallengeChapter 已经是二年级。
+    const runtimeSelectedChapterProgress = gradeThreeProgress;
+    const homeChapterProgress = gradeTwoProgress;
+
+    const homeGrowthSource = buildChapterGrowthSource({
+      chapterProgress: homeChapterProgress,
+      stageIds: STAGE_IDS,
+      totalStageCount: 7
+    });
+
+    const dashboard = buildHomeDashboard({
+      dateKey: "2026-05-02",
+      grade: "二年级",
+      semester: "上册",
+      adventureSource: {
+        chapter: { islandName: "鼓浪屿", grade: "二年级", semester: "上册" },
+        chapterStarsEarned: homeGrowthSource.totalStars,
+        chapterTotalStars: homeGrowthSource.starTotal,
+        nextStage: { order: 4, title: "看图写话" },
+        stageCount: 7,
+        isChapterComplete: false
+      },
+      growthSource: {
+        totalStars: homeGrowthSource.totalStars,
+        starTotal: homeGrowthSource.starTotal,
+        rewardCount: homeGrowthSource.rewardCount,
+        rewardTotal: homeGrowthSource.rewardTotal
+      },
+      achievements: homeGrowthSource.achievements
+    });
+
+    // 首页成长区三项全部是二年级口径：6 / 21 星、2 / 7 收藏、2 / 8 成就。
+    expect(dashboard.growth.starText).toBe("6 / 21");
+    expect(dashboard.growth.rewardText).toBe("2 / 7");
+    expect(dashboard.growth.achievementText).toBe("2 / 8");
+
+    // 探险卡和成长卡用的是同一份本章星数。
+    expect(dashboard.adventure.starText).toBe("6 / 21");
+
+    // 三年级的数据一个都不能漏进来。
+    const gradeThree = buildChapterGrowthSource({
+      chapterProgress: runtimeSelectedChapterProgress,
+      stageIds: STAGE_IDS,
+      totalStageCount: 7
+    });
+    const gradeThreeUnlockedCount = gradeThree.achievements.filter((achievement) => achievement.isUnlocked).length;
+
+    expect(gradeThree.totalStars).toBe(20);
+    expect(gradeThree.rewardCount).toBe(5);
+    // 三年级这一章：通过关卡、百发百中、全线解锁、章节通关 4 个成就成立；
+    // 收藏还差 2 件、满星还差 2 关、也没有 0 超时记录，所以这 3 个仍未解锁。
+    expect(gradeThreeUnlockedCount).toBe(4);
+    expect(gradeThreeUnlockedCount).not.toBe(dashboard.growth.achievementCount);
+
+    expect(dashboard.growth.totalStars).not.toBe(gradeThree.totalStars);
+    expect(dashboard.growth.rewardCount).not.toBe(gradeThree.rewardCount);
+    expect(dashboard.growth.achievementCount).not.toBe(gradeThreeUnlockedCount);
+    expect(dashboard.growth.starText).not.toBe("20 / 21");
+    expect(dashboard.growth.rewardText).not.toBe("5 / 7");
+    expect(dashboard.growth.achievementText).not.toBe("4 / 8");
+    expect(dashboard.growth.achievementText).toBe("2 / 8");
+  });
+
+  it("没有章节进度时给出 0 星 0 收藏，成就全部未解锁而不是报错", () => {
+    const source = buildChapterGrowthSource({});
+
+    expect(source.totalStars).toBe(0);
+    expect(source.rewardCount).toBe(0);
+    // 没传关卡数时兜底到真实关卡数，不会退化成 0 / 0。
+    expect(source.starTotal).toBe(STAGE_IDS.length * 3);
+    expect(source.rewardTotal).toBe(STAGE_IDS.length);
+    expect(source.achievements).toHaveLength(8);
+    expect(source.achievements.filter((achievement) => achievement.isUnlocked)).toEqual([]);
+  });
+});
+
 describe("homeDashboard · 自由探索", () => {
   it("保留按年级 / 按学科 / 随便练三种进入方式", () => {
     const scope = buildPracticeScope({
@@ -313,7 +584,7 @@ describe("homeDashboard · 组装", () => {
   it("无历史学习记录、无错题时也能组装出完整首页", () => {
     const dashboard = buildHomeDashboard({
       dateKey: "2026-05-01",
-      welcome: { eyebrow: "早上好", title: "欢迎回来", profileChip: "二年级 · 上册", themeTone: "morning", summary: "今天先闯一关吧。" },
+      welcome: { eyebrow: "早上好", title: "欢迎回来", profileChip: "二年级 · 上册", themeTone: "morning", summary: "去火山岛继续探险吧" },
       grade: "二年级",
       semester: "上册",
       adventureSource: {
@@ -323,12 +594,15 @@ describe("homeDashboard · 组装", () => {
         nextStage: { order: 1, title: "看图选词" },
         stageCount: 7
       },
-      growthSource: { totalStars: 0, rewardCount: 0, rewardTotal: 7 },
+      growthSource: { totalStars: 0, starTotal: 21, rewardCount: 0, rewardTotal: 7 },
       achievements: []
     });
 
     expect(dashboard.dateKey).toBe("2026-05-01");
-    expect(dashboard.greeting.summary).toBe("今天先闯一关吧。");
+    // 行动建议由确定性规则给出，不受 AI 欢迎文案影响。
+    expect(dashboard.greeting.summary).toBe(dashboard.advice.text);
+    expect(dashboard.greeting.summarySource).toBe("advice");
+    expect(dashboard.greeting.summary).not.toContain("火山岛继续探险");
     expect(dashboard.greeting.gradeLabel).toBe("二年级 · 上册");
     expect(dashboard.advice.id).toBe("challenge");
     expect(dashboard.dailyTasks).toHaveLength(3);
@@ -336,6 +610,74 @@ describe("homeDashboard · 组装", () => {
     expect(dashboard.exploreItems).toHaveLength(4);
     expect(dashboard.practiceScope).toHaveLength(3);
     expect(dashboard.weakPoint.grade).toBe("二年级");
+  });
+
+  it("有到期错题时，确定性建议压过 AI 欢迎文案", () => {
+    const dashboard = buildHomeDashboard({
+      welcome: {
+        eyebrow: "晚上好",
+        title: "小心心，欢迎回来",
+        summary: "去火山岛继续探险吧",
+        summarySource: "ai"
+      },
+      grade: "二年级",
+      semester: "上册",
+      reviewDueCount: 5,
+      adventureSource: {
+        chapter: { islandName: "火山岛", grade: "二年级" },
+        chapterStarsEarned: 6,
+        chapterTotalStars: 21,
+        nextStage: { order: 3, title: "短文找点" },
+        stageCount: 7
+      },
+      growthSource: { totalStars: 6, starTotal: 21 },
+      achievements: []
+    });
+
+    expect(dashboard.advice.id).toBe("review");
+    expect(dashboard.greeting.summary).toBe(dashboard.advice.text);
+    expect(dashboard.greeting.summary).toContain("温习");
+    expect(dashboard.greeting.summary).not.toContain("火山岛");
+    expect(dashboard.greeting.summarySource).toBe("advice");
+  });
+
+  it("没有到期错题时，建议正常落到主线 / 续学", () => {
+    const challengeDashboard = buildHomeDashboard({
+      welcome: { summary: "随便逛逛吧" },
+      grade: "二年级",
+      reviewDueCount: 0,
+      adventureSource: {
+        chapter: { islandName: "鼓浪屿" },
+        chapterStarsEarned: 6,
+        chapterTotalStars: 21,
+        nextStage: { order: 3, title: "短文找点" },
+        stageCount: 7
+      },
+      growthSource: {},
+      achievements: []
+    });
+
+    expect(challengeDashboard.advice.id).toBe("challenge");
+    expect(challengeDashboard.greeting.summary).toContain("第 3 关");
+
+    const studyDashboard = buildHomeDashboard({
+      welcome: { summary: "随便逛逛吧" },
+      grade: "二年级",
+      reviewDueCount: 0,
+      resume: { lessonTitle: "角的初步认识" },
+      adventureSource: {
+        chapter: { islandName: "鼓浪屿" },
+        chapterStarsEarned: 6,
+        chapterTotalStars: 21,
+        nextStage: { order: 3, title: "短文找点" },
+        stageCount: 7
+      },
+      growthSource: {},
+      achievements: []
+    });
+
+    expect(studyDashboard.advice.id).toBe("study");
+    expect(studyDashboard.greeting.summary).toContain("角的初步认识");
   });
 
   it("档案是三年级时不出现二年级专项文案", () => {
@@ -348,7 +690,30 @@ describe("homeDashboard · 组装", () => {
     });
 
     expect(dashboard.weakPoint.status).toBe("preparing");
+    expect(dashboard.weakPoint.grade).toBe("三年级");
+    expect(dashboard.weakPoint.weakPointCount).toBe(0);
     expect(dashboard.weakPoint.note).toBe("专项内容准备中");
     expect(dashboard.exploreItems.find((item) => item.id === "weak-point").hint).toBe("专项内容准备中");
+  });
+
+  it("章节全部通关时首页组装结果不再指向最后一关", () => {
+    const dashboard = buildHomeDashboard({
+      grade: "二年级",
+      semester: "上册",
+      adventureSource: {
+        chapter: { islandName: "鼓浪屿" },
+        chapterStarsEarned: 17,
+        chapterTotalStars: 21,
+        nextStage: { order: 7, title: "终极冲刺" },
+        stageCount: 7,
+        isChapterComplete: true
+      },
+      growthSource: { totalStars: 17, starTotal: 21 },
+      achievements: []
+    });
+
+    expect(dashboard.adventure.goLabel).toBe("回到大地图看看");
+    expect(dashboard.adventure.stageTitle).toBe("");
+    expect(dashboard.advice.contextKey).toBe("chapter-complete");
   });
 });

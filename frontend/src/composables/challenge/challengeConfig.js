@@ -949,6 +949,25 @@ export function getChallengeChapterProgress(progressBook, chapterId) {
     return normalizeChallengeProgress(normalizedBook.chapters[chapterId] ?? {});
   }
 
+// 首页/地图都可能要展示“已通关多少关”，和下面的判定共用同一口径。
+export function getChallengeChapterClearedStageCount(progress = {}, totalStageCount = CHALLENGE_STAGES.length) {
+    const normalizedProgress = normalizeChallengeProgress(progress);
+    const resolvedTotalStageCount = Math.max(1, Number.parseInt(String(totalStageCount ?? 0), 10) || CHALLENGE_STAGES.length);
+
+    return CHALLENGE_STAGES.slice(0, resolvedTotalStageCount).filter(
+      (stage) => Number(normalizedProgress.bestResults[stage.id]?.starCount || 0) > 0
+    ).length;
+  }
+
+// 整章是否已经通关：每一关都拿到过至少 1 星。
+// 语义和 handleQuizFinished 里的 isPassed = starCount > 0 一致：
+// “过关”不等于“满星”，7 关全过但只拿 17 / 21 星同样算章节通关。
+export function isChallengeChapterComplete(progress = {}, totalStageCount = CHALLENGE_STAGES.length) {
+    const resolvedTotalStageCount = Math.max(1, Number.parseInt(String(totalStageCount ?? 0), 10) || CHALLENGE_STAGES.length);
+
+    return getChallengeChapterClearedStageCount(progress, resolvedTotalStageCount) >= resolvedTotalStageCount;
+  }
+
 export function mergeChallengeProgressBooks(primaryBook = {}, secondaryBook = {}) {
     const leftBook = normalizeChallengeProgressBook(primaryBook);
     const rightBook = normalizeChallengeProgressBook(secondaryBook);

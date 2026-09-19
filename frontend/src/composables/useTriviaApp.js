@@ -31,6 +31,7 @@ import {
   writeHomeWelcomeCache
 } from "../utils/homeWelcomeMessage";
 import {
+  buildChapterGrowthSource,
   buildHomeDashboard,
   buildPracticeScope
 } from "../utils/homeDashboard";
@@ -40,6 +41,7 @@ import {
   readHomeDailyTasks,
   recordHomeDailyTaskQuestionsReviewed,
   recordHomeDailyTaskStageCleared,
+  resolveReviewedQuestionIdForToday,
   writeHomeDailyTasks
 } from "../utils/homeDailyTasks";
 import { createAppRouting } from "./app/useAppRouting";
@@ -66,6 +68,7 @@ import {
   isChallengeProgressEqual,
   normalizeChallengeProgressBook,
   getChallengeChapterProgress,
+  isChallengeChapterComplete,
   mergeChallengeProgressBooks,
   isChallengeProgressBookEqual,
   buildChallengeOutcome
@@ -1126,20 +1129,23 @@ export function useTriviaApp() {
   }
 
   // 在原有答题结算之上补一层“今天的日进度”，不改变原有错题本逻辑。
+  //
+  // “温习一道”= 在错题温习里真的做完了一次作答，答对答错（含超时）都算，
+  // 判断与去重都收敛在 homeDailyTasks 里，见 resolveReviewedQuestionIdForToday。
   function handleQuizQuestionResolvedWithDailyTasks(resolution) {
     handleQuizQuestionResolved(resolution);
 
-    if (!isWrongBookPractice.value || !resolution?.isCorrect || resolution?.isTimeout) {
+    const reviewedQuestionId = resolveReviewedQuestionIdForToday({
+      isWrongBookPractice: isWrongBookPractice.value,
+      questionId: resolution?.question?.id,
+      answeredAt: resolution?.answeredAt
+    });
+
+    if (!reviewedQuestionId) {
       return;
     }
 
-    const questionId = String(resolution?.question?.id ?? "").trim();
-
-    if (!questionId || getHomeDailyTaskDateKey(resolution?.answeredAt) !== getHomeDailyTaskDateKey(new Date())) {
-      return;
-    }
-
-    homeDailyTasks.value = recordHomeDailyTaskQuestionsReviewed([questionId]);
+    homeDailyTasks.value = recordHomeDailyTaskQuestionsReviewed([reviewedQuestionId]);
   }
 
   // 回到首页时重新读一次今天的进度，跨天回来会自动从空进度开始。
@@ -1454,21 +1460,6 @@ export function useTriviaApp() {
     });
   });
 
-  const homeTotalStarsEarned = computed(() =>
-    challengeWorldData.value.reduce((total, chapter) => total + Number(chapter.starsEarned || 0), 0)
-  );
-
-  // 今天回温对了几道：直接从错题本里读今天答对过的记录，不额外造状态。
-  const reviewedWrongQuestionTodayCount = computed(() => {
-    const todayKey = getHomeDailyTaskDateKey(new Date());
-
-    return Object.values(studyRecordBook.value.questionRecords).filter((record) => {
-      const hasWrongHistory = Number(record.wrongCount || 0) + Number(record.timeoutCount || 0) > 0;
-
-      return hasWrongHistory && record.lastResult === "correct" && getHomeDailyTaskDateKey(record.lastCorrectAt) === todayKey;
-    }).length;
-  });
-
   // 首页“今天的探险”要用的当前主线关卡：取本章最后一个已解锁关卡（也就是下一关）。
   const homeAdventureStage = computed(() => {
     const chapterProgress = getChallengeChapterProgress(challengeProgressBook.value, homeChallengeChapter.value.id);
@@ -1478,14 +1469,30 @@ export function useTriviaApp() {
     return getChallengeStageConfig(nextStageId, homeChallengeChapter.value.id);
   });
 
-  const homeAdventureChapterStars = computed(() => {
-    const chapterProgress = getChallengeChapterProgress(challengeProgressBook.value, homeChallengeChapter.value.id);
+  // 本章每个关卡的最好成绩：首页的星星、收藏、成就、是否通关都从这一份数据算，口径统一。
+  const homeAdventureChapterProgress = computed(() =>
+    getChallengeChapterProgress(challengeProgressBook.value, homeChallengeChapter.value.id)
+  );
 
-    return Object.values(chapterProgress.bestResults ?? {}).reduce(
-      (total, result) => total + Number(result?.starCount || 0),
-      0
-    );
-  });
+  // “通关”= 每一关都拿到过至少 1 星（starCount > 0 就是过关，见 handleQuizFinished）。
+  // 判定口径收敛在 challengeConfig 里，不要求满星：7 关全过但只有 17 / 21 星同样算通关。
+  const isHomeAdventureChapterComplete = computed(() =>
+    isChallengeChapterComplete(homeAdventureChapterProgress.value, CHALLENGE_STAGES.length)
+  );
+
+  // 首页三个成长指标（星星 / 航海收藏 / 成就）全部只取自 homeChallengeChapter 这一章，
+  // 不使用 challengeRuntime 当前选中章节的 challengeRewardCount / challengeAchievements，
+  // 避免“档案二年级 + 挑战页停在三年级”时把两章数据混在一起。
+  const homeChapterGrowthSource = computed(() =>
+    buildChapterGrowthSource({
+      chapterProgress: homeAdventureChapterProgress.value,
+      stageIds: CHALLENGE_STAGES.map((stage) => stage.id),
+      totalStageCount: CHALLENGE_STAGES.length
+    })
+  );
+
+  const homeAdventureRewardCount = computed(() => homeChapterGrowthSource.value.rewardCount);
+  const homeAdventureAchievements = computed(() => homeChapterGrowthSource.value.achievements);
 
   const homeDashboard = computed(() =>
     buildHomeDashboard({
@@ -1494,7 +1501,6 @@ export function useTriviaApp() {
       grade: homeChallengeGrade.value,
       semester: homeChallengeSemester.value,
       reviewDueCount: dueWrongQuestionCount.value,
-      reviewedTodayCount: reviewedWrongQuestionTodayCount.value,
       dailyTasks: homeDailyTasks.value,
       knowledgeSummary: homeKnowledgeSpotlight.value.summary,
       wrongBookSummary: homeWrongBookSpotlight.value.summary,
@@ -1510,18 +1516,23 @@ export function useTriviaApp() {
       }),
       adventureSource: {
         chapter: homeChallengeChapter.value,
-        chapterStarsEarned: homeAdventureChapterStars.value,
+        // 和成长区用同一份本章星数，避免探险卡和成长卡出现两个不同口径。
+        chapterStarsEarned: homeChapterGrowthSource.value.totalStars,
         chapterTotalStars: CHALLENGE_STAGES.length * 3,
         currentStage: homeAdventureStage.value,
         nextStage: homeAdventureStage.value,
-        stageCount: CHALLENGE_STAGES.length
+        stageCount: CHALLENGE_STAGES.length,
+        isChapterComplete: isHomeAdventureChapterComplete.value
       },
+      // 三个成长指标都取自 homeChallengeChapter 这一章，口径统一：
+      // 星星 = 本章最好成绩星数之和，收藏 = 本章 rewardEarned 数，成就 = 本章成就评估。
       growthSource: {
-        totalStars: homeTotalStarsEarned.value,
-        rewardCount: challengeRewardCount.value,
-        rewardTotal: CHALLENGE_STAGES.length
+        totalStars: homeChapterGrowthSource.value.totalStars,
+        starTotal: homeChapterGrowthSource.value.starTotal,
+        rewardCount: homeAdventureRewardCount.value,
+        rewardTotal: homeChapterGrowthSource.value.rewardTotal
       },
-      achievements: challengeAchievements.value
+      achievements: homeAdventureAchievements.value
     })
   );
 
@@ -2328,6 +2339,8 @@ export function useTriviaApp() {
     const reviewQuestionIds = ids.length > 0 ? ids : pendingWrongQuestionIds.value;
 
     wrongBookFocusTag.value = "";
+    // 跨天（首页一直开着到第二天）时先把日进度对齐到今天，再开始记录温习。
+    refreshHomeDailyTasks();
     setQuizPracticeContext({
       source: QUIZ_PRACTICE_SOURCE.WRONG_BOOK,
       questionIds: reviewQuestionIds
@@ -2763,7 +2776,6 @@ export function useTriviaApp() {
     homeSubjectPracticeSemester,
     homeWelcomePanel,
     homeDashboard,
-    homeTotalStarsEarned,
     homeDailyTasks,
     refreshHomeDailyTasks,
     isQuizSettingsOpen,
