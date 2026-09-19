@@ -641,6 +641,53 @@ describe("homeDashboard · 组装", () => {
     expect(dashboard.greeting.summarySource).toBe("advice");
   });
 
+  it("欢迎区不再有 AI 文案时，行动建议依然完整（AI welcome 已暂停自动生成）", () => {
+    const adventureSource = {
+      chapter: { islandName: "鼓浪屿", grade: "二年级" },
+      chapterStarsEarned: 6,
+      chapterTotalStars: 21,
+      nextStage: { order: 3, title: "短文找点" },
+      stageCount: 7
+    };
+
+    // 暂停 AI 后 welcome 只剩 eyebrow/title/chip/tone，没有 summary / summarySource。
+    const withoutAiWelcome = buildHomeDashboard({
+      grade: "二年级",
+      semester: "上册",
+      reviewDueCount: 5,
+      welcome: { eyebrow: "晚上好", title: "欢迎回来", themeTone: "night" },
+      adventureSource,
+      growthSource: {},
+      achievements: []
+    });
+    // 对照：即使 AI 文案在场（ai 来源），结论也必须一致。
+    const withAiWelcome = buildHomeDashboard({
+      grade: "二年级",
+      semester: "上册",
+      reviewDueCount: 5,
+      welcome: {
+        eyebrow: "晚上好",
+        title: "欢迎回来",
+        themeTone: "night",
+        summary: "去火山岛继续探险吧",
+        summarySource: "ai"
+      },
+      adventureSource,
+      growthSource: {},
+      achievements: []
+    });
+
+    expect(withoutAiWelcome.advice.id).toBe("review");
+    expect(withoutAiWelcome.greeting.summary).toBe(withoutAiWelcome.advice.text);
+    expect(withoutAiWelcome.greeting.summary).toContain("温习");
+    expect(withoutAiWelcome.greeting.summarySource).toBe("advice");
+
+    // AI 文案在不在场都不影响行动建议，也不改变来源标记。
+    expect(withAiWelcome.advice).toEqual(withoutAiWelcome.advice);
+    expect(withAiWelcome.greeting.summary).toBe(withoutAiWelcome.greeting.summary);
+    expect(withAiWelcome.greeting.summarySource).toBe("advice");
+  });
+
   it("没有到期错题时，建议正常落到主线 / 续学", () => {
     const challengeDashboard = buildHomeDashboard({
       welcome: { summary: "随便逛逛吧" },

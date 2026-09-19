@@ -1799,11 +1799,15 @@ export function useTriviaApp() {
     showHomeView();
   }
 
-  // 资料变更后重新生成首页欢迎文案（与语音无关）。
+  // 资料变更后只更新首页欢迎区的本地状态。
+  //
+  // AI welcome 目前暂停自动生成：首页“今天先做什么”已经由 homeDashboard.advice
+  // 确定性给出，AI 文案没有消费者，自动请求只会白花模型调用。以后要把它作为
+  // “不影响行动推荐的猫头鹰陪伴语”重新接回来时，在这里改回 refreshHomeWelcomeCopy 即可。
   function refreshHomeWelcomeAfterProfileChange() {
     isHomeWelcomeProfileJustSaved.value = true;
     advanceHomeWelcomeVariant();
-    void refreshHomeWelcomeCopy({ force: true });
+    refreshHomeWelcomeLocalState();
   }
 
   function clearHomeWelcomeRequest() {
@@ -1825,6 +1829,19 @@ export function useTriviaApp() {
     homeWelcomeNow.value = new Date();
   }
 
+  // 只做本地状态更新：刷新时间上下文、重建 fallback 文案、记录今天已访问。
+  // 不发任何模型请求（AI 生成的入口仍然是 refreshHomeWelcomeCopy）。
+  function refreshHomeWelcomeLocalState() {
+    refreshHomeWelcomeTemporalContext();
+    const context = homeWelcomeContext.value;
+
+    homeWelcomeFallbackLine.value = buildHomeWelcomeFallbackLine(context);
+    homeWelcomeFallbackSpeechText.value = buildHomeWelcomeFallbackSpeechText(context);
+    markHomeWelcomeVisitedToday();
+    isHomeWelcomeProfileJustSaved.value = false;
+  }
+
+  // 保留完整的 AI 欢迎能力（生成 + 缓存 + 动态文案 + ai 分支），当前没有自动调用方。
   async function refreshHomeWelcomeCopy({ force = false } = {}) {
     refreshHomeWelcomeTemporalContext();
     const context = homeWelcomeContext.value;
@@ -2367,7 +2384,8 @@ export function useTriviaApp() {
     hydrateHomePracticeSelections();
     advanceHomeWelcomeVariant();
     refreshHomeDailyTasks();
-    void refreshHomeWelcomeCopy();
+    // 首次进首页只更新本地欢迎状态：AI welcome 暂停自动生成（无 UI 消费者）。
+    refreshHomeWelcomeLocalState();
     void ensureKnowledgeStudyRuntime();
     void loadChallengeCoverage();
     void loadQuestionStatsSummary();
@@ -2457,10 +2475,9 @@ export function useTriviaApp() {
       return;
     }
 
+    // 回到首页同样只刷新本地欢迎状态，不再触发 AI welcome 请求。
     advanceHomeWelcomeVariant();
-    void refreshHomeWelcomeCopy({
-      force: isHomeWelcomeProfileJustSaved.value
-    });
+    refreshHomeWelcomeLocalState();
   });
 
   watch(
