@@ -1,4 +1,5 @@
 const { test, expect } = require("@playwright/test");
+const { choosePracticeEntry } = require("../support/home-entry");
 const {
   startPracticeAndCaptureQuestions,
   resolveDisplayedQuestion,
@@ -12,11 +13,16 @@ const {
 // 只做「进入答题 → 真实作答 → 页面进入下一状态」，不假设具体题目内容，
 // 题目来自 E2E 种子库，正确答案通过项目自身的判题接口取得。
 test.describe("核心练习流程", () => {
+  // 每次从干净的本地进度开始，避免上一次跑测试留下的“今日小任务”进度影响首页状态。
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => window.localStorage.clear());
+  });
+
   test("从首页进入自由练习并真实完成一道题", async ({ page }) => {
     await page.goto("/");
 
     const questions = await startPracticeAndCaptureQuestions(page, () =>
-      page.getByRole("button", { name: /^随便练/ }).click()
+      choosePracticeEntry(page, "随便练，不限年级学科")
     );
 
     await expect(page).toHaveURL(/#\/quiz$/);

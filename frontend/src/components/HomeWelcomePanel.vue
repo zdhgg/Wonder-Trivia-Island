@@ -18,6 +18,15 @@ const props = defineProps({
   themeTone: {
     type: String,
     default: "morning"
+  },
+  // 动态行动建议：来自 homeWelcomeSummary，也就是首页真正的“今天该做什么”。
+  summary: {
+    type: String,
+    default: ""
+  },
+  summarySource: {
+    type: String,
+    default: ""
   }
 });
 
@@ -25,6 +34,8 @@ const panelClass = computed(() => [
   "home-welcome",
   `home-welcome--${["morning", "noon", "afternoon", "evening", "night"].includes(props.themeTone) ? props.themeTone : "morning"}`
 ]);
+const hasSummary = computed(() => Boolean(String(props.summary || "").trim()));
+const summarySourceLabel = computed(() => (props.summarySource === "ai" ? "猫头鹰说" : "今日建议"));
 </script>
 
 <template>
@@ -36,6 +47,11 @@ const panelClass = computed(() => [
       </div>
 
       <h1 class="home-welcome__title">{{ title }}</h1>
+
+      <p v-if="hasSummary" class="home-welcome__summary">
+        <span class="home-welcome__summary-tag">{{ summarySourceLabel }}</span>
+        <span class="home-welcome__summary-text">{{ summary }}</span>
+      </p>
     </div>
 
     <div class="home-welcome__mascot">
@@ -52,11 +68,11 @@ const panelClass = computed(() => [
   --welcome-chip-text: var(--color-ink-soft);
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 96px;
-  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) 132px;
+  gap: 14px;
   align-items: center;
   overflow: hidden;
-  padding: 12px 18px;
+  padding: 14px 20px;
   border: 1px solid rgba(36, 50, 74, 0.09);
   border-radius: 22px;
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.96) 0%, var(--welcome-tint) 100%);
@@ -137,8 +153,44 @@ const panelClass = computed(() => [
   font-size: 1.7rem;
   line-height: 1.12;
   letter-spacing: 0;
-  max-width: 18ch;
+  max-width: 22ch;
   text-wrap: balance;
+}
+
+/* 行动提示：欢迎区不再只是问候，而是告诉孩子“今天先做什么”。 */
+.home-welcome__summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin: 4px 0 0;
+  padding: 8px 12px;
+  width: fit-content;
+  max-width: 100%;
+  border: 1px solid rgba(255, 174, 66, 0.28);
+  border-radius: 16px;
+  background: rgba(255, 246, 207, 0.66);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.home-welcome__summary-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.86);
+  color: rgba(150, 95, 20, 0.98);
+  font-size: 0.72rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.home-welcome__summary-text {
+  color: var(--color-ink);
+  font-size: 0.95rem;
+  font-weight: 800;
+  line-height: 1.45;
 }
 
 
@@ -152,15 +204,15 @@ const panelClass = computed(() => [
   z-index: 1;
   display: flex;
   justify-content: flex-end;
-  align-self: end;
+  align-self: center;
 }
 
 .home-welcome__mascot :deep(.owl-mascot) {
-  width: min(100%, 104px);
+  width: min(100%, 132px);
 }
 
 .home-welcome__mascot :deep(.owl-mascot__stage) {
-  min-height: 70px;
+  min-height: 84px;
   padding: 0;
 }
 
@@ -173,28 +225,55 @@ const panelClass = computed(() => [
 }
 
 .home-welcome__mascot :deep(.owl-mascot__figure) {
-  width: 58px;
-  min-height: 54px;
+  width: 72px;
+  min-height: 68px;
   transform: translateY(-4px);
 }
 
 .home-welcome__mascot :deep(.owl-mascot__asset) {
-  font-size: 2.1rem;
+  font-size: 2.9rem;
 }
 
 .home-welcome__mascot :deep(.owl-mascot__perch) {
-  bottom: 10px;
-  width: 56px;
+  bottom: 8px;
+  width: 68px;
+  height: 13px;
 }
 
+/* 只用非常轻微的上下浮动，避免首页一直在晃。 */
 .home-welcome__mascot :deep(.owl-mascot--idle .owl-mascot__figure) {
-  animation: none;
-  transform: translateY(-4px);
+  animation: home-owl-idle 4.5s ease-in-out infinite;
+}
+
+.home-welcome__mascot :deep(.owl-mascot--idle .owl-mascot__perch) {
+  animation: home-owl-perch 4.5s ease-in-out infinite;
+}
+
+@keyframes home-owl-idle {
+  0%,
+  100% {
+    transform: translateY(-4px);
+  }
+
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes home-owl-perch {
+  0%,
+  100% {
+    transform: scaleX(1);
+  }
+
+  50% {
+    transform: scaleX(0.98);
+  }
 }
 
 @media (max-width: 900px) {
   .home-welcome {
-    grid-template-columns: minmax(0, 1fr) 104px;
+    grid-template-columns: minmax(0, 1fr) 118px;
     gap: 12px;
   }
 
@@ -212,30 +291,46 @@ const panelClass = computed(() => [
   }
 
   .home-welcome__title {
-    font-size: 1.5rem;
-    max-width: 14ch;
+    font-size: 1.45rem;
+    max-width: 20ch;
+  }
+
+  .home-welcome__summary {
+    padding: 7px 10px;
+  }
+
+  .home-welcome__summary-text {
+    font-size: 0.88rem;
   }
 
   .home-welcome__mascot :deep(.owl-mascot) {
-    width: min(100%, 80px);
+    width: min(100%, 84px);
   }
 
   .home-welcome__mascot :deep(.owl-mascot__stage) {
-    min-height: 76px;
+    min-height: 80px;
   }
 
   .home-welcome__mascot :deep(.owl-mascot__figure) {
-    width: 58px;
-    min-height: 52px;
+    width: 64px;
+    min-height: 60px;
   }
 
   .home-welcome__mascot :deep(.owl-mascot__asset) {
-    font-size: 2rem;
+    font-size: 2.5rem;
   }
 
   .home-welcome__mascot :deep(.owl-mascot__perch) {
-    bottom: 12px;
-    width: 54px;
+    bottom: 10px;
+    width: 62px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-welcome__mascot :deep(.owl-mascot--idle .owl-mascot__figure),
+  .home-welcome__mascot :deep(.owl-mascot--idle .owl-mascot__perch) {
+    animation: none !important;
+    transform: translateY(-4px);
   }
 }
 </style>

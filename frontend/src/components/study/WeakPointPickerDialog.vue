@@ -14,9 +14,19 @@ const props = defineProps({
     type: Boolean,
     default: false
   },
+  // 默认年级跟随真实档案：只有这一册铺了专项内容时才用它。
   defaultGrade: {
     type: String,
-    default: "二年级"
+    default: ""
+  },
+  // 档案年级没有专项内容时，告诉孩子“这里正在准备”，而不是硬塞别的年级。
+  isPreparingForPreferredGrade: {
+    type: Boolean,
+    default: false
+  },
+  preferredGrade: {
+    type: String,
+    default: ""
   }
 });
 
@@ -28,19 +38,28 @@ const searchKeyword = ref("");
 const coverageByTag = ref({});
 const isLoadingCoverage = ref(false);
 
-const gradeOptions = computed(() => [props.defaultGrade]);
+const gradeOptions = computed(() => (props.defaultGrade ? [props.defaultGrade] : []));
 const subjectOptions = computed(() => getWeakPointSubjects(activeGrade.value));
 const allWeakPoints = computed(() => getWeakPoints(activeGrade.value, activeSubject.value));
 const visibleWeakPoints = computed(() => matchWeakPoints(allWeakPoints.value, searchKeyword.value));
 
 const hasNoSubjectSelected = computed(() => !activeSubject.value);
+const isGradeUnavailable = computed(() => !props.defaultGrade || subjectOptions.value.length === 0);
+const preferredGradeLabel = computed(() => String(props.preferredGrade || "").trim());
 
-// 打开面板时默认落到第一个学科，避免出现空白面板。
+// 打开面板时默认落到第一个学科，避免出现空白面板；
+// 档案年级变化时也要把选中年级跟上，否则会停在旧年级。
 watch(
   () => props.modelValue,
   (isOpen) => {
     if (!isOpen) {
       return;
+    }
+
+    if (activeGrade.value !== props.defaultGrade) {
+      activeGrade.value = props.defaultGrade;
+      activeSubject.value = "";
+      searchKeyword.value = "";
     }
 
     if (!subjectOptions.value.includes(activeSubject.value)) {
@@ -157,6 +176,13 @@ function close() {
     @update:model-value="emit('update:modelValue', $event)"
   >
     <div class="weak-point">
+      <p v-if="isGradeUnavailable" class="weak-point__notice">
+        {{ preferredGradeLabel || "这个年级" }}的专项内容还在准备中，先看看别的内容也可以。
+      </p>
+      <p v-else-if="isPreparingForPreferredGrade" class="weak-point__notice">
+        {{ preferredGradeLabel || "当前年级" }}的专项内容还在准备中，这里先看 {{ activeGrade }} 的专项。
+      </p>
+
       <div class="weak-point__filters">
         <div class="weak-point__filter-group">
           <span class="weak-point__filter-label">年级</span>
@@ -168,10 +194,11 @@ function close() {
             >
               {{ grade }}
             </span>
+            <span v-if="isGradeUnavailable" class="weak-point__chip">准备中</span>
           </div>
         </div>
 
-        <div class="weak-point__filter-group">
+        <div v-if="!isGradeUnavailable" class="weak-point__filter-group">
           <span class="weak-point__filter-label">学科</span>
           <div class="weak-point__chip-row">
             <button
@@ -187,7 +214,7 @@ function close() {
           </div>
         </div>
 
-        <label class="weak-point__search">
+        <label v-if="!isGradeUnavailable" class="weak-point__search">
           <span class="weak-point__filter-label">按老师的说法搜</span>
           <input
             v-model="searchKeyword"
@@ -198,7 +225,11 @@ function close() {
         </label>
       </div>
 
-      <div v-if="hasNoSubjectSelected" class="weak-point__empty">
+      <div v-if="isGradeUnavailable" class="weak-point__empty">
+        <p>这个年级的专项内容还在准备中，等铺好了这里就会出现可以加强的知识点。</p>
+      </div>
+
+      <div v-else-if="hasNoSubjectSelected" class="weak-point__empty">
         <p>先选一个学科，就能看到可以加强的知识点。</p>
       </div>
 
@@ -264,6 +295,18 @@ function close() {
   border: 1px solid rgba(36, 50, 74, 0.08);
   border-radius: 22px;
   background: rgba(255, 255, 255, 0.78);
+}
+
+.weak-point__notice {
+  margin: 0;
+  padding: 12px 16px;
+  border: 1px solid rgba(36, 50, 74, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 246, 207, 0.62);
+  color: var(--color-ink);
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.5;
 }
 
 .weak-point__filter-group,

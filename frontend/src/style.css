@@ -252,6 +252,27 @@ select {
   min-width: 64px;
 }
 
+/* 儿童主页上“工具 / 设置”这类管理入口不再和核心学习内容抢视觉：
+   保留在原来的位置和完整功能，只降低对比度、缩小字号与内边距。 */
+.site-nav--home .site-nav__quick-button--manage,
+.site-nav--home .site-nav__quick-button--settings {
+  min-width: 0;
+  min-height: 26px;
+  padding: 3px 8px;
+  color: rgba(36, 50, 74, 0.42);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.site-nav--home .site-nav__quick-button--manage:hover,
+.site-nav--home .site-nav__quick-button--settings:hover,
+.site-nav--home .site-nav__quick-button--manage:focus-visible,
+.site-nav--home .site-nav__quick-button--settings:focus-visible {
+  color: var(--color-ink);
+  background: rgba(255, 255, 255, 0.86);
+}
+
 .site-nav__quick-button--audio.site-nav__quick-button--muted {
   color: #ff6b6b;
   border-color: rgba(255, 107, 107, 0.22);

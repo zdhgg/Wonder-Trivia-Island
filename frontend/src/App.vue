@@ -114,7 +114,7 @@ export default {
       }
     ]"
   >
-    <header v-if="!isImmersiveView && !isQuizActive" class="site-nav">
+    <header v-if="!isImmersiveView && !isQuizActive" :class="['site-nav', { 'site-nav--home': currentView === VIEW_MODE.HOME }]">
       <div class="site-nav__compact">
         <button class="site-brand__home" type="button" @click="handleHomeNavigation">
           <span class="site-brand__home-mark">奇妙知识岛</span>
@@ -172,16 +172,8 @@ export default {
         v-model:subject-practice-subject="homeSubjectPracticeSubject"
         v-model:subject-practice-grade="homeSubjectPracticeGrade"
         v-model:subject-practice-semester="homeSubjectPracticeSemester"
-        :challenge-current-stage-label="currentChallengeHomeLabel"
-        :challenge-stage-short-label="homeChallengeStageLabel"
-        :challenge-route-title="homeChallengeRouteTitle"
-        :grade-options="homeGradeOptions"
-        :subject-options="homeSubjectOptions"
-        :semester-options="homeSemesterOptions"
-        :subject-grade-options="homeSubjectPracticeGradeOptions"
-        :knowledge-spotlight="homeKnowledgeSpotlight"
-        :wrong-book-spotlight="homeWrongBookSpotlight"
-        :welcome-panel="homeWelcomePanel"
+        :home-dashboard="homeDashboard"
+        :is-challenge-loading="isLoading"
         @start-challenge="startHomeChallenge"
         @start-grade-practice="startHomeGradePractice"
         @start-subject-practice="startHomeSubjectPractice"
@@ -189,6 +181,7 @@ export default {
         @start-weak-point-practice="startWeakPointPractice"
         @open-knowledge-study="openStudyMapView"
         @open-wrong-review="openWrongBookView"
+        @open-backpack="openBackpack"
       />
 
       <KnowledgeStudyView
@@ -603,7 +596,7 @@ export default {
             :challenge-stage="isChallengeMode ? currentStage : null"
             :challenge-result="latestChallengeOutcome"
             :global-stars-earned="globalStarsEarned"
-            @question-resolved="handleQuizQuestionResolved"
+            @question-resolved="handleQuizQuestionResolvedWithDailyTasks"
             @finished="handleQuizFinished"
             @restart="handleQuizRestart"
             @next-stage="handleNextStage"

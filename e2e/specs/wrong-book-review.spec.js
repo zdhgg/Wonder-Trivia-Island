@@ -1,4 +1,5 @@
 const { test, expect } = require("@playwright/test");
+const { choosePracticeEntry } = require("../support/home-entry");
 const {
   startPracticeAndCaptureQuestions,
   resolveDisplayedQuestion,
@@ -13,11 +14,16 @@ const {
 // 选择错题而不是讲堂，是因为这条链路横跨 quiz / 学习记录 / 错题页 / 复习入口四个模块，
 // 而且下面这些断言都以「最终稳定状态」为准，不依赖题目内容或用户历史数据。
 test.describe("答题后的错题闭环", () => {
+  // 这条链路依赖“本地错题本从空开始”，同时也让首页的今日进度保持干净。
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => window.localStorage.clear());
+  });
+
   test("答错一题后进入错题温习并能重新开练", async ({ page }) => {
     await page.goto("/");
 
     const questions = await startPracticeAndCaptureQuestions(page, () =>
-      page.getByRole("button", { name: /^随便练/ }).click()
+      choosePracticeEntry(page, "随便练，不限年级学科")
     );
 
     await expect(page).toHaveURL(/#\/quiz$/);
@@ -41,7 +47,7 @@ test.describe("答题后的错题闭环", () => {
     await page.getByRole("button", { name: /返回首页/ }).click();
     await expect(page).toHaveURL(/#\/$/);
 
-    await page.getByRole("button", { name: /^错题温习/ }).click();
+    await page.getByRole("button", { name: /^错题本/ }).click();
     await expect(page).toHaveURL(/#\/wrong-book$/);
 
     // 刚答错的那道题被收了进来，并且进入「今天到期」队列（默认筛选）

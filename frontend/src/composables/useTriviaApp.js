@@ -22,6 +22,7 @@ import {
   buildHomeWelcomeTitle,
   buildHomeWelcomeTemporalContext,
   getHomeWelcomeDateKey,
+  HOME_WELCOME_MAX_LINE_LENGTH,
   markHomeWelcomeVisited,
   normalizeHomeWelcomeLine,
   normalizeHomeWelcomeSpeechText,
@@ -29,6 +30,18 @@ import {
   readHomeWelcomeVisitDate,
   writeHomeWelcomeCache
 } from "../utils/homeWelcomeMessage";
+import {
+  buildHomeDashboard,
+  buildPracticeScope
+} from "../utils/homeDashboard";
+import {
+  createEmptyHomeDailyTasks,
+  getHomeDailyTaskDateKey,
+  readHomeDailyTasks,
+  recordHomeDailyTaskQuestionsReviewed,
+  recordHomeDailyTaskStageCleared,
+  writeHomeDailyTasks
+} from "../utils/homeDailyTasks";
 import { createAppRouting } from "./app/useAppRouting";
 import { createHomeSelections } from "./app/useHomeSelections";
 import { createStudyRecordRuntime } from "./app/useStudyRecordRuntime";
@@ -1065,6 +1078,11 @@ export function useTriviaApp() {
     homeWelcomeFallbackLine.value ||
     buildHomeWelcomeFallbackLine(homeWelcomeContext.value)
   );
+  // 首页欢迎区要显示的就这一行，所以这里先按气泡长度收敛，避免 AI 长句把欢迎区撑开。
+  const homeWelcomeSummaryLine = computed(() =>
+    normalizeHomeWelcomeLine(homeWelcomeSummary.value, HOME_WELCOME_MAX_LINE_LENGTH) || homeWelcomeSummary.value
+  );
+  const homeWelcomeSummarySource = computed(() => (homeWelcomeDynamicLine.value ? "ai" : "fallback"));
   const homeWelcomeTitle = computed(() =>
     buildHomeWelcomeTitle(homeWelcomeContext.value, {
       displayName: homeWelcomeDisplayName.value,
@@ -1075,8 +1093,61 @@ export function useTriviaApp() {
     eyebrow: homeWelcomeEyebrow.value,
     title: homeWelcomeTitle.value,
     profileChip: homeWelcomeProfileChip.value,
-    themeTone: homeWelcomeContext.value.timeBand
+    themeTone: homeWelcomeContext.value.timeBand,
+    summary: homeWelcomeSummaryLine.value,
+    summarySource: homeWelcomeSummarySource.value
   }));
+
+  // ---------------------------------------------------------------------------
+  // 首页今日进度：只记录“今天做过什么”，跨天自动重置，不碰任何既有进度结构。
+  // ---------------------------------------------------------------------------
+  const homeDailyTasks = ref(createEmptyHomeDailyTasks());
+
+  function refreshHomeDailyTasks(referenceDate = new Date()) {
+    homeDailyTasks.value = readHomeDailyTasks(referenceDate);
+    return homeDailyTasks.value;
+  }
+
+  function recordHomeStageClearedForToday() {
+    homeDailyTasks.value = recordHomeDailyTaskStageCleared();
+  }
+
+  function recordHomeLessonCompletedForToday(lessonId = "") {
+    const normalizedLessonId = String(lessonId || "").trim();
+
+    if (!normalizedLessonId) {
+      return;
+    }
+
+    homeDailyTasks.value = writeHomeDailyTasks({
+      ...homeDailyTasks.value,
+      completedLessonIds: [...homeDailyTasks.value.completedLessonIds, normalizedLessonId]
+    });
+  }
+
+  // 在原有答题结算之上补一层“今天的日进度”，不改变原有错题本逻辑。
+  function handleQuizQuestionResolvedWithDailyTasks(resolution) {
+    handleQuizQuestionResolved(resolution);
+
+    if (!isWrongBookPractice.value || !resolution?.isCorrect || resolution?.isTimeout) {
+      return;
+    }
+
+    const questionId = String(resolution?.question?.id ?? "").trim();
+
+    if (!questionId || getHomeDailyTaskDateKey(resolution?.answeredAt) !== getHomeDailyTaskDateKey(new Date())) {
+      return;
+    }
+
+    homeDailyTasks.value = recordHomeDailyTaskQuestionsReviewed([questionId]);
+  }
+
+  // 回到首页时重新读一次今天的进度，跨天回来会自动从空进度开始。
+  watch(currentView, (view) => {
+    if (view === VIEW_MODE.HOME) {
+      refreshHomeDailyTasks();
+    }
+  });
 
   const activeQuestionCountValue = computed(() =>
     isChallengeMode.value ? currentStage.value.questionCount : selectedQuestionCountValue.value
@@ -1382,6 +1453,77 @@ export function useTriviaApp() {
       };
     });
   });
+
+  const homeTotalStarsEarned = computed(() =>
+    challengeWorldData.value.reduce((total, chapter) => total + Number(chapter.starsEarned || 0), 0)
+  );
+
+  // 今天回温对了几道：直接从错题本里读今天答对过的记录，不额外造状态。
+  const reviewedWrongQuestionTodayCount = computed(() => {
+    const todayKey = getHomeDailyTaskDateKey(new Date());
+
+    return Object.values(studyRecordBook.value.questionRecords).filter((record) => {
+      const hasWrongHistory = Number(record.wrongCount || 0) + Number(record.timeoutCount || 0) > 0;
+
+      return hasWrongHistory && record.lastResult === "correct" && getHomeDailyTaskDateKey(record.lastCorrectAt) === todayKey;
+    }).length;
+  });
+
+  // 首页“今天的探险”要用的当前主线关卡：取本章最后一个已解锁关卡（也就是下一关）。
+  const homeAdventureStage = computed(() => {
+    const chapterProgress = getChallengeChapterProgress(challengeProgressBook.value, homeChallengeChapter.value.id);
+    const nextStageId =
+      chapterProgress.unlockedStageIds[chapterProgress.unlockedStageIds.length - 1] ?? CHALLENGE_STAGES[0].id;
+
+    return getChallengeStageConfig(nextStageId, homeChallengeChapter.value.id);
+  });
+
+  const homeAdventureChapterStars = computed(() => {
+    const chapterProgress = getChallengeChapterProgress(challengeProgressBook.value, homeChallengeChapter.value.id);
+
+    return Object.values(chapterProgress.bestResults ?? {}).reduce(
+      (total, result) => total + Number(result?.starCount || 0),
+      0
+    );
+  });
+
+  const homeDashboard = computed(() =>
+    buildHomeDashboard({
+      dateKey: getHomeDailyTaskDateKey(new Date()),
+      welcome: homeWelcomePanel.value,
+      grade: homeChallengeGrade.value,
+      semester: homeChallengeSemester.value,
+      reviewDueCount: dueWrongQuestionCount.value,
+      reviewedTodayCount: reviewedWrongQuestionTodayCount.value,
+      dailyTasks: homeDailyTasks.value,
+      knowledgeSummary: homeKnowledgeSpotlight.value.summary,
+      wrongBookSummary: homeWrongBookSpotlight.value.summary,
+      resume: homeStudyResume.value,
+      weakPointKnowledgeTag: activeKnowledgeTagFilter.value,
+      weakPointKnowledgeLessonId: String(lastStudyLessonId.value || "").trim(),
+      practiceScope: buildPracticeScope({
+        gradePracticeGrade: homeGradePracticeGrade.value,
+        gradePracticeSemester: homeGradePracticeSemester.value,
+        subjectPracticeSubject: homeSubjectPracticeSubject.value,
+        subjectPracticeGrade: homeSubjectPracticeGrade.value,
+        subjectPracticeSemester: homeSubjectPracticeSemester.value
+      }),
+      adventureSource: {
+        chapter: homeChallengeChapter.value,
+        chapterStarsEarned: homeAdventureChapterStars.value,
+        chapterTotalStars: CHALLENGE_STAGES.length * 3,
+        currentStage: homeAdventureStage.value,
+        nextStage: homeAdventureStage.value,
+        stageCount: CHALLENGE_STAGES.length
+      },
+      growthSource: {
+        totalStars: homeTotalStarsEarned.value,
+        rewardCount: challengeRewardCount.value,
+        rewardTotal: CHALLENGE_STAGES.length
+      },
+      achievements: challengeAchievements.value
+    })
+  );
 
   const challengeStages = computed(() =>
     getChallengeStageList(selectedChallengeChapterId.value).map((stage, index) => {
@@ -1851,6 +1993,7 @@ export function useTriviaApp() {
 
   function completeStudyLesson() {
     playAudioCue("finish");
+    recordHomeLessonCompletedForToday(selectedStudyLessonId.value);
 
     const next = nextStudyLesson.value;
 
@@ -2210,6 +2353,7 @@ export function useTriviaApp() {
     hydrateStudyRecordBook();
     hydrateHomePracticeSelections();
     advanceHomeWelcomeVariant();
+    refreshHomeDailyTasks();
     void refreshHomeWelcomeCopy();
     void ensureKnowledgeStudyRuntime();
     void loadChallengeCoverage();
@@ -2492,6 +2636,11 @@ export function useTriviaApp() {
       }
     };
 
+    // 首页“今日小任务”的闯关进度：只有真的过关才算今天闯过一关。
+    if (isPassed) {
+      recordHomeStageClearedForToday();
+    }
+
     let unlockedNextStage = false;
 
     if (isPassed && nextStage && !nextProgress.unlockedStageIds.includes(nextStage.id)) {
@@ -2613,6 +2762,10 @@ export function useTriviaApp() {
     homeSubjectPracticeGrade,
     homeSubjectPracticeSemester,
     homeWelcomePanel,
+    homeDashboard,
+    homeTotalStarsEarned,
+    homeDailyTasks,
+    refreshHomeDailyTasks,
     isQuizSettingsOpen,
     isAudioSettingsOpen,
     isLockedStageModalOpen,
@@ -2786,6 +2939,7 @@ export function useTriviaApp() {
     startWrongQuestionReview,
     startSingleWrongQuestionReview,
     handleImportFinished,
+    handleQuizQuestionResolvedWithDailyTasks,
     ensureAudioReady,
     handleEnableAudio,
     handleDraftGradeChange,

@@ -226,6 +226,10 @@ const challengeRewardStatus = computed(() => {
 const newAchievements = computed(() =>
   Array.isArray(props.challengeOutcome?.newAchievements) ? props.challengeOutcome.newAchievements : []
 );
+// 新解锁成就单独给一块明显的反馈区，比塞在“本次成就”一行字里更容易被孩子看见。
+const showAchievementUnlock = computed(
+  () => isChallengeMode.value && props.challengeReady && newAchievements.value.length > 0
+);
 const replayLabel = computed(() => (isChallengeMode.value ? "重玩本关" : "再玩一次"));
 const showNextStageAction = computed(
   () => isChallengeMode.value && props.challengeReady && props.isPassed && Boolean(props.nextStageTitle)
@@ -278,7 +282,7 @@ const nextStageButtonLabel = computed(() => {
       </div>
 
       <!-- Rewards Card -->
-      <div v-if="isChallengeMode && (challengeMissionLabel || challengeRewardStatus || newAchievements.length > 0)" class="bento-card bento-card--rewards">
+      <div v-if="isChallengeMode && (challengeMissionLabel || challengeRewardStatus)" class="bento-card bento-card--rewards">
         <div class="rewards-grid">
           <div v-if="challengeMissionLabel" class="reward-item">
             <span class="reward-label">本关目标</span>
@@ -290,11 +294,25 @@ const nextStageButtonLabel = computed(() => {
             <strong class="reward-value">{{ challengeOutcome?.rewardGlyph }} {{ challengeOutcome?.rewardName }}</strong>
             <span class="reward-note">{{ challengeRewardStatus }}</span>
           </div>
-          <div v-if="newAchievements.length > 0" class="reward-item">
-            <span class="reward-label">本次成就</span>
-            <strong class="reward-value">{{ newAchievements.map((a) => `${a.glyph} ${a.name}`).join(" · ") }}</strong>
-          </div>
         </div>
+      </div>
+
+      <!-- 新成就解锁：明显的反馈，但不引入动画库 -->
+      <div v-if="showAchievementUnlock" class="bento-card bento-card--unlock" role="status" aria-live="polite">
+        <span class="unlock-spark unlock-spark--1" aria-hidden="true">✨</span>
+        <span class="unlock-spark unlock-spark--2" aria-hidden="true">⭐</span>
+        <span class="unlock-spark unlock-spark--3" aria-hidden="true">✨</span>
+
+        <p class="unlock-heading">🏅 新成就解锁</p>
+        <ul class="unlock-list">
+          <li v-for="achievement in newAchievements" :key="achievement.id" class="unlock-item">
+            <span class="unlock-glyph" aria-hidden="true">{{ achievement.glyph }}</span>
+            <div class="unlock-copy">
+              <strong class="unlock-name">{{ achievement.name }}</strong>
+              <span class="unlock-summary">{{ achievement.summary }}</span>
+            </div>
+          </li>
+        </ul>
       </div>
 
       <dl class="result-stats" aria-label="本轮成绩">
@@ -532,6 +550,141 @@ const nextStageButtonLabel = computed(() => {
   color: var(--color-ink-soft, #5b6984);
 }
 
+/* 新成就解锁卡：星光 + 弹入 + 轻微放大，不引入动画库。 */
+.bento-card--unlock {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(135deg, rgba(255, 249, 224, 0.96) 0%, rgba(255, 240, 224, 0.92) 100%);
+  border-color: rgba(255, 184, 42, 0.42);
+  box-shadow:
+    0 18px 32px -28px rgba(198, 120, 20, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.94);
+  animation:
+    bento-pop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) both,
+    unlock-swell 420ms cubic-bezier(0.34, 1.56, 0.64, 1) 0.12s both;
+  animation-delay: 0.15s;
+}
+
+.bento-card--unlock:hover {
+  transform: translateY(-2px) scale(1.004);
+  box-shadow:
+    0 22px 38px -28px rgba(198, 120, 20, 0.56),
+    inset 0 1px 0 rgba(255, 255, 255, 0.96);
+}
+
+@keyframes unlock-swell {
+  0% {
+    transform: scale(0.9);
+  }
+
+  60% {
+    transform: scale(1.025);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+.unlock-heading {
+  margin: 0 0 12px;
+  color: #a46705;
+  font-family: "ZCOOL KuaiLe", "Baloo 2", sans-serif;
+  font-size: 1.16rem;
+  letter-spacing: 0.02em;
+}
+
+.unlock-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.unlock-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 184, 42, 0.32);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.94);
+}
+
+.unlock-glyph {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 46px;
+  height: 46px;
+  border-radius: 16px;
+  background: linear-gradient(150deg, rgba(255, 255, 255, 0.96) 0%, rgba(255, 214, 128, 0.92) 100%);
+  color: var(--color-ink, #24324a);
+  font-size: 1.3rem;
+  font-weight: 900;
+  box-shadow:
+    0 10px 18px -16px rgba(198, 120, 20, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.unlock-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.unlock-name {
+  color: var(--color-ink, #24324a);
+  font-size: 1.08rem;
+  font-weight: 900;
+}
+
+.unlock-summary {
+  color: var(--color-ink-soft, #5b6984);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.unlock-spark {
+  position: absolute;
+  color: rgba(255, 184, 42, 0.85);
+  font-size: 1.05rem;
+  pointer-events: none;
+  animation: unlock-sparkle 1.5s ease-in-out infinite alternate;
+}
+
+.unlock-spark--1 {
+  top: 14px;
+  right: 18px;
+}
+
+.unlock-spark--2 {
+  top: 42px;
+  right: 44px;
+  animation-delay: 0.25s;
+}
+
+.unlock-spark--3 {
+  bottom: 16px;
+  left: 16px;
+  animation-delay: 0.5s;
+}
+
+@keyframes unlock-sparkle {
+  from {
+    opacity: 0.35;
+    transform: scale(0.86) rotate(-8deg);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1.14) rotate(8deg);
+  }
+}
+
 .result-stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
@@ -725,6 +878,27 @@ const nextStageButtonLabel = computed(() => {
   }
   .result-action-btn {
     width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bento-card,
+  .bento-card--unlock,
+  .unlock-spark,
+  .unlock-callout,
+  .star--filled,
+  .burst,
+  .result-footer {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .bento-card--unlock {
+    transform: none;
+  }
+
+  .bento-card--unlock:hover {
+    transform: none;
   }
 }
 </style>

@@ -2,7 +2,7 @@ const { test, expect } = require("@playwright/test");
 
 // 场景 1：Router 第一阶段（tools / settings 迁入 RouterView）的回归保护。
 // 这些断言正是上一轮只能靠人工浏览器烟测发现的风险点。
-const HOME_ENTRY = /^按年级练/;
+const HOME_ENTRY = /^自由练习/;
 // 分栏导航的 aria-label 挂在 <aside> 上（role=complementary），里面的 <nav> 本身没有名字。
 const TOOLS_NAV_NAME = "工具导航";
 const SETTINGS_NAV_NAME = "设置导航";

@@ -157,6 +157,8 @@ function getChallengeAchievementMetrics(progress = {}, totalStageCount = 7) {
   };
 }
 
+// 每个成就除了给文案，还给一份“可比较的进度”，首页据此挑出“最接近完成”的那个，
+// 不用去解析中文数字，也不做模糊打分。
 function evaluateAchievement(achievementId, metrics, runContext = {}, existingState = null) {
   const hasExistingUnlock = Boolean(existingState?.unlockedAt);
   const timedStageClearedWithoutTimeout =
@@ -164,10 +166,13 @@ function evaluateAchievement(achievementId, metrics, runContext = {}, existingSt
     normalizeAchievementCount(runContext?.stage?.timeLimitSeconds, 0) > 0 &&
     Array.isArray(runContext?.questionResults) &&
     !runContext.questionResults.includes("timeout");
+  const runAccuracy = normalizeAchievementCount(runContext?.result?.accuracyPercent, 0);
 
   if (achievementId === "first-clear") {
     return {
       isUnlocked: hasExistingUnlock || metrics.clearedStageCount >= 1,
+      progressValue: Math.min(metrics.clearedStageCount, 1),
+      progressTarget: 1,
       progressText:
         metrics.clearedStageCount >= 1
           ? `已通过 ${metrics.clearedStageCount} 关`
@@ -176,25 +181,35 @@ function evaluateAchievement(achievementId, metrics, runContext = {}, existingSt
   }
 
   if (achievementId === "perfect-accuracy") {
+    const bestAccuracy = Math.min(100, Math.max(metrics.maxAccuracy, runAccuracy));
+
     return {
-      isUnlocked: hasExistingUnlock || metrics.maxAccuracy >= 100 || normalizeAchievementCount(runContext?.result?.accuracyPercent, 0) >= 100,
+      isUnlocked: hasExistingUnlock || metrics.maxAccuracy >= 100 || runAccuracy >= 100,
+      progressValue: Math.min(bestAccuracy, 100),
+      progressTarget: 100,
       progressText:
-        metrics.maxAccuracy >= 100 || normalizeAchievementCount(runContext?.result?.accuracyPercent, 0) >= 100
+        bestAccuracy >= 100
           ? "任意一关已达到 100%"
-          : `当前最高正确率 ${metrics.maxAccuracy}%`
+          : `当前最高正确率 ${bestAccuracy}%`
     };
   }
 
   if (achievementId === "timed-keeper") {
+    const hasTimedRun = hasExistingUnlock || timedStageClearedWithoutTimeout;
+
     return {
-      isUnlocked: hasExistingUnlock || timedStageClearedWithoutTimeout,
-      progressText: hasExistingUnlock || timedStageClearedWithoutTimeout ? "已经拿下一次 0 超时通关" : "通过任意限时关卡且保持 0 次超时"
+      isUnlocked: hasTimedRun,
+      progressValue: hasTimedRun ? 1 : 0,
+      progressTarget: 1,
+      progressText: hasTimedRun ? "已经拿下一次 0 超时通关" : "通过任意限时关卡且保持 0 次超时"
     };
   }
 
   if (achievementId === "collector-3") {
     return {
       isUnlocked: hasExistingUnlock || metrics.rewardCount >= 3,
+      progressValue: Math.min(metrics.rewardCount, 3),
+      progressTarget: 3,
       progressText: `收藏 ${Math.min(metrics.rewardCount, 3)} / 3`
     };
   }
@@ -202,6 +217,8 @@ function evaluateAchievement(achievementId, metrics, runContext = {}, existingSt
   if (achievementId === "route-unlocked") {
     return {
       isUnlocked: hasExistingUnlock || metrics.unlockedStageCount >= metrics.totalStageCount,
+      progressValue: Math.min(metrics.unlockedStageCount, metrics.totalStageCount),
+      progressTarget: metrics.totalStageCount,
       progressText: `解锁 ${Math.min(metrics.unlockedStageCount, metrics.totalStageCount)} / ${metrics.totalStageCount}`
     };
   }
@@ -209,6 +226,8 @@ function evaluateAchievement(achievementId, metrics, runContext = {}, existingSt
   if (achievementId === "route-cleared") {
     return {
       isUnlocked: hasExistingUnlock || metrics.clearedStageCount >= metrics.totalStageCount,
+      progressValue: Math.min(metrics.clearedStageCount, metrics.totalStageCount),
+      progressTarget: metrics.totalStageCount,
       progressText: `通关 ${Math.min(metrics.clearedStageCount, metrics.totalStageCount)} / ${metrics.totalStageCount}`
     };
   }
@@ -216,6 +235,8 @@ function evaluateAchievement(achievementId, metrics, runContext = {}, existingSt
   if (achievementId === "reward-complete") {
     return {
       isUnlocked: hasExistingUnlock || metrics.rewardCount >= metrics.totalStageCount,
+      progressValue: Math.min(metrics.rewardCount, metrics.totalStageCount),
+      progressTarget: metrics.totalStageCount,
       progressText: `收藏 ${Math.min(metrics.rewardCount, metrics.totalStageCount)} / ${metrics.totalStageCount}`
     };
   }
@@ -223,12 +244,16 @@ function evaluateAchievement(achievementId, metrics, runContext = {}, existingSt
   if (achievementId === "route-perfect") {
     return {
       isUnlocked: hasExistingUnlock || metrics.perfectStageCount >= metrics.totalStageCount,
+      progressValue: Math.min(metrics.perfectStageCount, metrics.totalStageCount),
+      progressTarget: metrics.totalStageCount,
       progressText: `满星 ${Math.min(metrics.perfectStageCount, metrics.totalStageCount)} / ${metrics.totalStageCount}`
     };
   }
 
   return {
     isUnlocked: hasExistingUnlock,
+    progressValue: 0,
+    progressTarget: 0,
     progressText: ""
   };
 }
@@ -259,6 +284,8 @@ export function evaluateChallengeAchievements(
       isUnlocked: evaluation.isUnlocked,
       unlockedAt: nextStates[achievement.id]?.unlockedAt || "",
       fresh: evaluation.isUnlocked && !wasUnlocked,
+      progressValue: evaluation.progressValue,
+      progressTarget: evaluation.progressTarget,
       progressText: evaluation.progressText
     };
   });
