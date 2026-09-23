@@ -174,6 +174,8 @@ export default {
         v-model:subject-practice-semester="homeSubjectPracticeSemester"
         :home-dashboard="homeDashboard"
         :is-challenge-loading="isLoading"
+        :is-daily-chest-claiming="isDailyChestClaiming"
+        :daily-chest-error-message="dailyChestErrorMessage"
         @start-challenge="startHomeChallenge"
         @open-challenge-world="openChallengeWorld"
         @start-grade-practice="startHomeGradePractice"
@@ -183,6 +185,7 @@ export default {
         @open-knowledge-study="openStudyMapView"
         @open-wrong-review="openWrongBookView"
         @open-backpack="openBackpack"
+        @claim-daily-chest="claimDailyChest"
       />
 
       <KnowledgeStudyView

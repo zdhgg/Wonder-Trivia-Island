@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref } from "vue";
 import HomeAdventureCard from "../components/HomeAdventureCard.vue";
+import HomeDailyChest from "../components/HomeDailyChest.vue";
 import HomeDailyTasks from "../components/HomeDailyTasks.vue";
 import HomeExploreGrid from "../components/HomeExploreGrid.vue";
 import HomeGrowthSummary from "../components/HomeGrowthSummary.vue";
@@ -25,6 +26,14 @@ const props = defineProps({
   isChallengeLoading: {
     type: Boolean,
     default: false
+  },
+  isDailyChestClaiming: {
+    type: Boolean,
+    default: false
+  },
+  dailyChestErrorMessage: {
+    type: String,
+    default: ""
   }
 });
 
@@ -37,7 +46,8 @@ const emit = defineEmits([
   "open-knowledge-study",
   "open-wrong-review",
   "start-weak-point-practice",
-  "open-backpack"
+  "open-backpack",
+  "claim-daily-chest"
 ]);
 
 const isWeakPointPickerOpen = ref(false);
@@ -47,6 +57,7 @@ const adventure = computed(() => props.homeDashboard.adventure || {});
 const weakPoint = computed(() => props.homeDashboard.weakPoint || {});
 const teacherTips = computed(() => props.homeDashboard.teacherTips || []);
 const dailyTasks = computed(() => props.homeDashboard.dailyTasks || []);
+const dailyChest = computed(() => props.homeDashboard.dailyChest || {});
 const exploreItems = computed(() => props.homeDashboard.exploreItems || []);
 const practiceScope = computed(() => props.homeDashboard.practiceScope || []);
 
@@ -141,7 +152,17 @@ function handleTeacherTip(tip) {
     />
 
     <div class="home-board__support">
-      <HomeDailyTasks :tasks="dailyTasks" @select-task="handleTaskSelect" />
+      <div class="home-board__stack">
+        <HomeDailyTasks :tasks="dailyTasks" @select-task="handleTaskSelect" />
+
+        <!-- 今日宝箱跟在今日小任务下方：3/3 才解锁，每个自然日只能领一次。 -->
+        <HomeDailyChest
+          :chest="dailyChest"
+          :is-claiming="props.isDailyChestClaiming"
+          :error-message="props.dailyChestErrorMessage"
+          @claim="emit('claim-daily-chest')"
+        />
+      </div>
 
       <HomeGrowthSummary :growth="props.homeDashboard.growth" @open-backpack="emit('open-backpack')" />
     </div>
@@ -187,6 +208,13 @@ function handleTeacherTip(tip) {
   align-items: start;
 }
 
+/* 今日宝箱紧跟在今日小任务下面，两者共用一个窄列。 */
+.home-board__stack {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
 @media (max-width: 1040px) {
   .home-board__support {
     grid-template-columns: minmax(0, 1fr);
@@ -199,6 +227,10 @@ function handleTeacherTip(tip) {
   }
 
   .home-board__support {
+    gap: 12px;
+  }
+
+  .home-board__stack {
     gap: 12px;
   }
 }

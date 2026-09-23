@@ -9,6 +9,10 @@ import {
   fetchRandomQuestions,
   generateHomeWelcomeMessage
 } from "../services/questionsApi";
+import {
+  claimDailyChest as requestDailyChestClaim,
+  fetchGrowthProgress
+} from "../services/growthProgressApi";
 import { SETTINGS_DEFAULT_SECTION_ID, SETTINGS_SECTION_IDS, getSettingsSectionById, getSettingsSectionByRouteSlug } from "../components/settings/settingsSections";
 import { TOOL_DEFAULT_SECTION_ID, TOOL_SECTION_ID, TOOL_SECTION_IDS, getToolSectionById, getToolSectionByRouteSlug } from "../components/tools/toolSections";
 import { useAudioStore } from "../stores/useAudioStore";
@@ -44,6 +48,12 @@ import {
   resolveReviewedQuestionIdForToday,
   writeHomeDailyTasks
 } from "../utils/homeDailyTasks";
+import {
+  createEmptyGrowthProgress,
+  normalizeGrowthProgress,
+  readGrowthProgressCache,
+  writeGrowthProgressCache
+} from "../utils/growthProgress";
 import { createAppRouting } from "./app/useAppRouting";
 import { createHomeSelections } from "./app/useHomeSelections";
 import { createStudyRecordRuntime } from "./app/useStudyRecordRuntime";
@@ -1152,8 +1162,92 @@ export function useTriviaApp() {
   watch(currentView, (view) => {
     if (view === VIEW_MODE.HOME) {
       refreshHomeDailyTasks();
+      void syncGrowthProgressFromServer();
     }
   });
+
+  // ---------------------------------------------------------------------------
+  // 长期成长账本（独立的 growth progress）：
+  // - 今日小任务仍然只写本地日进度，长期奖励只写在 growth_progress 这一路；
+  // - 服务端账本是唯一事实来源，本地只留一份镜像用于服务端取不回来时兜底显示；
+  // - “今日宝箱”每个 profile + 本地自然日只能领一次，幂等由服务端保证。
+  // ---------------------------------------------------------------------------
+  const growthProgress = ref(createEmptyGrowthProgress());
+  const isDailyChestClaiming = ref(false);
+  const dailyChestErrorMessage = ref("");
+  const justClaimedDailyChestDateKey = ref("");
+  let growthProgressRequestController = null;
+
+  function applyGrowthProgress(nextProgress) {
+    growthProgress.value = normalizeGrowthProgress(nextProgress);
+    writeGrowthProgressCache(growthProgress.value);
+    return growthProgress.value;
+  }
+
+  function hydrateGrowthProgress() {
+    growthProgress.value = readGrowthProgressCache();
+  }
+
+  async function syncGrowthProgressFromServer() {
+    // 同一时刻只保留最新一次同步，避免旧响应把新状态覆盖回去。
+    growthProgressRequestController?.abort();
+
+    const controller = new AbortController();
+
+    growthProgressRequestController = controller;
+
+    try {
+      const payload = await fetchGrowthProgress(controller.signal);
+
+      applyGrowthProgress(payload?.growthProgress);
+      return payload;
+    } catch (error) {
+      // 取不回来就保留本地镜像，首页不因为一次网络失败退回“未领取”。
+      if (error?.name !== "AbortError") {
+        growthProgress.value = readGrowthProgressCache();
+      }
+
+      return null;
+    } finally {
+      if (growthProgressRequestController === controller) {
+        growthProgressRequestController = null;
+      }
+    }
+  }
+
+  // 前端唯一的领取入口：
+  //   1. homeDashboard.dailyChest.canClaim 已经在“今天的 3 个任务全部完成且今天没领过”时才为 true；
+  //   2. 领取中不重复发起请求；
+  //   3. 成功后再按服务端返回的账本回写，重复点击也会被服务端按 dateKey 挡掉。
+  async function claimDailyChest() {
+    dailyChestErrorMessage.value = "";
+
+    if (!homeDashboard.value.dailyChest.canClaim || isDailyChestClaiming.value) {
+      return null;
+    }
+
+    const dateKey = getHomeDailyTaskDateKey(new Date());
+
+    isDailyChestClaiming.value = true;
+
+    try {
+      const payload = await requestDailyChestClaim({ dateKey });
+
+      applyGrowthProgress(payload?.growthProgress);
+      // 服务端说“今天已经领过”时只对齐状态，不再提示新获得印章。
+      justClaimedDailyChestDateKey.value = payload?.alreadyClaimed ? "" : dateKey;
+
+      return payload;
+    } catch (error) {
+      if (error?.name !== "AbortError") {
+        dailyChestErrorMessage.value = error?.message || "宝箱暂时打不开，待会儿再试一次。";
+      }
+
+      return null;
+    } finally {
+      isDailyChestClaiming.value = false;
+    }
+  }
 
   const activeQuestionCountValue = computed(() =>
     isChallengeMode.value ? currentStage.value.questionCount : selectedQuestionCountValue.value
@@ -1502,6 +1596,9 @@ export function useTriviaApp() {
       semester: homeChallengeSemester.value,
       reviewDueCount: dueWrongQuestionCount.value,
       dailyTasks: homeDailyTasks.value,
+      // 今日宝箱的领取状态来自独立账本，任务进度仍然只来自 homeDailyTasks。
+      growthProgress: growthProgress.value,
+      justClaimedDailyChest: justClaimedDailyChestDateKey.value === getHomeDailyTaskDateKey(new Date()),
       knowledgeSummary: homeKnowledgeSpotlight.value.summary,
       wrongBookSummary: homeWrongBookSpotlight.value.summary,
       resume: homeStudyResume.value,
@@ -2382,6 +2479,7 @@ export function useTriviaApp() {
     hydrateChallengeProgress();
     hydrateStudyRecordBook();
     hydrateHomePracticeSelections();
+    hydrateGrowthProgress();
     advanceHomeWelcomeVariant();
     refreshHomeDailyTasks();
     // 首次进首页只更新本地欢迎状态：AI welcome 暂停自动生成（无 UI 消费者）。
@@ -2396,6 +2494,10 @@ export function useTriviaApp() {
 
     void (async () => {
       await syncStudyRecordBookFromServer();
+    })();
+
+    void (async () => {
+      await syncGrowthProgressFromServer();
     })();
 
     void (async () => {
@@ -2503,6 +2605,8 @@ export function useTriviaApp() {
 
   onBeforeUnmount(() => {
     clearHomeWelcomeRequest();
+    growthProgressRequestController?.abort();
+    growthProgressRequestController = null;
     disposeQuizSession();
     disposeChallengeRuntime();
     disposeStudyRecordRuntime();
@@ -2795,6 +2899,11 @@ export function useTriviaApp() {
     homeDashboard,
     homeDailyTasks,
     refreshHomeDailyTasks,
+    growthProgress,
+    isDailyChestClaiming,
+    dailyChestErrorMessage,
+    syncGrowthProgressFromServer,
+    claimDailyChest,
     isQuizSettingsOpen,
     isAudioSettingsOpen,
     isLockedStageModalOpen,

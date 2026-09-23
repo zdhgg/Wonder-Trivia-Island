@@ -4,6 +4,7 @@ import {
   buildDailyTasks,
   buildHomeAdvice,
   buildHomeAdventure,
+  buildHomeDailyChest,
   buildHomeDashboard,
   buildHomeGrowth,
   buildPracticeScope,
@@ -432,6 +433,140 @@ describe("homeDashboard · 今日小任务与老师提醒", () => {
     expect(tips).toHaveLength(1);
     expect(tips[0].target).toBe("knowledge-study");
     expect(tips[0].title).toContain("角的初步认识");
+  });
+});
+
+describe("homeDashboard · 今日宝箱", () => {
+  const TODAY = "2026-09-22";
+
+  function buildTasks({ stagesCleared = 0, reviewedCount = 0, lessonCount = 0 } = {}) {
+    return buildDailyTasks({
+      tasks: {
+        stagesCleared,
+        reviewedQuestionIds: Array.from({ length: reviewedCount }, (unused, index) => String(100 + index)),
+        completedLessonIds: Array.from({ length: lessonCount }, (unused, index) => `lesson-${index}`)
+      }
+    });
+  }
+
+  function buildProgress({ dateKeys = [], totalDailyChests = dateKeys.length } = {}) {
+    return {
+      version: 1,
+      totalDailyChests,
+      dailyClaims: Object.fromEntries(
+        dateKeys.map((dateKey) => [dateKey, { claimedAt: `${dateKey}T08:00:00.000Z` }])
+      )
+    };
+  }
+
+  it("2 / 3 个任务没做完时宝箱未解锁，也不能领取", () => {
+    const chest = buildHomeDailyChest({
+      tasks: buildTasks({ stagesCleared: 1, reviewedCount: 3 }),
+      growthProgress: buildProgress(),
+      dateKey: TODAY
+    });
+
+    expect(chest.completedCount).toBe(2);
+    expect(chest.totalCount).toBe(3);
+    expect(chest.isUnlocked).toBe(false);
+    expect(chest.canClaim).toBe(false);
+    expect(chest.statusLabel).toBe("宝箱未解锁");
+    expect(chest.progressText).toBe("2 / 3");
+  });
+
+  it("3 / 3 全部完成时可以领取", () => {
+    const chest = buildHomeDailyChest({
+      tasks: buildTasks({ stagesCleared: 1, reviewedCount: 3, lessonCount: 1 }),
+      growthProgress: buildProgress(),
+      dateKey: TODAY
+    });
+
+    expect(chest.completedCount).toBe(3);
+    expect(chest.isUnlocked).toBe(true);
+    expect(chest.canClaim).toBe(true);
+    expect(chest.isClaimed).toBe(false);
+    expect(chest.statusLabel).toBe("可领取");
+    expect(chest.actionLabel).toBe("领取今日宝箱");
+  });
+
+  it("今天已经领过时显示今日已领取，按钮不再出现", () => {
+    const chest = buildHomeDailyChest({
+      tasks: buildTasks({ stagesCleared: 1, reviewedCount: 3, lessonCount: 1 }),
+      growthProgress: buildProgress({ dateKeys: [TODAY] }),
+      dateKey: TODAY
+    });
+
+    expect(chest.isClaimed).toBe(true);
+    expect(chest.canClaim).toBe(false);
+    expect(chest.statusLabel).toBe("今日已领取");
+    expect(chest.stampCount).toBe(1);
+  });
+
+  it("昨天领过不影响今天：仍然可以领取", () => {
+    const chest = buildHomeDailyChest({
+      tasks: buildTasks({ stagesCleared: 1, reviewedCount: 3, lessonCount: 1 }),
+      growthProgress: buildProgress({ dateKeys: ["2026-09-21"] }),
+      dateKey: TODAY
+    });
+
+    expect(chest.isClaimed).toBe(false);
+    expect(chest.canClaim).toBe(true);
+    expect(chest.stampCount).toBe(1);
+  });
+
+  it("刚领取成功时给出一次性的探险印章提示", () => {
+    const claimedProgress = buildProgress({ dateKeys: [TODAY] });
+    const chest = buildHomeDailyChest({
+      tasks: buildTasks({ stagesCleared: 1, reviewedCount: 3, lessonCount: 1 }),
+      growthProgress: claimedProgress,
+      dateKey: TODAY,
+      justClaimed: true
+    });
+
+    expect(chest.showStampReward).toBe(true);
+    expect(chest.stampText).toBe("获得 1 枚探险印章");
+
+    // 没领到的场景绝不提示奖励。
+    const lockedChest = buildHomeDailyChest({
+      tasks: buildTasks({ reviewedCount: 1 }),
+      growthProgress: buildProgress(),
+      dateKey: TODAY,
+      justClaimed: true
+    });
+
+    expect(lockedChest.showStampReward).toBe(false);
+  });
+
+  it("组装后的首页带上今日宝箱，成长区同时给出累计印章文案", () => {
+    const dashboard = buildHomeDashboard({
+      dateKey: TODAY,
+      dailyTasks: { stagesCleared: 1, reviewedQuestionIds: ["1", "2", "3"], completedLessonIds: ["lesson-1"] },
+      growthProgress: buildProgress({ dateKeys: ["2026-09-21", TODAY] }),
+      growthSource: { totalStars: 3, starTotal: 21, rewardCount: 1, rewardTotal: 7 },
+      achievements: ACHIEVEMENTS
+    });
+
+    expect(dashboard.dailyChest.canClaim).toBe(false);
+    expect(dashboard.dailyChest.statusLabel).toBe("今日已领取");
+    expect(dashboard.growth.stampCount).toBe(2);
+    expect(dashboard.growth.stampText).toBe("累计开启 2 个今日宝箱 · 2 枚探险印章");
+    // 三个原有指标口径完全没被成长账本影响。
+    expect(dashboard.growth.starText).toBe("3 / 21");
+    expect(dashboard.growth.rewardText).toBe("1 / 7");
+    expect(dashboard.growth.achievementText).toBe("1 / 3");
+  });
+
+  it("没有成长账本时宝箱按未领取处理，累计依旧为 0", () => {
+    const dashboard = buildHomeDashboard({
+      dateKey: TODAY,
+      dailyTasks: { stagesCleared: 1, reviewedQuestionIds: [], completedLessonIds: [] },
+      achievements: []
+    });
+
+    expect(dashboard.dailyChest.isClaimed).toBe(false);
+    expect(dashboard.dailyChest.canClaim).toBe(false);
+    expect(dashboard.growth.stampCount).toBe(0);
+    expect(dashboard.growth.stampText).toBe("累计开启 0 个今日宝箱 · 0 枚探险印章");
   });
 });
 

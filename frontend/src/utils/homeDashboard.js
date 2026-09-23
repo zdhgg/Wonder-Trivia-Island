@@ -9,6 +9,7 @@ import {
   getWeakPoints
 } from "./studyWeakPoints";
 import { countChapterRewards, evaluateChapterAchievements } from "./challengeAchievements";
+import { getDailyChestClaim, getExplorerStampCount } from "./growthProgress";
 import { CHALLENGE_STAGES } from "../composables/challenge/challengeConfig";
 
 const CHINESE_DIGITS = Object.freeze(["零", "一", "二", "三", "四", "五", "六", "七", "八", "九"]);
@@ -212,6 +213,7 @@ export function buildHomeGrowth({
   starTotal = 0,
   rewardCount = 0,
   rewardTotal = 0,
+  stampCount = 0,
   achievements = []
 } = {}) {
   const achievementList = Array.isArray(achievements) ? achievements : [];
@@ -219,6 +221,8 @@ export function buildHomeGrowth({
   const nextAchievement = selectNextAchievement(achievementList);
   const normalizedStars = toNonNegativeInteger(totalStars);
   const normalizedStarTotal = toNonNegativeInteger(starTotal);
+  // 探险印章是长期账本里的独立累计数，不参与上面三个“本章指标”的口径。
+  const normalizedStampCount = toNonNegativeInteger(stampCount);
 
   return {
     totalStars: normalizedStars,
@@ -231,6 +235,8 @@ export function buildHomeGrowth({
     achievementCount: unlockedCount,
     achievementTotal: achievementList.length,
     achievementText: `${unlockedCount} / ${achievementList.length}`,
+    stampCount: normalizedStampCount,
+    stampText: `累计开启 ${normalizedStampCount} 个今日宝箱 · ${normalizedStampCount} 枚探险印章`,
     nextAchievement,
     allAchievementsDone: achievementList.length > 0 && unlockedCount >= achievementList.length
   };
@@ -445,6 +451,51 @@ export function buildDailyTasks({ tasks = {} } = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// 今日宝箱：3 个今日小任务全做完才解锁，每个本地自然日只能领一次。
+//
+// 任务完成口径直接复用 buildDailyTasks 的结果，不新增第二套判定；
+// 领取状态来自独立的长期成长账本（growthProgress），和任务进度互不写入。
+// ---------------------------------------------------------------------------
+export function buildHomeDailyChest({
+  tasks = [],
+  growthProgress = {},
+  dateKey = "",
+  justClaimed = false
+} = {}) {
+  const taskList = Array.isArray(tasks) ? tasks : [];
+  const totalCount = taskList.length;
+  const completedCount = taskList.filter((task) => Boolean(task?.done)).length;
+  const remainingCount = Math.max(0, totalCount - completedCount);
+  const isUnlocked = totalCount > 0 && completedCount >= totalCount;
+  const normalizedDateKey = normalizeText(dateKey, 20);
+  const isClaimed = Boolean(getDailyChestClaim(growthProgress, normalizedDateKey));
+  const stampCount = getExplorerStampCount(growthProgress);
+
+  return {
+    dateKey: normalizedDateKey,
+    completedCount,
+    totalCount,
+    remainingCount,
+    progressText: `${completedCount} / ${totalCount}`,
+    isUnlocked,
+    isClaimed,
+    canClaim: isUnlocked && !isClaimed,
+    statusTone: isClaimed ? "claimed" : isUnlocked ? "ready" : "locked",
+    statusLabel: isClaimed ? "今日已领取" : isUnlocked ? "可领取" : "宝箱未解锁",
+    hintText: isClaimed
+      ? "今天的宝箱已经打开啦，明天做完小任务再来。"
+      : isUnlocked
+        ? "3 个今日小任务都完成了，快打开宝箱吧。"
+        : `再完成 ${remainingCount} 个今日小任务，就能打开宝箱。`,
+    actionLabel: "领取今日宝箱",
+    // 领取成功后的一次性提示，只在这一天真的领到时出现。
+    stampText: "获得 1 枚探险印章",
+    showStampReward: Boolean(justClaimed) && isClaimed,
+    stampCount
+  };
+}
+
+// ---------------------------------------------------------------------------
 // 首页成长口径：某一章的星星 / 收藏 / 成就，全部从“这一个章节”的 progress 算出来。
 //
 // 关键点：只认传进来的 chapterProgress（通常来自 homeAdventureChapterProgress），
@@ -566,6 +617,8 @@ export function buildHomeDashboard({
   semester = "",
   reviewDueCount = 0,
   dailyTasks = {},
+  growthProgress = {},
+  justClaimedDailyChest = false,
   knowledgeSummary = "",
   wrongBookSummary = "",
   resume = null,
@@ -584,8 +637,12 @@ export function buildHomeDashboard({
     lessonId: normalizeText(weakPointKnowledgeLessonId, 60)
   };
   const adventure = buildHomeAdventure(adventureSource);
+  // 今日宝箱和今日小任务共用同一份任务判定结果，避免两处口径漂移。
+  const dailyTaskItems = buildDailyTasks({ tasks: dailyTasks });
+  const normalizedDateKey = normalizeText(dateKey, 20);
   const growth = buildHomeGrowth({
     ...growthSource,
+    stampCount: getExplorerStampCount(growthProgress),
     achievements
   });
   // 行动建议是唯一的“今天先做什么”口径，AI 欢迎文案不参与决策。
@@ -597,7 +654,7 @@ export function buildHomeDashboard({
   });
 
   return {
-    dateKey: normalizeText(dateKey, 20),
+    dateKey: normalizedDateKey,
     greeting: {
       eyebrow: normalizeText(welcome.eyebrow, 20) || "欢迎回来",
       title: normalizeText(welcome.title, 40) || "今天想去哪座岛看看？",
@@ -610,7 +667,13 @@ export function buildHomeDashboard({
     advice,
     adventure,
     growth,
-    dailyTasks: buildDailyTasks({ tasks: dailyTasks }),
+    dailyTasks: dailyTaskItems,
+    dailyChest: buildHomeDailyChest({
+      tasks: dailyTaskItems,
+      growthProgress,
+      dateKey: normalizedDateKey,
+      justClaimed: justClaimedDailyChest
+    }),
     teacherTips: buildTeacherTips({
       reviewDueCount,
       weakPointContext,

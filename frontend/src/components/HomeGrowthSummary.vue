@@ -43,6 +43,11 @@ const emit = defineEmits(["open-backpack"]);
       </li>
     </ul>
 
+    <p class="growth-summary__stamps">
+      <span class="growth-summary__stamps-glyph" aria-hidden="true">🧭</span>
+      <span class="growth-summary__stamps-text">{{ growth.stampText }}</span>
+    </p>
+
     <div v-if="growth.nextAchievement" class="growth-summary__next">
       <span class="growth-summary__next-label">下一成就</span>
       <div class="growth-summary__next-body">
@@ -173,6 +178,29 @@ const emit = defineEmits(["open-backpack"]);
   color: var(--color-ink-soft);
   font-size: 0.74rem;
   font-weight: 700;
+}
+
+/* 长期成长的一条轻量信息：不做第四个指标卡，只写一行累计数。 */
+.growth-summary__stamps {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 14px;
+  background: rgba(184, 242, 223, 0.28);
+  color: var(--color-ink-soft);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.growth-summary__stamps-glyph {
+  font-size: 0.94rem;
+  line-height: 1;
+}
+
+.growth-summary__stamps-text {
+  min-width: 0;
 }
 
 .growth-summary__next {

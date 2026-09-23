@@ -4,6 +4,7 @@ const morgan = require("morgan");
 const { closeDatabaseConnection, createDatabaseConnection, initializeDatabase } = require("./db/database");
 const { ensureQuestionsTable } = require("./questions/repository");
 const challengeProgressRouter = require("./routes/challengeProgress");
+const growthProgressRouter = require("./routes/growthProgress");
 const questionsRouter = require("./routes/questions");
 const studyRecordBookRouter = require("./routes/studyRecordBook");
 
@@ -83,6 +84,7 @@ app.get("/api/health", (req, res) => {
 
 app.use("/api/questions", attachDatabaseConnection, questionsRouter);
 app.use("/api/challenge-progress", challengeProgressRouter);
+app.use("/api/growth-progress", growthProgressRouter);
 app.use("/api/study-record-book", studyRecordBookRouter);
 
 app.use((req, res) => {

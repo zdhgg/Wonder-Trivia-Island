@@ -1,0 +1,69 @@
+name: CI
+
+# 只在 main 上把关：push 到 main 与所有针对 main 的 PR。
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+# 同一分支的旧运行自动让位，避免排队堆积。
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: 前端测试 / 后端测试 / 构建 / E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      # 全部校验都不依赖真实 AI 能力：后端测试自带测试用 key，
+      # E2E 也只跑首页 / 题库 / 错题本这条不调模型的链路。
+      CI: "true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+
+      # 三个 package 各自有 lockfile，一律用 npm ci 保证可复现安装。
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install backend dependencies
+        run: npm --prefix backend ci
+
+      - name: Install frontend dependencies
+        run: npm --prefix frontend ci
+
+      - name: Frontend unit tests
+        run: npm --prefix frontend run test
+
+      - name: Backend tests
+        run: npm --prefix backend test
+
+      - name: Frontend build
+        run: npm --prefix frontend run build
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: End-to-end tests
+        run: npm run e2e
+
+      - name: Upload Playwright artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: tmp/e2e/artifacts
+          if-no-files-found: ignore
+          retention-days: 7

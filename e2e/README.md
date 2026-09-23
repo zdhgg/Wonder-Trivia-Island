@@ -45,7 +45,7 @@ e2e/e2e-environment.js        # 端口/路径/隔离校验的唯一事实来源
 e2e/prepare-e2e-database.js   # 重建隔离测试库（单一职责）
 e2e/global-setup.js           # 每次运行前调用上面的重建
 e2e/support/quiz-flow.js      # 练习流程共享辅助（识别当前题目、确定性选择选项）
-e2e/specs/                    # 三组核心场景
+e2e/specs/                    # 四组核心场景
 ```
 
 ## 场景
@@ -56,6 +56,9 @@ e2e/specs/                    # 三组核心场景
    真实作答、进度前进、进入下一题。
 3. `specs/wrong-book-review.spec.js` — 错题闭环：故意答错 → 对比正确答案的反馈 →
    错题温习列表出现该题 → 重新开练并回到同一道题。
+4. `specs/daily-chest.spec.js` — 今日任务 → 今日宝箱 → 长期成长：预置今日 3/3 →
+   首页领取宝箱 → 显示「获得 1 枚探险印章」→ reload 后仍是今日已领取 →
+   重复领取不会让累计数 +1（幂等），2/3 时不能领取。
 
 ## 说明
 
