@@ -54,6 +54,7 @@ import {
   readGrowthProgressCache,
   writeGrowthProgressCache
 } from "../utils/growthProgress";
+import { buildAdventureCollectionBook } from "../utils/adventureCollectionBook";
 import { createAppRouting } from "./app/useAppRouting";
 import { createHomeSelections } from "./app/useHomeSelections";
 import { createStudyRecordRuntime } from "./app/useStudyRecordRuntime";
@@ -1633,6 +1634,51 @@ export function useTriviaApp() {
     })
   );
 
+  // ---------------------------------------------------------------------------
+  // 探险收藏册：首页与闯关地图共用同一个弹窗，章节作用域由打开时的入口决定。
+  //
+  // - 首页入口传 homeChallengeChapter（和首页成长区同一章）；
+  // - 闯关地图入口传 selectedChallengeChapter（当前正在看的章节）；
+  // 打开时把 chapterId 记进 collectionBookChapterId，之后只读这一章的数据，
+  // 这样不会再出现“首页显示 A 章、点进去看到 B 章”。
+  // ---------------------------------------------------------------------------
+  const collectionBookChapterId = ref("");
+  const homeCollectionChapterId = computed(() => homeChallengeChapter.value.id);
+  const resolvedCollectionBookChapterId = computed(
+    () => collectionBookChapterId.value || selectedChallengeChapterId.value || DEFAULT_CHALLENGE_CHAPTER_ID
+  );
+  const collectionBookChapter = computed(() => getChallengeChapter(resolvedCollectionBookChapterId.value));
+
+  // 收藏册的航海收藏与成就都取自 collectionBookChapter 这一章的 progress，
+  // 复用和首页成长区完全相同的聚合函数，保证口径一致。
+  const collectionBookSource = computed(() => {
+    const chapter = collectionBookChapter.value;
+    const stages = getChallengeStageList(chapter.id);
+    const chapterProgress = getChallengeChapterProgress(challengeProgressBook.value, chapter.id);
+    const growthSource = buildChapterGrowthSource({
+      chapterProgress,
+      stageIds: stages.map((stage) => stage.id),
+      totalStageCount: stages.length
+    });
+
+    return {
+      chapter,
+      stages,
+      chapterProgress,
+      achievements: growthSource.achievements
+    };
+  });
+
+  const collectionBook = computed(() =>
+    buildAdventureCollectionBook({
+      chapter: collectionBookSource.value.chapter,
+      stages: collectionBookSource.value.stages,
+      chapterProgress: collectionBookSource.value.chapterProgress,
+      achievements: collectionBookSource.value.achievements,
+      growthProgress: growthProgress.value
+    })
+  );
+
   const challengeStages = computed(() =>
     getChallengeStageList(selectedChallengeChapterId.value).map((stage, index) => {
       const bestResult = challengeProgress.value.bestResults[stage.id] ?? null;
@@ -2190,7 +2236,15 @@ export function useTriviaApp() {
     isQuizSettingsOpen.value = false;
   }
 
-  function openBackpack() {
+  // 打开探险收藏册时记录本次要看的章节：
+  //   首页 → openBackpack(homeCollectionChapterId)
+  //   闯关地图 → openBackpack(selectedChallengeChapterId)
+  // 不传章节时退回当前选中的挑战章节，保证弹窗永远有明确作用域。
+  function openBackpack(chapterId = "") {
+    const requestedChapterId = String(chapterId ?? "").trim();
+
+    collectionBookChapterId.value =
+      requestedChapterId || selectedChallengeChapterId.value || DEFAULT_CHALLENGE_CHAPTER_ID;
     isBackpackOpen.value = true;
   }
 
@@ -2571,6 +2625,14 @@ export function useTriviaApp() {
     }
   });
 
+  // 收藏册挂在 App 根层级，不属于任何视图：一旦切换视图（站内跳转或浏览器前进/后退
+  // 都会同步 currentView），必须主动关掉，否则弹窗会残留盖在新页面上。
+  watch(currentView, () => {
+    if (isBackpackOpen.value) {
+      closeBackpack();
+    }
+  });
+
   watch(currentView, (nextView) => {
     if (nextView !== VIEW_MODE.HOME) {
       clearHomeWelcomeRequest();
@@ -2908,6 +2970,9 @@ export function useTriviaApp() {
     isAudioSettingsOpen,
     isLockedStageModalOpen,
     isBackpackOpen,
+    homeCollectionChapterId,
+    collectionBookChapter,
+    collectionBook,
     adminKey,
     activeToolSectionId,
     activeSettingsSectionId,

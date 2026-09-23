@@ -1,6 +1,7 @@
 <script>
 import { computed, defineAsyncComponent } from "vue";
 import { useRoute } from "vue-router";
+import AdventureCollectionBook from "./components/AdventureCollectionBook.vue";
 import PracticeHomeView from "./views/PracticeHomeView.vue";
 import StudyMapView from "./views/StudyMapView.vue";
 import { createRouterDrivenPages } from "./composables/app/useRouterDrivenPages";
@@ -18,6 +19,7 @@ const WrongQuestionReviewView = defineAsyncComponent(() => import("./views/Wrong
 
 export default {
   components: {
+    AdventureCollectionBook,
     PracticeHomeView,
     KnowledgeStudyView,
     StudyMapView,
@@ -184,7 +186,7 @@ export default {
         @start-weak-point-practice="startWeakPointPractice"
         @open-knowledge-study="openStudyMapView"
         @open-wrong-review="openWrongBookView"
-        @open-backpack="openBackpack"
+        @open-backpack="openBackpack(homeCollectionChapterId)"
         @claim-daily-chest="claimDailyChest"
       />
 
@@ -291,8 +293,8 @@ export default {
             <button class="btn-cartoon btn-cartoon--settings-float" type="button" @click="openQuizSettings">
               ⚙️ 关卡设置
             </button>
-            <button v-if="challengeAchievements.length" class="btn-cartoon btn-cartoon--backpack-float" type="button" @click="openBackpack">
-              🎒 我的探险背包
+            <button v-if="challengeAchievements.length" class="btn-cartoon btn-cartoon--backpack-float" type="button" @click="openBackpack(selectedChallengeChapterId)">
+              📖 我的探险收藏册
             </button>
           </div>
         </div>
@@ -370,61 +372,7 @@ export default {
           </div>
         </div>
 
-        <!-- 🎒 Achievements Backpack Modal 🎒 -->
-        <div v-if="isBackpackOpen" class="adventure-modal-overlay animate-fade-in" @click.self="closeBackpack">
-          <div class="adventure-modal-card adventure-modal-card--cartoon adventure-modal-card--backpack animate-pop-in">
-            <button class="adventure-modal-close" type="button" @click="closeBackpack">×</button>
-            <div class="adventure-modal-header">
-              <span class="adventure-modal-icon">🎒</span>
-              <h3 class="adventure-modal-title">我的探险背包</h3>
-            </div>
-            <div class="adventure-modal-body">
-              <!-- Backpack overall progress bar -->
-              <div class="backpack-progress-section">
-                <div class="progress-info">
-                  <strong>海岛总进度：</strong>
-                  <span>已解锁 {{ challengeAchievementCount }} / {{ challengeAchievements.length }} 个成就</span>
-                </div>
-                <div class="progress-bar-container">
-                  <div class="progress-bar-fill" :style="{ width: (challengeAchievementCount / challengeAchievements.length * 100) + '%' }"></div>
-                </div>
-              </div>
-
-              <!-- Achievements Grid -->
-              <div class="backpack-achievements-list">
-                <div class="challenge-achievements__grid">
-                  <article
-                    v-for="achievement in challengeAchievements"
-                    :key="achievement.id"
-                    :class="[
-                      'challenge-achievement-card',
-                      {
-                        'challenge-achievement-card--unlocked': achievement.isUnlocked,
-                        'challenge-achievement-card--fresh': achievement.fresh
-                      }
-                    ]"
-                  >
-                    <div class="challenge-achievement-card__topline">
-                      <span class="challenge-achievement-card__glyph">{{ achievement.glyph }}</span>
-                      <span
-                        :class="[
-                          'challenge-achievement-card__status',
-                          `challenge-achievement-card__status--${achievement.fresh ? 'fresh' : achievement.isUnlocked ? 'unlocked' : 'locked'}`
-                        ]"
-                      >
-                        {{ achievement.fresh ? "新解锁" : achievement.isUnlocked ? "已达成" : "进行中" }}
-                      </span>
-                    </div>
-                    <strong class="challenge-achievement-card__title">{{ achievement.name }}</strong>
-                    <p class="challenge-achievement-card__summary">{{ achievement.summary }}</p>
-                    <span class="challenge-achievement-card__progress">{{ achievement.progressText }}</span>
-                  </article>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
+        <!-- 📖 探险收藏册已抽成全局弹窗（见文件末尾 AdventureCollectionBook） -->
         <section
           v-if="challengeToast"
           :class="['challenge-toast', `challenge-toast--${challengeToast.tone}`]"
@@ -638,5 +586,8 @@ export default {
       @apply="applyDraftQuizSettings"
       @reset="resetDraftQuizSettings"
     />
+
+    <!-- 📖 我的探险收藏册：全局弹窗，首页与闯关地图共用 -->
+    <AdventureCollectionBook v-model="isBackpackOpen" :book="collectionBook" />
   </div>
 </template>

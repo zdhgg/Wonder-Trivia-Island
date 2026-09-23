@@ -1,6 +1,6 @@
 <script setup>
 // 首页“我的成长”：把已经拿到的星星 / 航海收藏 / 成就摆到孩子面前，
-// 并给一个“最接近完成”的下一成就。完整成就列表仍留在探险背包。
+// 并给一个“最接近完成”的下一成就。完整收藏与成就列表在“我的探险收藏册”里。
 const props = defineProps({
   growth: {
     type: Object,
@@ -18,10 +18,10 @@ const emit = defineEmits(["open-backpack"]);
       <button
         class="growth-summary__more"
         type="button"
-        aria-label="打开我的探险背包，查看全部成就"
+        aria-label="打开我的探险收藏册，查看印章、航海收藏和成就"
         @click="emit('open-backpack')"
       >
-        探险背包
+        我的探险收藏册
       </button>
     </header>
 

@@ -45,7 +45,7 @@ e2e/e2e-environment.js        # 端口/路径/隔离校验的唯一事实来源
 e2e/prepare-e2e-database.js   # 重建隔离测试库（单一职责）
 e2e/global-setup.js           # 每次运行前调用上面的重建
 e2e/support/quiz-flow.js      # 练习流程共享辅助（识别当前题目、确定性选择选项）
-e2e/specs/                    # 四组核心场景
+e2e/specs/                    # 五组核心场景
 ```
 
 ## 场景
@@ -59,6 +59,9 @@ e2e/specs/                    # 四组核心场景
 4. `specs/daily-chest.spec.js` — 今日任务 → 今日宝箱 → 长期成长：预置今日 3/3 →
    首页领取宝箱 → 显示「获得 1 枚探险印章」→ reload 后仍是今日已领取 →
    重复领取不会让累计数 +1（幂等），2/3 时不能领取。
+5. `specs/adventure-collection-book.spec.js` — 探险收藏册：首页与闯关地图都能打开，
+   且各自使用自己那一章（首页 = 首页成长区章节，闯关地图 = 当前选中章节），
+   印章按最近日期展示、无印章时是儿童化空状态。
 
 ## 说明
 
