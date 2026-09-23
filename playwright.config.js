@@ -66,7 +66,9 @@ module.exports = defineConfig({
       }
     },
     {
-      command: `node ${path.join("node_modules", "vite", "bin", "vite.js")} --port ${FRONTEND_PORT} --strictPort`,
+      // --host 127.0.0.1 必须显式指定：Linux 上 Vite 默认绑 localhost(::1)，
+      // 而 FRONTEND_ORIGIN 是 IPv4 127.0.0.1，会让 Playwright 探测 60 秒后超时。
+      command: `node ${path.join("node_modules", "vite", "bin", "vite.js")} --host 127.0.0.1 --port ${FRONTEND_PORT} --strictPort`,
       cwd: FRONTEND_DIR,
       url: FRONTEND_ORIGIN,
       timeout: 60_000,
