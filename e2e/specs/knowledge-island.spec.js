@@ -41,6 +41,8 @@ const CELEBRATION_TITLE = "小岛有新变化啦！";
 const CELEBRATION_DIALOG = "小岛有新变化啦！";
 const CLAIM_BUTTON = "领取今日宝箱";
 const READY_BUTTON = /宝箱可以打开啦/;
+// 种子账本最多写几条 dailyClaims（与生产端 MAX_DAILY_CLAIMS 同一量级，测试不需要写满）。
+const MAX_SEEDED_DAILY_CLAIMS = 5;
 
 function getTodayDateKey() {
   const now = new Date();
@@ -104,20 +106,29 @@ async function readIslandExpectation(page, stampCount) {
   }, stampCount);
 }
 
-// 真实账本形状：totalDailyChests 就是累计印章数，dailyClaims 保留最近几天。
+// 真实账本形状：totalDailyChests 就是累计印章数，dailyClaims 是它的明细。
 // includeTodayClaim 用来造“今天服务端已经领过”的既成事实（服务端会回 alreadyClaimed）。
+//
+// 关键约束：dailyClaims 的条数必须和 totalDailyChests 一致，不能自相矛盾。
+// 因为生产代码 normalizeGrowthProgress() 会取 max(totalDailyChests, dailyClaims.length)，
+// 如果 fixture 写成 totalDailyChests = 3 却塞了 4 条 claim，服务端会把它规范化成 4 枚——
+// 测试就会在“声称 3 枚”的情况下实际跑 4 枚，边界用例会静默失效。
 function buildGrowthProgressJson(stampCount, { includeTodayClaim = false } = {}) {
   const dailyClaims = {};
-  const claimDays = Math.min(stampCount, 5);
+  // stampCount = 0 时不凭空造一条“今天已领取”。
+  const todayClaimCount = includeTodayClaim && stampCount > 0 ? 1 : 0;
+  // 上限 5 条是 dailyClaims 的总条数（生产端 MAX_DAILY_CLAIMS 的量级），
+  // 所以要先把今天那一条算进去，历史条数只是剩下的余量。
+  const totalClaimCount = Math.min(stampCount, MAX_SEEDED_DAILY_CLAIMS);
+  const historicalClaimCount = Math.max(0, totalClaimCount - todayClaimCount);
+  const todayDateKey = getTodayDateKey();
 
-  for (let index = 0; index < claimDays; index += 1) {
-    const day = `${index + 1}`.padStart(2, "0");
-
-    dailyClaims[`2026-09-${day}`] = { claimedAt: `2026-09-${day}T08:00:00.000Z` };
+  for (const dateKey of listHistoricalClaimDateKeys(historicalClaimCount, todayDateKey)) {
+    dailyClaims[dateKey] = { claimedAt: `${dateKey}T08:00:00.000Z` };
   }
 
-  if (includeTodayClaim) {
-    dailyClaims[getTodayDateKey()] = { claimedAt: new Date().toISOString() };
+  if (todayClaimCount > 0) {
+    dailyClaims[todayDateKey] = { claimedAt: new Date().toISOString() };
   }
 
   return JSON.stringify({
@@ -125,6 +136,38 @@ function buildGrowthProgressJson(stampCount, { includeTodayClaim = false } = {})
     totalDailyChests: stampCount,
     dailyClaims
   });
+}
+
+// 历史 claim 日期只用来占位：从 1 号往后取，但明确排除今天。
+// 如果固定日期刚好撞上运行日期，跳过它并继续往后取，保证条数仍然准确
+// （不依赖“今天大概率不是 1~5 号”）。
+function listHistoricalClaimDateKeys(claimCount, todayDateKey) {
+  const dateKeys = [];
+
+  for (let day = 1; dateKeys.length < claimCount && day <= 30; day += 1) {
+    const dateKey = `2026-09-${`${day}`.padStart(2, "0")}`;
+
+    if (dateKey === todayDateKey) {
+      continue;
+    }
+
+    dateKeys.push(dateKey);
+  }
+
+  return dateKeys;
+}
+
+// fixture 自身的守卫：账本必须自洽，否则测试会在“声称 N 枚”时实际跑成别的数字。
+function expectConsistentGrowthFixture(rawProgressJson, stampCount) {
+  const parsed = JSON.parse(rawProgressJson);
+  const dateKeys = Object.keys(parsed.dailyClaims);
+
+  expect(parsed.totalDailyChests).toBe(stampCount);
+  expect(parsed.version).toBe(1);
+  // 生产代码取 max(totalDailyChests, dailyClaims.length)，所以条数永远不能超过声称的印章数。
+  expect(dateKeys.length).toBeLessThanOrEqual(stampCount);
+
+  return { parsed, dateKeys };
 }
 
 // 只写 E2E 隔离库；e2e/e2e-environment.js 已经保证这个路径不会是真库。
@@ -779,25 +822,41 @@ test.describe("知识岛阶段变化反馈", () => {
     await expect(island).toContainText(sectionCountText(3));
   });
 
-  test("服务端 alreadyClaimed：今天已领过时不产生任何反馈", async ({ page }) => {
+  test("服务端 alreadyClaimed：今天已领过时不产生任何反馈，印章数也不会被顶高", async ({ page }) => {
     // 账本里已经有今天这条 claim，总数 3（恰好是一个阈值）。
+    // fixture 要么正好 3 条 dailyClaims，要么服务端会把它规范化成 4 枚——这里是防回归的关键。
+    const fixture = expectConsistentGrowthFixture(buildGrowthProgressJson(3, { includeTodayClaim: true }), 3);
+
+    expect(fixture.dateKeys).toHaveLength(3);
+    expect(fixture.dateKeys).toContain(getTodayDateKey());
+
     await openHomeAlreadyClaimedToday(page, 3);
 
-    // 页面启动同步到 3 枚，不庆祝。
+    const growth = page.getByRole("region", { name: "我的成长" });
+
+    // 页面启动同步到 3 枚（不是 4 枚），不庆祝。
     await expect(celebrationDialog(page)).toHaveCount(0);
     await expect(page.getByRole("region", { name: "今日宝箱" })).toContainText("今日已领取");
     await expect(page.getByRole("button", { name: CLAIM_BUTTON })).toHaveCount(0);
+    await expect(growth).toContainText("已经攒了 3 枚探险印章");
+    await expect(growth).not.toContainText("已经攒了 4 枚探险印章");
 
-    // 再同步 / 刷新一次也不庆祝。
+    // 再同步 / 刷新一次：仍然是 3 枚，也不庆祝。
     await page.reload();
     await page.getByRole("region", { name: "我的成长" }).waitFor({ state: "visible", timeout: 15_000 });
     await expect(celebrationDialog(page)).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "我的成长" })).toContainText("已经攒了 3 枚探险印章");
+    await expect(page.getByRole("region", { name: "我的成长" })).not.toContainText("已经攒了 4 枚探险印章");
 
-    // 但收藏册如实显示 3 枚 / 萌芽海岸。
+    // 收藏册同样如实显示 3 枚 / 萌芽海岸（不是 4 枚）。
     const expectation = await readIslandExpectation(page, 3);
     const dialog = await openCollectionBookFromHome(page);
+    const island = islandSection(dialog);
 
-    await expect(islandSection(dialog)).toContainText(`当前：${expectation.stageName}`);
+    await expect(island).toContainText(`当前：${expectation.stageName}`);
+    await expect(island).toContainText("已经攒了 3 枚探险印章");
+    await expect(island).not.toContainText("已经攒了 4 枚探险印章");
+    await expect(island.locator(KNOWLEDGE_ISLAND_FIGURE)).toHaveAttribute("data-stage", "sprout-coast");
   });
 
   test("390 窄屏：反馈层不横向溢出、按钮完整可点、岛屿完整", async ({ page }) => {
@@ -855,5 +914,92 @@ test.describe("知识岛阶段变化反馈", () => {
     const collectionWidth = await page.evaluate(() => document.documentElement.scrollWidth);
 
     expect(collectionWidth).toBeLessThanOrEqual(390);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 测试数据自洽性：种子账本必须“声称几枚就有几条 claim”。
+//
+// 生产代码 normalizeGrowthProgress() 取 max(totalDailyChests, dailyClaims.length)，
+// 所以 fixture 一旦多塞 claim，服务端返回的印章数就会比测试声称的高 1，
+// 阈值边界用例会静默失效。这里把 fixture 本身钉住。
+// ---------------------------------------------------------------------------
+test.describe("知识岛测试账本 fixture 自洽性", () => {
+  test("历史 claim 条数不超过声称的印章数，且不重复今天", () => {
+    const todayDateKey = getTodayDateKey();
+
+    for (const stampCount of [0, 1, 2, 3, 4, 7, 14, 15, 29, 30]) {
+      const { dateKeys } = expectConsistentGrowthFixture(buildGrowthProgressJson(stampCount), stampCount);
+
+      // 历史占位日期不允许出现今天（否则和“今天已领取”那条会互相覆盖）。
+      expect(dateKeys).not.toContain(todayDateKey);
+      // 历史条数 = min(stampCount, 5)，不会多也不会少。
+      expect(dateKeys).toHaveLength(Math.min(stampCount, MAX_SEEDED_DAILY_CLAIMS));
+    }
+  });
+
+  test("includeTodayClaim 时今天那条计入总数：3 枚 = 2 条历史 + 今天", () => {
+    const todayDateKey = getTodayDateKey();
+
+    // 0 枚 + includeTodayClaim：不凭空造“今天已领取”。
+    const zero = expectConsistentGrowthFixture(buildGrowthProgressJson(0, { includeTodayClaim: true }), 0);
+
+    expect(zero.dateKeys).toHaveLength(0);
+    expect(zero.dateKeys).not.toContain(todayDateKey);
+
+    // 1 枚 + includeTodayClaim：只有今天这一条。
+    const one = expectConsistentGrowthFixture(buildGrowthProgressJson(1, { includeTodayClaim: true }), 1);
+
+    expect(one.dateKeys).toHaveLength(1);
+    expect(one.dateKeys).toEqual([todayDateKey]);
+    expect(one.parsed.dailyClaims[todayDateKey]).toBeTruthy();
+
+    // 3 枚 + includeTodayClaim：2 条历史 + 今天 = 3（修复前这里是 3 + 1 = 4）。
+    const three = expectConsistentGrowthFixture(buildGrowthProgressJson(3, { includeTodayClaim: true }), 3);
+
+    expect(three.dateKeys).toHaveLength(3);
+    expect(three.dateKeys).toContain(todayDateKey);
+    expect(three.dateKeys.filter((dateKey) => dateKey !== todayDateKey)).toHaveLength(2);
+
+    // 7 枚 + includeTodayClaim：总数上限 5 条，其中要留出今天这一条。
+    const seven = expectConsistentGrowthFixture(buildGrowthProgressJson(7, { includeTodayClaim: true }), 7);
+
+    expect(seven.dateKeys).toHaveLength(MAX_SEEDED_DAILY_CLAIMS);
+    expect(seven.dateKeys).toContain(todayDateKey);
+    expect(seven.dateKeys.filter((dateKey) => dateKey !== todayDateKey)).toHaveLength(MAX_SEEDED_DAILY_CLAIMS - 1);
+  });
+
+  test("历史占位日期明确排除今天：即使今天正好是固定日期也不会少一条", () => {
+    // 直接注入一个“和固定历史日期撞车”的今天，证明排除逻辑真的生效，
+    // 而不是依赖“运行日期大概率不是 1~5 号”。
+    const collidingToday = "2026-09-02";
+
+    expect(listHistoricalClaimDateKeys(5, collidingToday)).not.toContain(collidingToday);
+    expect(listHistoricalClaimDateKeys(5, collidingToday)).toEqual([
+      "2026-09-01",
+      "2026-09-03",
+      "2026-09-04",
+      "2026-09-05",
+      "2026-09-06"
+    ]);
+
+    // 撞车时条数仍然够：跳过 9-02 之后继续往后取，不会退回 4 条。
+    expect(listHistoricalClaimDateKeys(4, collidingToday)).toHaveLength(4);
+    expect(listHistoricalClaimDateKeys(4, collidingToday)).not.toContain(collidingToday);
+  });
+
+  test("三个真实用到的起始票数都自洽（不含今天 / 含今天）", () => {
+    // 阶段反馈用例用到的起始印章数：2 / 6 / 14 / 29；alreadyClaimed 用 3。
+    for (const stampCount of [2, 3, 6, 14, 29]) {
+      const withoutToday = expectConsistentGrowthFixture(buildGrowthProgressJson(stampCount), stampCount);
+      const withToday = expectConsistentGrowthFixture(
+        buildGrowthProgressJson(stampCount, { includeTodayClaim: true }),
+        stampCount
+      );
+
+      expect(withoutToday.dateKeys.length).toBeLessThanOrEqual(stampCount);
+      expect(withToday.dateKeys).toHaveLength(Math.min(stampCount, MAX_SEEDED_DAILY_CLAIMS));
+      expect(withToday.dateKeys).toContain(getTodayDateKey());
+    }
   });
 });
