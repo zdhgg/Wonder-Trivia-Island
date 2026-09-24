@@ -7,6 +7,7 @@ import {
   buildHomeDailyChest,
   buildHomeDashboard,
   buildHomeGrowth,
+  buildHomeWelcomeSummary,
   buildPracticeScope,
   buildTeacherTips,
   countWeakPointsForGrade,
@@ -537,7 +538,7 @@ describe("homeDashboard · 今日宝箱", () => {
     expect(lockedChest.showStampReward).toBe(false);
   });
 
-  it("组装后的首页带上今日宝箱，成长区同时给出累计印章文案", () => {
+  it("组装后的首页带上今日宝箱，成长区给出孩子口气的印章文案", () => {
     const dashboard = buildHomeDashboard({
       dateKey: TODAY,
       dailyTasks: { stagesCleared: 1, reviewedQuestionIds: ["1", "2", "3"], completedLessonIds: ["lesson-1"] },
@@ -549,7 +550,9 @@ describe("homeDashboard · 今日宝箱", () => {
     expect(dashboard.dailyChest.canClaim).toBe(false);
     expect(dashboard.dailyChest.statusLabel).toBe("今日已领取");
     expect(dashboard.growth.stampCount).toBe(2);
-    expect(dashboard.growth.stampText).toBe("累计开启 2 个今日宝箱 · 2 枚探险印章");
+    // 只说一次数字：不再出现“累计开启 2 个宝箱 · 2 枚印章”。
+    expect(dashboard.growth.stampText).toBe("已经攒了 2 枚探险印章");
+    expect(dashboard.growth.stampText).not.toContain("今日宝箱");
     // 三个原有指标口径完全没被成长账本影响。
     expect(dashboard.growth.starText).toBe("3 / 21");
     expect(dashboard.growth.rewardText).toBe("1 / 7");
@@ -566,7 +569,7 @@ describe("homeDashboard · 今日宝箱", () => {
     expect(dashboard.dailyChest.isClaimed).toBe(false);
     expect(dashboard.dailyChest.canClaim).toBe(false);
     expect(dashboard.growth.stampCount).toBe(0);
-    expect(dashboard.growth.stampText).toBe("累计开启 0 个今日宝箱 · 0 枚探险印章");
+    expect(dashboard.growth.stampText).toBe("已经攒了 0 枚探险印章");
   });
 });
 
@@ -734,9 +737,11 @@ describe("homeDashboard · 组装", () => {
     });
 
     expect(dashboard.dateKey).toBe("2026-05-01");
-    // 行动建议由确定性规则给出，不受 AI 欢迎文案影响。
-    expect(dashboard.greeting.summary).toBe(dashboard.advice.text);
-    expect(dashboard.greeting.summarySource).toBe("advice");
+    // 行动建议由确定性规则给出，不受 AI 欢迎文案影响；
+    // 但主线类建议（challenge）不在欢迎区显示，交给「今天的探险」主卡。
+    expect(dashboard.advice.id).toBe("challenge");
+    expect(dashboard.greeting.summary).toBe("");
+    expect(dashboard.greeting.summarySource).toBe("");
     expect(dashboard.greeting.summary).not.toContain("火山岛继续探险");
     expect(dashboard.greeting.gradeLabel).toBe("二年级 · 上册");
     expect(dashboard.advice.id).toBe("challenge");
@@ -840,7 +845,9 @@ describe("homeDashboard · 组装", () => {
     });
 
     expect(challengeDashboard.advice.id).toBe("challenge");
-    expect(challengeDashboard.greeting.summary).toContain("第 3 关");
+    // 主页已经有「今天的探险」主卡承担“继续闯关”，欢迎区不再重复说一次。
+    expect(challengeDashboard.greeting.summary).toBe("");
+    expect(challengeDashboard.greeting.summarySource).toBe("");
 
     const studyDashboard = buildHomeDashboard({
       welcome: { summary: "随便逛逛吧" },
@@ -860,6 +867,64 @@ describe("homeDashboard · 组装", () => {
 
     expect(studyDashboard.advice.id).toBe("study");
     expect(studyDashboard.greeting.summary).toContain("角的初步认识");
+    expect(studyDashboard.greeting.summarySource).toBe("advice");
+  });
+
+  it("首页首屏不再出现第二份主线建议（只保留 review / study / weak-point）", () => {
+    const adventureSource = {
+      chapter: { islandName: "鼓浪屿", grade: "二年级", semester: "上册" },
+      chapterStarsEarned: 6,
+      chapterTotalStars: 21,
+      nextStage: { order: 3, title: "短文找点" },
+      stageCount: 7
+    };
+    const completeAdventureSource = { ...adventureSource, isChapterComplete: true };
+    const summaryOf = (options) =>
+      buildHomeDashboard({ grade: "二年级", semester: "上册", adventureSource, growthSource: {}, achievements: [], ...options });
+
+    // 应该在欢迎区出现的三类：比继续主线更值得先处理的事情。
+    const reviewDashboard = summaryOf({ reviewDueCount: 4 });
+    const studyDashboard = summaryOf({ resume: { lessonTitle: "角的初步认识" } });
+    const weakPointDashboard = summaryOf({ weakPointKnowledgeTag: "表内乘法" });
+
+    expect(reviewDashboard.advice.id).toBe("review");
+    expect(reviewDashboard.greeting.summary).toContain("温习");
+    expect(studyDashboard.advice.id).toBe("study");
+    expect(studyDashboard.greeting.summary).toContain("角的初步认识");
+    expect(weakPointDashboard.advice.id).toBe("weak-point");
+    expect(weakPointDashboard.greeting.summary).toContain("表内乘法");
+
+    // 不该在欢迎区重复的四类：主线继续 / 整章通关 / 普通探索（advice 本身仍然保留）。
+    const challengeDashboard = summaryOf({});
+    const completeDashboard = summaryOf({ adventureSource: completeAdventureSource });
+    const emptyExploreDashboard = buildHomeDashboard({
+      grade: "二年级",
+      semester: "上册",
+      adventureSource: { chapter: { islandName: "鼓浪屿", grade: "二年级" }, stageCount: 7 },
+      growthSource: {},
+      achievements: []
+    });
+
+    expect(challengeDashboard.advice.id).toBe("challenge");
+    expect(challengeDashboard.advice.text).toContain("第 3 关");
+    expect(challengeDashboard.greeting.summary).toBe("");
+
+    expect(completeDashboard.advice.contextKey).toBe("chapter-complete");
+    expect(completeDashboard.advice.text).toContain("全部通关");
+    expect(completeDashboard.greeting.summary).toBe("");
+
+    expect(emptyExploreDashboard.advice.contextKey).toBe("explore");
+    expect(emptyExploreDashboard.greeting.summary).toBe("");
+  });
+
+  it("buildHomeWelcomeSummary 只放行三类建议，其余返回空串", () => {
+    expect(buildHomeWelcomeSummary({ id: "review", text: "先温习三道题" })).toBe("先温习三道题");
+    expect(buildHomeWelcomeSummary({ id: "study", text: "接着看一小段" })).toBe("接着看一小段");
+    expect(buildHomeWelcomeSummary({ id: "weak-point", text: "再练一练表内乘法" })).toBe("再练一练表内乘法");
+    expect(buildHomeWelcomeSummary({ id: "challenge", text: "继续第 3 关" })).toBe("");
+    expect(buildHomeWelcomeSummary({ id: "explore", text: "先闯一关试试看吧。" })).toBe("");
+    expect(buildHomeWelcomeSummary({})).toBe("");
+    expect(buildHomeWelcomeSummary()).toBe("");
   });
 
   it("档案是三年级时不出现二年级专项文案", () => {
@@ -897,5 +962,7 @@ describe("homeDashboard · 组装", () => {
     expect(dashboard.adventure.goLabel).toBe("回到大地图看看");
     expect(dashboard.adventure.stageTitle).toBe("");
     expect(dashboard.advice.contextKey).toBe("chapter-complete");
+    // 整章通关后“回大地图”已经由主卡 CTA 承担，欢迎区不再重复。
+    expect(dashboard.greeting.summary).toBe("");
   });
 });

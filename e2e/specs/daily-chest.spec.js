@@ -156,7 +156,7 @@ test.describe("今日任务 → 今日宝箱 → 长期成长", () => {
 
     // 首页成长区出现一条轻量累计信息，且没有变成第四个大指标卡。
     const growth = page.getByRole("region", { name: "我的成长" });
-    await expect(growth).toContainText("累计开启 1 个今日宝箱 · 1 枚探险印章");
+    await expect(growth).toContainText("已经攒了 1 枚探险印章");
     await expect(growth.locator(".growth-summary__stat")).toHaveCount(3);
 
     // 领取之后（还没刷新）既有数据就一字未动。
@@ -170,7 +170,7 @@ test.describe("今日任务 → 今日宝箱 → 长期成长", () => {
     await expect(reloadedChest).toContainText("今日已领取");
     await expect(reloadedChest.getByRole("button", { name: "领取今日宝箱" })).toHaveCount(0);
     // reload 后不再重复播放“获得印章”的一次性提示，但累计数保持 1。
-    await expect(page.getByRole("region", { name: "我的成长" })).toContainText("累计开启 1 个今日宝箱 · 1 枚探险印章");
+    await expect(page.getByRole("region", { name: "我的成长" })).toContainText("已经攒了 1 枚探险印章");
 
     // 服务端账本也只记了 1 次。
     const afterReloadPayload = await readGrowthProgressFromApi(page);
@@ -186,7 +186,7 @@ test.describe("今日任务 → 今日宝箱 → 长期成长", () => {
 
     await page.reload();
     await expect(page.getByRole("region", { name: "今日宝箱" })).toContainText("今日已领取");
-    await expect(page.getByRole("region", { name: "我的成长" })).toContainText("累计开启 1 个今日宝箱 · 1 枚探险印章");
+    await expect(page.getByRole("region", { name: "我的成长" })).toContainText("已经攒了 1 枚探险印章");
 
     // 服务端才是长期账本的唯一来源：把本地镜像整个删掉，刷新后状态与累计数仍然在。
     // （本地缓存只用于服务端取不回来时的展示兜底，永远不会自己加印章。）
@@ -195,7 +195,7 @@ test.describe("今日任务 → 今日宝箱 → 长期成长", () => {
 
     await expect(page.getByRole("region", { name: "今日宝箱" })).toContainText("今日已领取");
     await expect(page.getByRole("region", { name: "今日宝箱" })).not.toContainText("可领取");
-    await expect(page.getByRole("region", { name: "我的成长" })).toContainText("累计开启 1 个今日宝箱 · 1 枚探险印章");
+    await expect(page.getByRole("region", { name: "我的成长" })).toContainText("已经攒了 1 枚探险印章");
 
     // 既有挑战 / 错题本本地数据一字未动。
     expect(await readSeededMarkers()).toEqual(seededMarkersBeforeClaim);

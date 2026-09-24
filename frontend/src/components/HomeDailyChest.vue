@@ -21,7 +21,7 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(["claim"]);
+const emit = defineEmits(["claim", "open-collection"]);
 
 const chestGlyph = computed(() => {
   if (props.chest.isClaimed) {
@@ -47,14 +47,17 @@ const chestGlyph = computed(() => {
       </div>
     </div>
 
-    <p
-      v-if="chest.showStampReward"
-      class="daily-chest__reward"
-      role="status"
-      aria-live="polite"
-    >
-      🧭 {{ chest.stampText }}
-    </p>
+    <!-- 一次性奖励提示同时是入口：告诉孩子这枚印章被收进收藏册了，点一下就能去看。
+         外层保留 aria-live，屏幕阅读器仍会在奖励出现时播报。 -->
+    <div v-if="chest.showStampReward" class="daily-chest__reward-line" role="status" aria-live="polite">
+      <button
+        class="daily-chest__reward"
+        type="button"
+        @click="emit('open-collection')"
+      >
+        🧭 {{ chest.stampText }} · 放进收藏册 ›
+      </button>
+    </div>
 
     <button
       v-if="chest.canClaim"
@@ -167,15 +170,43 @@ const chestGlyph = computed(() => {
   font-weight: 700;
 }
 
+.daily-chest__reward-line {
+  display: grid;
+}
+
 .daily-chest__reward {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  width: 100%;
+  min-height: 36px;
   margin: 0;
   padding: 8px 12px;
-  border: 1px solid rgba(255, 174, 66, 0.34);
+  border: 1.5px solid rgba(255, 174, 66, 0.5);
   border-radius: 14px;
-  background: rgba(255, 248, 226, 0.86);
-  color: rgba(176, 84, 22, 0.98);
+  background: linear-gradient(135deg, rgba(255, 252, 242, 0.98) 0%, rgba(255, 240, 200, 0.98) 100%);
+  color: rgba(150, 70, 12, 0.98);
+  font-family: inherit;
   font-size: 0.88rem;
   font-weight: 900;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.daily-chest__reward:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 143, 0, 0.74);
+  box-shadow: 0 10px 18px -14px rgba(176, 84, 22, 0.72);
+}
+
+.daily-chest__reward:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(255, 174, 66, 0.34);
 }
 
 .daily-chest__action {
@@ -231,11 +262,13 @@ const chestGlyph = computed(() => {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .daily-chest__action {
+  .daily-chest__action,
+  .daily-chest__reward {
     transition: none;
   }
 
-  .daily-chest__action:hover:not(:disabled) {
+  .daily-chest__action:hover:not(:disabled),
+  .daily-chest__reward:hover {
     transform: none;
   }
 }

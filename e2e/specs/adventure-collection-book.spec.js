@@ -95,8 +95,12 @@ function collectionBookDialog(page) {
   return page.getByRole("dialog", { name: "我的探险收藏册" });
 }
 
+// 首页成长卡现在有两个收藏册入口（右上角按钮 + 印章摘要行），
+// 这里固定走右上角那个，避免选择器歧义；两个入口打开的是同一个收藏册。
+const GROWTH_BOOK_BUTTON_LABEL = "打开我的探险收藏册，查看印章、航海收藏和成就";
+
 async function openCollectionBookFromHome(page) {
-  await page.getByRole("button", { name: COLLECTION_BOOK_BUTTON }).click();
+  await page.getByRole("button", { name: GROWTH_BOOK_BUTTON_LABEL }).click();
 
   const dialog = collectionBookDialog(page);
 

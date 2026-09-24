@@ -74,14 +74,15 @@ describe("growthProgress · 长期成长账本", () => {
     expect(Object.keys(dayTwo.dailyClaims).sort()).toEqual(["2026-09-22", "2026-09-23"]);
   });
 
-  it("探险印章数暂时等于累计宝箱数，并给出累计文案", () => {
+  it("探险印章数暂时等于累计宝箱数，并给出孩子口气的累计文案", () => {
     const progress = claimDailyChestInProgress(
       claimDailyChestInProgress(createEmptyGrowthProgress(), "2026-09-22").progress,
       "2026-09-23"
     ).progress;
 
     expect(getExplorerStampCount(progress)).toBe(progress.totalDailyChests);
-    expect(buildGrowthStampText(progress)).toBe("累计开启 2 个今日宝箱 · 2 枚探险印章");
+    // 只说一次数字，避免“累计开启 2 个宝箱 · 2 枚印章”这种重复两遍的报表腔。
+    expect(buildGrowthStampText(progress)).toBe("已经攒了 2 枚探险印章");
   });
 
   it("刷新页面后已领取状态仍然存在（本地镜像可重建账本）", () => {

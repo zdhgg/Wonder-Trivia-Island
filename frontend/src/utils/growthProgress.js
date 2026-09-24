@@ -195,9 +195,10 @@ export function readGrowthProgressCache() {
   }
 }
 
-// “累计开启 X 个今日宝箱 · X 枚探险印章”：X 就是账本里的累计数。
+// “已经攒了 N 枚探险印章”：N 就是账本里的累计数。
+// 只说一次数字（印章数 = 开过的宝箱数），不在同一句里重复两遍。
 export function buildGrowthStampText(progress) {
   const totalDailyChests = getGrowthTotalDailyChests(progress);
 
-  return `累计开启 ${totalDailyChests} 个今日宝箱 · ${totalDailyChests} 枚探险印章`;
+  return `已经攒了 ${totalDailyChests} 枚探险印章`;
 }

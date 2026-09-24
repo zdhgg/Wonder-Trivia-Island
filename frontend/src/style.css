@@ -43,7 +43,9 @@ body,
   margin: 0;
 }
 
-/* 装饰气泡贴着 .page-shell 边缘放置，窄于容器断点时会横向出血，这里裁掉横向滚动。 */
+/* 装饰气泡贴着 .page-shell 边缘放置，窄于容器断点时会横向出血。
+   html 上的 overflow-x: clip 在 Chromium 里挡不住可滚动溢出（实测 390 仍能横滚 26px），
+   所以在真正出血的 .page-shell 上裁一次：气泡到容器边缘为止，页面不再产生横向滚动。 */
 html {
   overflow-x: clip;
 }
@@ -98,6 +100,10 @@ select {
   max-width: 1240px;
   margin: 0 auto;
   padding: 24px 24px 24px;
+  /* 横向裁掉自己那两个旋转装饰气泡的出血（纵向保持 visible），
+     这样 documentElement.scrollWidth 不再比视口宽，也不会出现横向滚动。
+     position: fixed 的弹窗不受影响（包含块是视口）。 */
+  overflow-x: clip;
 }
 
 .page-shell--wide {

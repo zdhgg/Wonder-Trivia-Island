@@ -1,21 +1,40 @@
 <script setup>
 // 今日小任务：只展示“今天能做的小目标”，进度来自本地日进度 + 今日真实记录，
 // 判断不出完成状态时不伪造。
+//
+// 3/3 完成、宝箱可领取时，标题区会出现一个轻量入口「🎁 宝箱可以打开啦」：
+// 它只通知父组件“把宝箱滚进视野”，不自动滚屏、不直接领取、也不改路由。
 defineProps({
   tasks: {
     type: Array,
     default: () => []
+  },
+  isChestReady: {
+    type: Boolean,
+    default: false
   }
 });
 
-const emit = defineEmits(["select-task"]);
+const emit = defineEmits(["select-task", "focus-chest"]);
 </script>
 
 <template>
   <section class="daily-tasks" aria-label="今日小任务">
     <header class="daily-tasks__head">
-      <h2 class="daily-tasks__title">今日小任务</h2>
-      <span class="daily-tasks__hint">今天慢慢来，一件一件做完就好</span>
+      <div class="daily-tasks__head-copy">
+        <h2 class="daily-tasks__title">今日小任务</h2>
+        <span class="daily-tasks__hint">今天慢慢来，一件一件做完就好</span>
+      </div>
+
+      <!-- 可点击，但只把宝箱滚进视野；领不领由孩子在宝箱卡上自己决定。 -->
+      <button
+        v-if="isChestReady"
+        class="daily-tasks__chest-ready"
+        type="button"
+        @click="emit('focus-chest')"
+      >
+        🎁 宝箱可以打开啦
+      </button>
     </header>
 
     <ul class="daily-tasks__list">
@@ -63,8 +82,49 @@ const emit = defineEmits(["select-task"]);
 }
 
 .daily-tasks__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 10px;
+}
+
+.daily-tasks__head-copy {
   display: grid;
   gap: 2px;
+  min-width: 0;
+}
+
+/* 宝箱可领取的轻量提示：明显到能被发现，但不去抢主卡的注意力。 */
+.daily-tasks__chest-ready {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  padding: 5px 12px;
+  border: 1.5px solid rgba(255, 174, 66, 0.5);
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(255, 250, 235, 0.98) 0%, rgba(255, 231, 156, 0.98) 100%);
+  color: #8a5200;
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 900;
+  cursor: pointer;
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    border-color 160ms ease;
+}
+
+.daily-tasks__chest-ready:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 143, 0, 0.72);
+  box-shadow: 0 10px 18px -14px rgba(176, 84, 22, 0.72);
+}
+
+.daily-tasks__chest-ready:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(255, 174, 66, 0.34);
 }
 
 .daily-tasks__title {
@@ -205,8 +265,13 @@ const emit = defineEmits(["select-task"]);
 
 @media (prefers-reduced-motion: reduce) {
   .daily-tasks__item,
-  .daily-tasks__fill {
+  .daily-tasks__fill,
+  .daily-tasks__chest-ready {
     transition: none;
+  }
+
+  .daily-tasks__chest-ready:hover {
+    transform: none;
   }
 }
 </style>

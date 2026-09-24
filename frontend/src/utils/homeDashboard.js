@@ -9,7 +9,7 @@ import {
   getWeakPoints
 } from "./studyWeakPoints";
 import { countChapterRewards, evaluateChapterAchievements } from "./challengeAchievements";
-import { getDailyChestClaim, getExplorerStampCount } from "./growthProgress";
+import { buildGrowthStampText, getDailyChestClaim, getExplorerStampCount } from "./growthProgress";
 import { CHALLENGE_STAGES } from "../composables/challenge/challengeConfig";
 
 const CHINESE_DIGITS = Object.freeze(["零", "一", "二", "三", "四", "五", "六", "七", "八", "九"]);
@@ -236,7 +236,8 @@ export function buildHomeGrowth({
     achievementTotal: achievementList.length,
     achievementText: `${unlockedCount} / ${achievementList.length}`,
     stampCount: normalizedStampCount,
-    stampText: `累计开启 ${normalizedStampCount} 个今日宝箱 · ${normalizedStampCount} 枚探险印章`,
+    // 只说一次数字（印章数 = 开过的宝箱数），不要“累计开启 N 个宝箱 · N 枚印章”。
+    stampText: buildGrowthStampText({ totalDailyChests: normalizedStampCount }),
     nextAchievement,
     allAchievementsDone: achievementList.length > 0 && unlockedCount >= achievementList.length
   };
@@ -294,6 +295,10 @@ export function buildHomeAdventure({
 
 // ---------------------------------------------------------------------------
 // 欢迎区行动建议：复用 existing 的 reviewDueCount / resume / 薄弱点数据。
+//
+// 注意：advice 本身仍然覆盖全部 5 种情况（review / study / weak-point /
+// challenge / explore），供首页其它位置复用；但欢迎区「今日建议」只展示其中
+// 一部分，见 HOME_WELCOME_SUMMARY_ADVICE_IDS。
 // ---------------------------------------------------------------------------
 
 export function buildHomeAdvice({
@@ -358,6 +363,22 @@ export function buildHomeAdvice({
     icon: "🧭",
     text: "今天的路线都准备好了，先闯一关试试看吧。"
   };
+}
+
+// 欢迎区「今日建议」只在这些 advice 上出现：
+// review / study / weak-point 代表“比继续主线更值得先处理的事情”。
+// challenge（继续下一关）与 explore / chapter-complete（回大地图、随便闯一关）
+// 已经由「今天的探险」主卡承担，欢迎区不再重复指挥，避免首屏出现两个“下一步做什么”。
+export const HOME_WELCOME_SUMMARY_ADVICE_IDS = Object.freeze(["review", "study", "weak-point"]);
+
+export function buildHomeWelcomeSummary(advice = {}) {
+  const adviceId = normalizeText(advice?.id, 24);
+
+  if (!HOME_WELCOME_SUMMARY_ADVICE_IDS.includes(adviceId)) {
+    return "";
+  }
+
+  return normalizeText(advice?.text, 80);
 }
 
 // ---------------------------------------------------------------------------
@@ -645,13 +666,16 @@ export function buildHomeDashboard({
     stampCount: getExplorerStampCount(growthProgress),
     achievements
   });
-  // 行动建议是唯一的“今天先做什么”口径，AI 欢迎文案不参与决策。
+  // 行动建议由确定性规则给出（AI 欢迎文案不参与决策）；
+  // 但欢迎区只展示 review / study / weak-point 这三类“更该先做的事”，
+  // 主线相关的 challenge / explore 交给「今天的探险」主卡，避免首屏重复指挥。
   const advice = buildHomeAdvice({
     reviewDueCount,
     resume,
     weakPointContext,
     adventure
   });
+  const welcomeSummary = buildHomeWelcomeSummary(advice);
 
   return {
     dateKey: normalizedDateKey,
@@ -661,8 +685,8 @@ export function buildHomeDashboard({
       profileChip: normalizeText(welcome.profileChip, 24) || gradeLabel,
       gradeLabel,
       themeTone: normalizeText(welcome.themeTone, 16) || "morning",
-      summary: advice.text,
-      summarySource: "advice"
+      summary: welcomeSummary,
+      summarySource: welcomeSummary ? "advice" : ""
     },
     advice,
     adventure,

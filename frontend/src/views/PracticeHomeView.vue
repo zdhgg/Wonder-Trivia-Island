@@ -51,6 +51,8 @@ const emit = defineEmits([
 ]);
 
 const isWeakPointPickerOpen = ref(false);
+// 宝箱卡的原生 DOM 引用：由父组件负责滚动，HomeDailyTasks 只发信号、不查 DOM。
+const chestSectionRef = ref(null);
 
 const greeting = computed(() => props.homeDashboard.greeting || {});
 const adventure = computed(() => props.homeDashboard.adventure || {});
@@ -60,6 +62,31 @@ const dailyTasks = computed(() => props.homeDashboard.dailyTasks || []);
 const dailyChest = computed(() => props.homeDashboard.dailyChest || {});
 const exploreItems = computed(() => props.homeDashboard.exploreItems || []);
 const practiceScope = computed(() => props.homeDashboard.practiceScope || []);
+
+// 3/3 且今天还没领 → 今日小任务标题区出现「宝箱可以打开啦」入口。
+const isChestReady = computed(() => Boolean(dailyChest.value.canClaim));
+
+function prefersReducedMotion() {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+    return false;
+  }
+
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+// 只有孩子点了「宝箱可以打开啦」才滚动，不自动抢视野；reduced motion 下不做平滑滚动。
+function handleFocusChest() {
+  const chestElement = chestSectionRef.value;
+
+  if (!chestElement || typeof chestElement.scrollIntoView !== "function") {
+    return;
+  }
+
+  chestElement.scrollIntoView({
+    behavior: prefersReducedMotion() ? "auto" : "smooth",
+    block: "center"
+  });
+}
 
 // 专项强化面板只认纯年级：gradeLabel 是“三年级 · 上册”，不能当年级传进弹窗。
 const weakPointPickerGrade = computed(() => String(weakPoint.value.grade || "").trim());
@@ -153,15 +180,24 @@ function handleTeacherTip(tip) {
 
     <div class="home-board__support">
       <div class="home-board__stack">
-        <HomeDailyTasks :tasks="dailyTasks" @select-task="handleTaskSelect" />
-
-        <!-- 今日宝箱跟在今日小任务下方：3/3 才解锁，每个自然日只能领一次。 -->
-        <HomeDailyChest
-          :chest="dailyChest"
-          :is-claiming="props.isDailyChestClaiming"
-          :error-message="props.dailyChestErrorMessage"
-          @claim="emit('claim-daily-chest')"
+        <HomeDailyTasks
+          :tasks="dailyTasks"
+          :is-chest-ready="isChestReady"
+          @select-task="handleTaskSelect"
+          @focus-chest="handleFocusChest"
         />
+
+        <!-- 今日宝箱跟在今日小任务下方：3/3 才解锁，每个自然日只能领一次。
+             ref 只用来在“宝箱可以打开啦”被点击时把这张卡滚进视野。 -->
+        <div ref="chestSectionRef" class="home-board__chest-anchor">
+          <HomeDailyChest
+            :chest="dailyChest"
+            :is-claiming="props.isDailyChestClaiming"
+            :error-message="props.dailyChestErrorMessage"
+            @claim="emit('claim-daily-chest')"
+            @open-collection="emit('open-backpack')"
+          />
+        </div>
       </div>
 
       <HomeGrowthSummary :growth="props.homeDashboard.growth" @open-backpack="emit('open-backpack')" />
@@ -200,7 +236,9 @@ function handleTeacherTip(tip) {
   padding-bottom: 8px;
 }
 
-/* 今日小任务和我的成长是一组“今天的状态”，宽屏并排，窄屏落回单列。 */
+/* 今日小任务和我的成长是一组“今天的状态”，宽屏并排，窄屏落回单列。
+   断点取 920px：1024×800 的学生笔记本仍是双列（实测无文字挤压、无横向溢出），
+   920 以下才落单列，720 以下继续沿用移动端阅读顺序。 */
 .home-board__support {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(240px, 0.72fr);
@@ -215,7 +253,13 @@ function handleTeacherTip(tip) {
   align-content: start;
 }
 
-@media (max-width: 1040px) {
+/* 宝箱卡的外层锚点：只用于 scrollIntoView，不参与视觉。 */
+.home-board__chest-anchor {
+  display: grid;
+  scroll-margin-block: 16px;
+}
+
+@media (max-width: 920px) {
   .home-board__support {
     grid-template-columns: minmax(0, 1fr);
   }

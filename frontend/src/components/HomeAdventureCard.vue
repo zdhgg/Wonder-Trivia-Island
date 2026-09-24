@@ -289,9 +289,15 @@ function handleContinue() {
   gap: 6px 12px;
 }
 
+/* 21 颗星在窄屏必须能换行：原来 inline-flex 不换行，宽度超过卡片内容区后
+   会被卡片自身的 overflow: hidden 裁掉（末尾几颗星直接看不见）。
+   只允许自然换行，不缩减数量、不省略。 */
 .adventure-card__stars-row {
-  display: inline-flex;
+  display: flex;
+  flex-wrap: wrap;
   gap: 3px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .adventure-card__star {

@@ -43,10 +43,17 @@ const emit = defineEmits(["open-backpack"]);
       </li>
     </ul>
 
-    <p class="growth-summary__stamps">
+    <!-- 长期成长摘要：整行就是热区，点开同一个探险收藏册（右上角按钮仍然保留）。 -->
+    <button
+      class="growth-summary__stamps"
+      type="button"
+      aria-label="打开我的探险收藏册，查看探险印章"
+      @click="emit('open-backpack')"
+    >
       <span class="growth-summary__stamps-glyph" aria-hidden="true">🧭</span>
       <span class="growth-summary__stamps-text">{{ growth.stampText }}</span>
-    </p>
+      <span class="growth-summary__stamps-more" aria-hidden="true">›</span>
+    </button>
 
     <div v-if="growth.nextAchievement" class="growth-summary__next">
       <span class="growth-summary__next-label">下一成就</span>
@@ -180,18 +187,39 @@ const emit = defineEmits(["open-backpack"]);
   font-weight: 700;
 }
 
-/* 长期成长的一条轻量信息：不做第四个指标卡，只写一行累计数。 */
+/* 长期成长的一条轻量信息：不做第四个指标卡，只写一行印章数，整行可点进收藏册。 */
 .growth-summary__stamps {
   display: flex;
   align-items: center;
   gap: 6px;
+  width: 100%;
   margin: 0;
   padding: 8px 12px;
+  border: 1.5px solid transparent;
   border-radius: 14px;
   background: rgba(184, 242, 223, 0.28);
   color: var(--color-ink-soft);
+  font-family: inherit;
   font-size: 0.8rem;
   font-weight: 800;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
+}
+
+.growth-summary__stamps:hover {
+  border-color: rgba(124, 216, 184, 0.62);
+  background: rgba(184, 242, 223, 0.52);
+  color: var(--color-ink);
+}
+
+.growth-summary__stamps:focus-visible {
+  outline: none;
+  border-color: rgba(124, 216, 184, 0.9);
+  box-shadow: 0 0 0 3px rgba(124, 216, 184, 0.3);
 }
 
 .growth-summary__stamps-glyph {
@@ -200,7 +228,14 @@ const emit = defineEmits(["open-backpack"]);
 }
 
 .growth-summary__stamps-text {
+  flex: 1;
   min-width: 0;
+}
+
+.growth-summary__stamps-more {
+  flex-shrink: 0;
+  font-size: 1rem;
+  font-weight: 900;
 }
 
 .growth-summary__next {
@@ -303,6 +338,7 @@ const emit = defineEmits(["open-backpack"]);
 @media (prefers-reduced-motion: reduce) {
   .growth-summary__more,
   .growth-summary__more:hover,
+  .growth-summary__stamps,
   .growth-summary__next-fill {
     transition: none;
     transform: none;
