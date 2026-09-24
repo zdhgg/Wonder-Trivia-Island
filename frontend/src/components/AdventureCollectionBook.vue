@@ -53,10 +53,11 @@ function close() {
           </header>
 
           <!-- 作用域澄清：顶部“年级 · 学期 · 路线”是本章作用域，
-               这一行只说明知识岛是长期、跨章节累计的，不属于任何一章。 -->
-          <p class="collection-book__scope-note">{{ book.stamps.knowledgeIsland.islandScopeText }}</p>
-
-          <KnowledgeIslandGrowth :island="book.stamps.knowledgeIsland" />
+               这一行只说明知识岛是长期、跨章节累计的，不属于任何一章。
+               放在岛屿画面之后：先说清楚“现在长什么样”，再补一句它属于长期成长。 -->
+          <KnowledgeIslandGrowth :island="book.stamps.knowledgeIsland">
+            <p class="collection-book__scope-note">{{ book.stamps.knowledgeIsland.islandScopeText }}</p>
+          </KnowledgeIslandGrowth>
 
           <p class="collection-book__hint">{{ book.stamps.islandHintText }}</p>
 

@@ -3489,11 +3489,13 @@ select {
 }
 
 /* 知识岛的作用域提示：很轻的一行，只用来区分“长期跨章节”与下面两块的“本章”。
-   顶部 scopeLabel（年级 · 学期 · 路线）保持不变。 */
+   顶部 scopeLabel（年级 · 学期 · 路线）保持不变。
+   它同时是 KnowledgeIslandGrowth 卡片里的插槽内容，所以只占内容宽度。 */
 .collection-book__scope-note {
   margin: 0;
   padding: 3px 10px;
   justify-self: start;
+  align-self: start;
   border-radius: 999px;
   background: rgba(184, 242, 223, 0.42);
   color: #1f6b51;

@@ -3,10 +3,13 @@
 //
 // 组件不做任何判定：不读 localStorage、不调接口、不自己数印章、不自己算阶段。
 // 阶段文字 / 进度 / 下一阶段提示全部来自 knowledgeIslandGrowth.buildKnowledgeIslandGrowth()；
-// 岛上元素只用 currentStage 判断（v-if），不额外维护一份场景状态。
+// 岛上元素出现与否只看「当前阶段的 features 里有没有这件东西」——
+// 组件里没有第二份阶段顺序数组（顺序的唯一来源是 KNOWLEDGE_ISLAND_STAGES）。
 //
 // 本轮不引入外部图片资产：岛屿用 CSS 形状 + emoji 拼出来，
 // 不同阶段肉眼可见地多出东西（沙滩 → 嫩芽 → 椰子树 → 小码头 → 灯塔）。
+import { getKnowledgeIslandFeatureGlyph } from "../utils/knowledgeIslandGrowth";
+
 const props = defineProps({
   island: {
     type: Object,
@@ -14,11 +17,18 @@ const props = defineProps({
   }
 });
 
-const STAGE_ORDER = Object.freeze(["first-sight", "sprout-coast", "palm-camp", "explorer-dock", "knowledge-lighthouse"]);
+function currentStageFeatures() {
+  return props.island?.currentStage?.features || [];
+}
 
-// 岛上的东西只会一个个出现，不会消失；到没到某一段完全由 currentStage 决定。
-function isStageAtOrAfter(stageId) {
-  return STAGE_ORDER.indexOf(props.island.currentStage.id) >= STAGE_ORDER.indexOf(stageId);
+// 阶段配置里的 features 只增不减，所以“现在岛上有这件东西”=
+// “当前阶段已经包含它”。
+function hasIslandFeature(feature) {
+  return currentStageFeatures().includes(feature);
+}
+
+function hasIslandFeatureGlyph(glyph) {
+  return currentStageFeatures().some((feature) => getKnowledgeIslandFeatureGlyph(feature) === glyph);
 }
 </script>
 
@@ -35,18 +45,18 @@ function isStageAtOrAfter(stageId) {
       <span class="knowledge-island__sky-dot knowledge-island__sky-dot--a" aria-hidden="true"></span>
       <span class="knowledge-island__sky-dot knowledge-island__sky-dot--b" aria-hidden="true"></span>
 
-      <span v-if="isStageAtOrAfter('knowledge-lighthouse')" class="knowledge-island__beam" aria-hidden="true"></span>
+      <span v-if="hasIslandFeature('灯光')" class="knowledge-island__beam" aria-hidden="true"></span>
       <span class="knowledge-island__sea" aria-hidden="true"></span>
       <span class="knowledge-island__surf" aria-hidden="true"></span>
       <span class="knowledge-island__ground" aria-hidden="true"></span>
 
-      <span v-if="isStageAtOrAfter('sprout-coast')" class="knowledge-island__grass" aria-hidden="true">🌿</span>
-      <span v-if="isStageAtOrAfter('sprout-coast')" class="knowledge-island__sprout" aria-hidden="true">🌱</span>
-      <span v-if="isStageAtOrAfter('palm-camp')" class="knowledge-island__palm" aria-hidden="true">🌴</span>
-      <span v-if="isStageAtOrAfter('palm-camp')" class="knowledge-island__camp" aria-hidden="true">⛺</span>
-      <span v-if="isStageAtOrAfter('explorer-dock')" class="knowledge-island__dock" aria-hidden="true"></span>
-      <span v-if="isStageAtOrAfter('explorer-dock')" class="knowledge-island__boat" aria-hidden="true">⛵</span>
-      <span v-if="isStageAtOrAfter('knowledge-lighthouse')" class="knowledge-island__lighthouse" aria-hidden="true">🗼</span>
+      <span v-if="hasIslandFeature('小草丛')" class="knowledge-island__grass" aria-hidden="true">🌿</span>
+      <span v-if="hasIslandFeature('嫩芽')" class="knowledge-island__sprout" aria-hidden="true">🌱</span>
+      <span v-if="hasIslandFeature('椰子树')" class="knowledge-island__palm" aria-hidden="true">🌴</span>
+      <span v-if="hasIslandFeature('小帐篷')" class="knowledge-island__camp" aria-hidden="true">⛺</span>
+      <span v-if="hasIslandFeature('小码头')" class="knowledge-island__dock" aria-hidden="true"></span>
+      <span v-if="hasIslandFeature('泊岸小船')" class="knowledge-island__boat" aria-hidden="true">⛵</span>
+      <span v-if="hasIslandFeature('灯塔')" class="knowledge-island__lighthouse" aria-hidden="true">🗼</span>
     </div>
 
     <div class="knowledge-island__info">
@@ -72,6 +82,10 @@ function isStageAtOrAfter(stageId) {
 
       <p class="knowledge-island__next" :class="{ 'knowledge-island__next--max': island.isMaxStage }">{{ island.nextText }}</p>
     </div>
+
+    <!-- 可选补充区域：收藏册（无插槽内容）用来放作用域说明提示词，
+         阶段庆祝弹层用来放“去看看我的知识岛”等操作。 -->
+    <slot></slot>
   </div>
 </template>
 

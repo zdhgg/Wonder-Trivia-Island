@@ -35,7 +35,34 @@ const GROWTH_PROGRESS_TABLE_SQL = `
   );
 `;
 const CHALLENGE_PROGRESS_STORAGE_KEY = "wonder-trivia-island.challenge.progress";
+const HOME_DAILY_TASKS_STORAGE_KEY = "wonder-trivia-island.home.daily-tasks";
 const STAGE_IDS = Object.freeze(["stage-1", "stage-2", "stage-3", "stage-4", "stage-5", "stage-6", "stage-7"]);
+const CELEBRATION_TITLE = "小岛有新变化啦！";
+const CELEBRATION_DIALOG = "小岛有新变化啦！";
+const CLAIM_BUTTON = "领取今日宝箱";
+const READY_BUTTON = /宝箱可以打开啦/;
+
+function getTodayDateKey() {
+  const now = new Date();
+  const month = `${now.getMonth() + 1}`.padStart(2, "0");
+  const day = `${now.getDate()}`.padStart(2, "0");
+
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
+// 今日 3 个小任务全部完成 → 首页宝箱可领取。
+function buildCompletedTodayTasks() {
+  return {
+    version: 1,
+    dateKey: getTodayDateKey(),
+    tasks: {
+      stagesCleared: 1,
+      reviewedQuestionIds: ["101", "102", "103"],
+      completedLessonIds: ["grade-three-math-lesson-1"]
+    },
+    updatedAt: new Date().toISOString()
+  };
+}
 
 // 一章节的真实 progress 形状：starCount > 0 表示过关，rewardEarned 表示收下航海收藏。
 function buildChapterEntry({ clearedStageCount = 0, earnedRewardCount = 0 } = {}) {
@@ -78,7 +105,8 @@ async function readIslandExpectation(page, stampCount) {
 }
 
 // 真实账本形状：totalDailyChests 就是累计印章数，dailyClaims 保留最近几天。
-function buildGrowthProgressJson(stampCount) {
+// includeTodayClaim 用来造“今天服务端已经领过”的既成事实（服务端会回 alreadyClaimed）。
+function buildGrowthProgressJson(stampCount, { includeTodayClaim = false } = {}) {
   const dailyClaims = {};
   const claimDays = Math.min(stampCount, 5);
 
@@ -86,6 +114,10 @@ function buildGrowthProgressJson(stampCount) {
     const day = `${index + 1}`.padStart(2, "0");
 
     dailyClaims[`2026-09-${day}`] = { claimedAt: `2026-09-${day}T08:00:00.000Z` };
+  }
+
+  if (includeTodayClaim) {
+    dailyClaims[getTodayDateKey()] = { claimedAt: new Date().toISOString() };
   }
 
   return JSON.stringify({
@@ -96,7 +128,7 @@ function buildGrowthProgressJson(stampCount) {
 }
 
 // 只写 E2E 隔离库；e2e/e2e-environment.js 已经保证这个路径不会是真库。
-function seedStoredStampCount(profileId, stampCount) {
+function seedStoredStampCount(profileId, stampCount, options = {}) {
   const db = new DatabaseSync(E2E_DB_PATH);
 
   try {
@@ -109,7 +141,7 @@ function seedStoredStampCount(profileId, stampCount) {
           progress_json = excluded.progress_json,
           updated_at = excluded.updated_at
       `
-    ).run(profileId, buildGrowthProgressJson(stampCount), new Date().toISOString());
+    ).run(profileId, buildGrowthProgressJson(stampCount, options), new Date().toISOString());
   } finally {
     db.close();
   }
@@ -122,6 +154,40 @@ async function seedHomeStorage(page, profile = HOME_PROFILE) {
     },
     { settingsKey: SETTINGS_STORAGE_KEY, profileSnapshot: profile }
   );
+}
+
+// 今日小任务进度是前端本地日进度，直接写应用自己的 key。
+async function seedHomeDailyTasks(page) {
+  await page.addInitScript(
+    ({ tasksKey, tasksValue }) => {
+      window.localStorage.setItem(tasksKey, JSON.stringify(tasksValue));
+    },
+    { tasksKey: HOME_DAILY_TASKS_STORAGE_KEY, tasksValue: buildCompletedTodayTasks() }
+  );
+}
+
+// 真实领取路径：点首页「宝箱可以打开啦」（若需要先滚进视野）→ 点「领取今日宝箱」。
+async function claimTodayChestFromHome(page) {
+  const readyButton = page.getByRole("button", { name: READY_BUTTON });
+
+  if (await readyButton.count()) {
+    await readyButton.click();
+  }
+
+  await page.getByRole("button", { name: CLAIM_BUTTON }).click();
+  await expect(page.getByRole("region", { name: "今日宝箱" })).toContainText("今日已领取");
+}
+
+function celebrationDialog(page) {
+  return page.getByRole("dialog", { name: CELEBRATION_DIALOG });
+}
+
+// 弹层里“新出现”的元素名，按显示顺序读出来。
+async function readCelebrationFeatureNames(page) {
+  return celebrationDialog(page)
+    .locator(".island-celebration__feature-name")
+    .allInnerTexts()
+    .then((names) => names.map((name) => name.trim()));
 }
 
 // 每一轮都用一个新的 profile id：印章来自服务端账本，必须让这一轮自己说了算。
@@ -139,6 +205,50 @@ async function openHomeWithStampCount(page, stampCount) {
     }
   ]);
   seedStoredStampCount(profileId, stampCount);
+  await page.goto("/");
+  await page.getByRole("region", { name: "我的成长" }).waitFor({ state: "visible", timeout: 15_000 });
+
+  return profileId;
+}
+
+// 阶段反馈场景：固定起始印章数 + 今日任务 3/3（宝箱可领取），宝箱本身还没领过。
+async function openHomeReadyToClaim(page, stampCount) {
+  const profileId = randomUUID();
+
+  await seedHomeStorage(page);
+  await seedHomeDailyTasks(page);
+  await page.context().addCookies([
+    {
+      name: PROFILE_COOKIE_NAME,
+      value: profileId,
+      url: "http://127.0.0.1:3101",
+      httpOnly: true,
+      sameSite: "Lax"
+    }
+  ]);
+  seedStoredStampCount(profileId, stampCount);
+  await page.goto("/");
+  await page.getByRole("region", { name: "我的成长" }).waitFor({ state: "visible", timeout: 15_000 });
+
+  return profileId;
+}
+
+// 已经领过今天：账本里同时记下今天的 claim，服务端会回 alreadyClaimed = true。
+async function openHomeAlreadyClaimedToday(page, stampCount) {
+  const profileId = randomUUID();
+
+  await seedHomeStorage(page);
+  await seedHomeDailyTasks(page);
+  await page.context().addCookies([
+    {
+      name: PROFILE_COOKIE_NAME,
+      value: profileId,
+      url: "http://127.0.0.1:3101",
+      httpOnly: true,
+      sameSite: "Lax"
+    }
+  ]);
+  seedStoredStampCount(profileId, stampCount, { includeTodayClaim: true });
   await page.goto("/");
   await page.getByRole("region", { name: "我的成长" }).waitFor({ state: "visible", timeout: 15_000 });
 
@@ -517,5 +627,233 @@ test.describe("知识岛成长", () => {
     // 下面两块仍然明确写着“本章”。
     await expect(dialog.getByRole("region", { name: "本章航海收藏" })).toBeVisible();
     await expect(dialog.getByRole("region", { name: "本章成就" })).toBeVisible();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 场景 8：知识岛阶段变化反馈（Phase 2C-B）
+//
+// 只有“真实领取成功（alreadyClaimed === false）并且这一枚刚好跨过阶段阈值”才弹一次。
+// 起始印章数直接写进 E2E 隔离库，本次 +1 一定走真实的首页领取按钮 + 真实服务端接口，
+// 不新增任何测试专用业务 API。
+// ---------------------------------------------------------------------------
+test.describe("知识岛阶段变化反馈", () => {
+  test("普通领取（没跨阶段）不弹知识岛反馈，只保留宝箱原有的获得印章提示", async ({ page }) => {
+    await openHomeReadyToClaim(page, 1);
+
+    await claimTodayChestFromHome(page);
+
+    // Phase 2B.5 的宝箱反馈必须原样保留。
+    await expect(page.getByRole("region", { name: "今日宝箱" })).toContainText("获得 1 枚探险印章");
+    // 1 → 2 没到任何阈值：不弹。
+    await expect(celebrationDialog(page)).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: CELEBRATION_TITLE })).toHaveCount(0);
+
+    // 印章数是真的 +1，跟收藏册一致。
+    const growth = page.getByRole("region", { name: "我的成长" });
+    const expectation = await readIslandExpectation(page, 2);
+
+    await expect(growth).toContainText("已经攒了 2 枚探险印章");
+    await expect(growth).toContainText(expectation.stageName);
+  });
+
+  // 四个阈值：2→3、6→7、14→15、29→30。参数化，避免复制四份几乎一样的用例。
+  const THRESHOLD_CASES = Object.freeze([
+    { from: 2, to: 3, stageId: "sprout-coast", stageName: "萌芽海岸", newFeatures: ["嫩芽", "小草丛"], nextText: "再攒 4 枚印章" },
+    { from: 6, to: 7, stageId: "palm-camp", stageName: "椰林营地", newFeatures: ["椰子树", "小帐篷"], nextText: "再攒 8 枚印章" },
+    { from: 14, to: 15, stageId: "explorer-dock", stageName: "探险码头", newFeatures: ["小码头", "泊岸小船"], nextText: "再攒 15 枚印章" },
+    { from: 29, to: 30, stageId: "knowledge-lighthouse", stageName: "知识灯塔", newFeatures: ["灯塔", "灯光"], nextText: "" }
+  ]);
+
+  for (const thresholdCase of THRESHOLD_CASES) {
+    test(`真实领取跨过阈值 ${thresholdCase.from} → ${thresholdCase.to}：弹出「${thresholdCase.stageName}」反馈`, async ({ page }) => {
+      await openHomeReadyToClaim(page, thresholdCase.from);
+
+      const expectation = await readIslandExpectation(page, thresholdCase.to);
+
+      await claimTodayChestFromHome(page);
+
+      const dialog = celebrationDialog(page);
+
+      await expect(dialog).toBeVisible();
+      // 标题 / 阶段名 / 说明文案都对。
+      await expect(page.getByRole("heading", { name: CELEBRATION_TITLE })).toBeVisible();
+      await expect(dialog).toContainText(thresholdCase.stageName);
+      // 最高阶段用儿童化的完成表达，其余阶段说明“刚刚这一枚带来的变化”。
+      await expect(dialog).toContainText(
+        expectation.isMaxStage ? "现在的小岛已经非常热闹啦" : "让知识岛有了新的变化"
+      );
+      expect(expectation.stageName).toBe(thresholdCase.stageName);
+      // 不出现等级 / XP 这类系统词。
+      for (const forbidden of ["满级", "等级", "Level", "XP", "经验值", "升级"]) {
+        await expect(dialog).not.toContainText(forbidden);
+      }
+
+      // 新出现的元素与阶段配置的差集一致。
+      expect(await readCelebrationFeatureNames(page)).toEqual(thresholdCase.newFeatures);
+
+      // 弹层里那座岛就是新阶段：data-stage / 阶段名 / 印章数都一致。
+      const island = dialog.locator(".knowledge-island");
+
+      await expect(island).toHaveAttribute("data-stage", thresholdCase.stageId);
+      await expect(island).toContainText(`当前：${thresholdCase.stageName}`);
+      await expect(island).toContainText(`已经攒了 ${thresholdCase.to} 枚探险印章`);
+      await expect(island.locator(KNOWLEDGE_ISLAND_FIGURE)).toBeVisible();
+
+      // 最高阶段：不再说“再攒 X 枚”，进度满。
+      if (expectation.isMaxStage) {
+        await expect(island).not.toContainText("再攒");
+        await expect(island).toContainText("现在的小岛已经非常热闹啦");
+        await expect(island.locator(KNOWLEDGE_ISLAND_TRACK)).toHaveCount(0);
+      } else {
+        await expect(island).toContainText(thresholdCase.nextText);
+      }
+
+      // 关闭后宝箱原有的获得印章提示仍在。
+      await dialog.getByRole("button", { name: "知道啦" }).click();
+      await expect(celebrationDialog(page)).toHaveCount(0);
+      await expect(page.getByRole("region", { name: "今日宝箱" })).toContainText("获得 1 枚探险印章");
+    });
+  }
+
+  test("「去看看我的知识岛」：先关反馈层，再打开现有收藏册，显示同一个新阶段", async ({ page }) => {
+    await openHomeReadyToClaim(page, 2);
+
+    const expectation = await readIslandExpectation(page, 3);
+
+    await claimTodayChestFromHome(page);
+    await expect(celebrationDialog(page)).toBeVisible();
+
+    await celebrationDialog(page).getByRole("button", { name: "去看看我的知识岛" }).click();
+
+    // 反馈层关掉，收藏册打开，仍然是首页 route（没有新页面 / 新 route）。
+    await expect(celebrationDialog(page)).toHaveCount(0);
+    await expect(page).toHaveURL(/#\/$/);
+    const dialog = collectionBookDialog(page);
+
+    await expect(dialog).toBeVisible();
+    // 同一时刻只有一个 overlay。
+    await expect(page.locator(".island-celebration-overlay")).toHaveCount(0);
+
+    const island = islandSection(dialog);
+
+    await expect(island).toContainText(`当前：${expectation.stageName}`);
+    await expect(island).toContainText(sectionCountText(3));
+    await expect(island.locator(KNOWLEDGE_ISLAND_FIGURE)).toHaveAttribute("data-stage", "sprout-coast");
+  });
+
+  test("点遮罩可以关闭反馈层，不会误开收藏册", async ({ page }) => {
+    await openHomeReadyToClaim(page, 2);
+
+    await claimTodayChestFromHome(page);
+    await expect(celebrationDialog(page)).toBeVisible();
+
+    // 点遮罩自身（不是卡片内部）。
+    await page.locator(".island-celebration-overlay").click({ position: { x: 8, y: 8 } });
+
+    await expect(celebrationDialog(page)).toHaveCount(0);
+    await expect(collectionBookDialog(page)).toHaveCount(0);
+  });
+
+  test("刷新不重放：关掉反馈后 reload，不再出现庆祝，但收藏册仍是新阶段", async ({ page }) => {
+    await openHomeReadyToClaim(page, 2);
+
+    const expectation = await readIslandExpectation(page, 3);
+
+    await claimTodayChestFromHome(page);
+    await expect(celebrationDialog(page)).toBeVisible();
+    await celebrationDialog(page).getByRole("button", { name: "知道啦" }).click();
+    await expect(celebrationDialog(page)).toHaveCount(0);
+
+    await page.reload();
+    await page.getByRole("region", { name: "我的成长" }).waitFor({ state: "visible", timeout: 15_000 });
+
+    // 同步来的 3 枚印章不会补一次历史庆祝。
+    await expect(celebrationDialog(page)).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "今日宝箱" })).toContainText("今日已领取");
+
+    const dialog = await openCollectionBookFromHome(page);
+    const island = islandSection(dialog);
+
+    await expect(island).toContainText(`当前：${expectation.stageName}`);
+    await expect(island).toContainText(sectionCountText(3));
+  });
+
+  test("服务端 alreadyClaimed：今天已领过时不产生任何反馈", async ({ page }) => {
+    // 账本里已经有今天这条 claim，总数 3（恰好是一个阈值）。
+    await openHomeAlreadyClaimedToday(page, 3);
+
+    // 页面启动同步到 3 枚，不庆祝。
+    await expect(celebrationDialog(page)).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "今日宝箱" })).toContainText("今日已领取");
+    await expect(page.getByRole("button", { name: CLAIM_BUTTON })).toHaveCount(0);
+
+    // 再同步 / 刷新一次也不庆祝。
+    await page.reload();
+    await page.getByRole("region", { name: "我的成长" }).waitFor({ state: "visible", timeout: 15_000 });
+    await expect(celebrationDialog(page)).toHaveCount(0);
+
+    // 但收藏册如实显示 3 枚 / 萌芽海岸。
+    const expectation = await readIslandExpectation(page, 3);
+    const dialog = await openCollectionBookFromHome(page);
+
+    await expect(islandSection(dialog)).toContainText(`当前：${expectation.stageName}`);
+  });
+
+  test("390 窄屏：反馈层不横向溢出、按钮完整可点、岛屿完整", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openHomeReadyToClaim(page, 6);
+
+    await claimTodayChestFromHome(page);
+
+    const dialog = celebrationDialog(page);
+
+    await expect(dialog).toBeVisible();
+
+    const metrics = await page.evaluate(() => {
+      const overlay = document.querySelector(".island-celebration-overlay");
+      const card = document.querySelector(".island-celebration");
+      const island = document.querySelector(".knowledge-island");
+      const figure = document.querySelector(".knowledge-island__figure");
+      const primary = document.querySelector(".island-celebration__primary");
+      const closeButton = document.querySelector(".island-celebration__close");
+      const box = (element) => (element ? element.getBoundingClientRect().toJSON() : null);
+
+      return {
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+        documentWidth: document.documentElement.scrollWidth,
+        overlay: box(overlay),
+        card: box(card),
+        islandWidth: island ? Math.round(island.getBoundingClientRect().width) : 0,
+        figure: box(figure),
+        primary: box(primary),
+        closeButton: box(closeButton)
+      };
+    });
+
+    // 整页不横向溢出，弹层也不超出屏幕。
+    expect(metrics.documentWidth).toBeLessThanOrEqual(metrics.viewportWidth);
+    expect(metrics.card.left).toBeGreaterThanOrEqual(0);
+    expect(metrics.card.right).toBeLessThanOrEqual(metrics.viewportWidth);
+    // 内容较高时靠自身纵向滚动兜住，不超出视口。
+    expect(metrics.card.height).toBeLessThanOrEqual(metrics.viewportHeight);
+
+    // 岛屿视觉完整、主按钮与关闭按钮都完整可点。
+    expect(metrics.islandWidth).toBeGreaterThan(120);
+    expect(metrics.figure.width).toBeGreaterThan(120);
+    expect(metrics.primary.left).toBeGreaterThanOrEqual(0);
+    expect(metrics.primary.right).toBeLessThanOrEqual(metrics.viewportWidth);
+    expect(metrics.closeButton.right).toBeLessThanOrEqual(metrics.viewportWidth);
+
+    await expect(dialog).toContainText("椰林营地");
+    expect(await readCelebrationFeatureNames(page)).toEqual(["椰子树", "小帐篷"]);
+
+    await dialog.getByRole("button", { name: "去看看我的知识岛" }).click();
+    await expect(collectionBookDialog(page)).toBeVisible();
+
+    const collectionWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+
+    expect(collectionWidth).toBeLessThanOrEqual(390);
   });
 });

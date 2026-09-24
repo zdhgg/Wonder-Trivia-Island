@@ -6,10 +6,11 @@
 // 它不读 localStorage、不读接口、不写任何进度，也不引入第二套成长账本：
 //   - 数据库里仍然只保存一个事实：累计拿过多少枚印章（growthProgress.totalDailyChests）；
 //   - 前端负责解释这些印章对应的小岛样子。
-// 因此「阶段」永远可以只由 stampCount 推导出来，刷新、换设备、换章节都不会漂移。
+// 所以只要同一个 profile 从服务端取到同一份 growthProgress，阶段就能被重新算成同一个结果：
+// 这里不负责跨设备同步、也不记录“看过哪个阶段”，同步本身由 growthProgress 那一路负责。
 //
-// 本轮刻意不做：阶段升级庆祝、已读标记、动画队列（留给 Phase 2C-B），
-// 所以这里没有任何一次性状态，全部输出都是 stampCount 的确定性函数。
+// 这里同样没有“已读 / 庆祝过”的第二套状态：
+// 阶段变化反馈只发生在服务端确认“这次真的新领到一枚印章”的那一刻，属于临时 UI 状态。
 
 // 阶段阈值本轮固定：0 / 3 / 7 / 15 / 30。
 // 不动态生成、不随机、不消费印章——印章只累计，不会被花掉。
@@ -70,11 +71,66 @@ export const KNOWLEDGE_ISLAND_STAGES = Object.freeze([
 
 export const KNOWLEDGE_ISLAND_MAX_STAGE = KNOWLEDGE_ISLAND_STAGES[KNOWLEDGE_ISLAND_STAGES.length - 1];
 
+// 岛上元素的图标：阶段配置只写元素名字，图标在这里集中一份，
+// 收藏册的舞台和阶段庆祝都从这里取，避免同一件东西在两处各画一遍。
+export const KNOWLEDGE_ISLAND_FEATURE_GLYPHS = Object.freeze({
+  嫩芽: "🌱",
+  小草丛: "🌿",
+  椰子树: "🌴",
+  小帐篷: "⛺",
+  小码头: "🛶",
+  泊岸小船: "⛵",
+  灯塔: "🗼",
+  灯光: "💡"
+});
+
+export function getKnowledgeIslandFeatureGlyph(feature) {
+  return KNOWLEDGE_ISLAND_FEATURE_GLYPHS[String(feature ?? "").trim()] || "";
+}
+
+// 阶段顺序的唯一来源就是 KNOWLEDGE_ISLAND_STAGES：
+// Vue 组件不再自己维护一份 id 顺序数组，避免两处顺序漂移。
+export function getKnowledgeIslandStageIndexById(stageId) {
+  const normalizedStageId = String(stageId ?? "").trim();
+  const index = KNOWLEDGE_ISLAND_STAGES.findIndex((stage) => stage.id === normalizedStageId);
+
+  // 未知 id 不猜、不报错，按“还没到任何阶段”处理。
+  return index;
+}
+
+export function isKnowledgeIslandStageAtOrAfter(currentStageId, targetStageId) {
+  const currentIndex = getKnowledgeIslandStageIndexById(currentStageId);
+  const targetIndex = getKnowledgeIslandStageIndexById(targetStageId);
+
+  if (currentIndex < 0 || targetIndex < 0) {
+    return false;
+  }
+
+  return currentIndex >= targetIndex;
+}
+
 // 异常输入一律安全归零：不出现负数、NaN、小数、字符串数字以外的猜测。
+// 这是「展示层」语义——显示阶段时宁可退化成 0 枚，也不能因为脏数据渲染失败。
 export function normalizeKnowledgeIslandStampCount(value) {
   const parsed = Number.parseInt(String(value ?? ""), 10);
 
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+// 「一次性事件检测」的严格语义，只给 buildKnowledgeIslandStageTransition 用。
+// 与上面的展示层语义刻意不同：这里只接受真正的非负安全整数，不做容错、不归零。
+// 原因：阶段变化反馈是一次性事件，如果允许 undefined 先归零再比较，
+// 一次脏输入（例如服务端响应里少了字段）就会被当成真实的 0 → N 领取，弹出虚假庆祝。
+// 不允许数字字符串 / 小数，是因为真实调用方传的都是 number，没有兼容不存在调用的理由。
+export function isValidKnowledgeIslandStampCount(value) {
+  return (
+    typeof value === "number" &&
+    Number.isFinite(value) &&
+    Number.isInteger(value) &&
+    // 超出安全整数范围的值已经不是“能数清楚的印章数”，一并挡掉。
+    Number.isSafeInteger(value) &&
+    value >= 0
+  );
 }
 
 // 找到 stampCount 落在哪一段：恰好到阈值立刻进入新阶段（例如正好 3 枚 = 萌芽海岸）。
@@ -159,5 +215,73 @@ export function buildKnowledgeIslandGrowth(stampCount = 0) {
     // 这一阶段小岛上现在有什么（元素只增不减），用于收藏册里的详细说明。
     // 注意：这里不再重复“再攒 X 枚”（组件里已经有 nextText），也不重复作用域提示。
     stageHintText: `现在的小岛有：${currentStage.features.join("、")}。`
+  };
+}
+
+// ---------------------------------------------------------------------------
+// 阶段变化（Phase 2C-B）：两次印章数之间，知识岛是不是真的进了更高的阶段。
+//
+// 这是一个纯判断，没有任何一次性状态：
+//   - 没跨阶段（同值 / 只 +1 但没到阈值 / 倒退）→ null
+//   - 跨了阶段 → 一个稳定的 ViewModel，供临时庆祝层展示
+// 真实领取路径每次只 +1 枚，但这里也支持一次跳过多个阶段（只给一个结果，不做队列）。
+//
+// 输入语义比展示层严格（见 isValidKnowledgeIslandStampCount）：
+// 任一输入不是非负整数就直接返回 null，绝不先归零再比较——
+// 否则 undefined → 3 会被算成 0 → 3，凭空造出一次阶段变化反馈。
+// ---------------------------------------------------------------------------
+export function buildKnowledgeIslandStageTransition(previousStampCount, nextStampCount) {
+  if (!isValidKnowledgeIslandStampCount(previousStampCount) || !isValidKnowledgeIslandStampCount(nextStampCount)) {
+    return null;
+  }
+
+  const fromIndex = resolveKnowledgeIslandStageIndex(previousStampCount);
+  const toIndex = resolveKnowledgeIslandStageIndex(nextStampCount);
+
+  // 只有真的进入更高阶段才谈得上“有新变化”：
+  // 同值、倒退、以及印章数没跨过阈值的情况都在这里被挡掉。
+  if (toIndex <= fromIndex) {
+    return null;
+  }
+
+  const fromStage = KNOWLEDGE_ISLAND_STAGES[fromIndex];
+  const toStage = KNOWLEDGE_ISLAND_STAGES[toIndex];
+  // 差集来自阶段配置本身：toStage.features - fromStage.features。
+  const newFeatures = toStage.features
+    .filter((feature) => !fromStage.features.includes(feature))
+    .map((feature) => ({ name: feature, glyph: getKnowledgeIslandFeatureGlyph(feature) }));
+  const isMaxStageReached = toIndex === KNOWLEDGE_ISLAND_STAGES.length - 1;
+  const celebrateText = isMaxStageReached
+    ? "现在的小岛已经非常热闹啦！"
+    : "刚刚获得的探险印章，让知识岛有了新的变化。";
+
+  return {
+    // 输入已经校验过，就是这两个非负整数，不需要再归一化。
+    previousStampCount,
+    nextStampCount,
+    fromStage: {
+      id: fromStage.id,
+      threshold: fromStage.threshold,
+      name: fromStage.name,
+      glyph: fromStage.glyph
+    },
+    toStage: {
+      id: toStage.id,
+      threshold: toStage.threshold,
+      name: toStage.name,
+      glyph: toStage.glyph,
+      summary: toStage.summary
+    },
+    fromStageIndex: fromIndex,
+    toStageIndex: toIndex,
+    newFeatures,
+    hasNewFeatures: newFeatures.length > 0,
+    isMaxStageReached,
+    // 复用同一套阶段解释：庆祝层与收藏册显示的是同一座岛。
+    island: buildKnowledgeIslandGrowth(nextStampCount),
+    title: "小岛有新变化啦！",
+    celebrateText,
+    actionLabel: "去看看我的知识岛",
+    dismissLabel: "知道啦"
   };
 }

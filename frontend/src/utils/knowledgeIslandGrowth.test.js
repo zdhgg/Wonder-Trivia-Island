@@ -4,7 +4,12 @@ import { buildHomeDashboard } from "./homeDashboard.js";
 import {
   KNOWLEDGE_ISLAND_STAGES,
   buildKnowledgeIslandGrowth,
+  buildKnowledgeIslandStageTransition,
+  getKnowledgeIslandFeatureGlyph,
+  getKnowledgeIslandStageIndexById,
   isKnowledgeIslandMaxStage,
+  isKnowledgeIslandStageAtOrAfter,
+  isValidKnowledgeIslandStampCount,
   normalizeKnowledgeIslandStampCount,
   resolveKnowledgeIslandStageIndex
 } from "./knowledgeIslandGrowth.js";
@@ -363,5 +368,317 @@ describe("knowledgeIslandGrowth · 首页与收藏册同口径", () => {
     expect(dashboard.growth.stampCount).toBe(13);
     expect(dashboard.growth.knowledgeIsland.currentStage.id).toBe(stageAt(7).id);
     expect(dashboard.growth.knowledgeIsland.nextText).toBe("再攒 2 枚印章，小岛会有新变化");
+  });
+});
+
+describe("knowledgeIslandGrowth · 阶段顺序的唯一来源", () => {
+  it("阶段索引完全来自 KNOWLEDGE_ISLAND_STAGES，不再需要组件本地顺序数组", () => {
+    KNOWLEDGE_ISLAND_STAGES.forEach((stage, index) => {
+      expect(getKnowledgeIslandStageIndexById(stage.id)).toBe(index);
+    });
+
+    // 第一个 / 最后一个都要能定位。
+    expect(getKnowledgeIslandStageIndexById(KNOWLEDGE_ISLAND_STAGES[0].id)).toBe(0);
+    expect(getKnowledgeIslandStageIndexById(KNOWLEDGE_ISLAND_STAGES.at(-1).id)).toBe(KNOWLEDGE_ISLAND_STAGES.length - 1);
+  });
+
+  it("未知 / 非法 stage id 安全返回 -1，不猜也不抛错", () => {
+    for (const brokenStageId of [undefined, null, "", "   ", "not-a-stage", 0, {}, []]) {
+      expect(getKnowledgeIslandStageIndexById(brokenStageId)).toBe(-1);
+    }
+  });
+
+  it("stageAtOrAfter 用阶段顺序比较，未知 id 一律返回 false", () => {
+    expect(isKnowledgeIslandStageAtOrAfter("palm-camp", "sprout-coast")).toBe(true);
+    expect(isKnowledgeIslandStageAtOrAfter("palm-camp", "palm-camp")).toBe(true);
+    expect(isKnowledgeIslandStageAtOrAfter("palm-camp", "explorer-dock")).toBe(false);
+    expect(isKnowledgeIslandStageAtOrAfter("first-sight", "first-sight")).toBe(true);
+    expect(isKnowledgeIslandStageAtOrAfter("knowledge-lighthouse", "first-sight")).toBe(true);
+
+    // 任何一边是未知 id 都不成立（安全方向：宁可不显示，也不误显示）。
+    expect(isKnowledgeIslandStageAtOrAfter("unknown", "sprout-coast")).toBe(false);
+    expect(isKnowledgeIslandStageAtOrAfter("palm-camp", "unknown")).toBe(false);
+    expect(isKnowledgeIslandStageAtOrAfter(undefined, undefined)).toBe(false);
+  });
+
+  it("岛上元素图标集中在纯函数层，收藏册与庆祝层共用同一份", () => {
+    expect(getKnowledgeIslandFeatureGlyph("嫩芽")).toBe("🌱");
+    expect(getKnowledgeIslandFeatureGlyph("小草丛")).toBe("🌿");
+    expect(getKnowledgeIslandFeatureGlyph("椰子树")).toBe("🌴");
+    expect(getKnowledgeIslandFeatureGlyph("小帐篷")).toBe("⛺");
+    expect(getKnowledgeIslandFeatureGlyph("泊岸小船")).toBe("⛵");
+    expect(getKnowledgeIslandFeatureGlyph("灯塔")).toBe("🗼");
+    expect(getKnowledgeIslandFeatureGlyph("灯光")).toBe("💡");
+    expect(getKnowledgeIslandFeatureGlyph("不存在的东西")).toBe("");
+    expect(getKnowledgeIslandFeatureGlyph(undefined)).toBe("");
+  });
+});
+
+describe("knowledgeIslandGrowth · 一次性事件的严格输入语义", () => {
+  // 展示层容错归零没有问题；但“一次性事件检测”不能容错，
+  // 否则一次脏输入就会被当成真实的 0 → N 领取，弹出虚假庆祝。
+  it("只接受非负整数 number", () => {
+    for (const validValue of [0, 1, 2, 3, 7, 15, 29, 30, 100, 10000]) {
+      expect(isValidKnowledgeIslandStampCount(validValue)).toBe(true);
+    }
+
+    for (const invalidValue of [
+      undefined,
+      null,
+      "",
+      " ",
+      "0",
+      "3",
+      "abc",
+      NaN,
+      Infinity,
+      -Infinity,
+      -1,
+      -100,
+      2.5,
+      0.1,
+      Number.MAX_SAFE_INTEGER + 2,
+      true,
+      false,
+      {},
+      [],
+      [3],
+      () => {},
+      Symbol("3"),
+      3n
+    ]) {
+      expect(isValidKnowledgeIslandStampCount(invalidValue)).toBe(false);
+    }
+  });
+});
+
+describe("knowledgeIslandGrowth · 阶段变化 transition", () => {
+  it("没跨阶段时一律返回 null（同值 / 普通 +1 / 倒退）", () => {
+    // 普通领取：没到阈值
+    expect(buildKnowledgeIslandStageTransition(0, 1)).toBeNull();
+    expect(buildKnowledgeIslandStageTransition(1, 2)).toBeNull();
+    expect(buildKnowledgeIslandStageTransition(3, 4)).toBeNull();
+    expect(buildKnowledgeIslandStageTransition(4, 5)).toBeNull();
+    expect(buildKnowledgeIslandStageTransition(7, 8)).toBeNull();
+    expect(buildKnowledgeIslandStageTransition(15, 16)).toBeNull();
+
+    // 同值
+    expect(buildKnowledgeIslandStageTransition(3, 3)).toBeNull();
+    expect(buildKnowledgeIslandStageTransition(0, 0)).toBeNull();
+
+    // 倒退
+    expect(buildKnowledgeIslandStageTransition(7, 6)).toBeNull();
+    expect(buildKnowledgeIslandStageTransition(30, 29)).toBeNull();
+    expect(buildKnowledgeIslandStageTransition(15, 0)).toBeNull();
+
+    // 最高阶段之后再涨也不再“进阶段”
+    expect(buildKnowledgeIslandStageTransition(30, 31)).toBeNull();
+    expect(buildKnowledgeIslandStageTransition(30, 100)).toBeNull();
+  });
+
+  it("恰好跨过阈值时返回 transition，并带上正确的起止阶段", () => {
+    const sprout = buildKnowledgeIslandStageTransition(2, 3);
+
+    expect(sprout).not.toBeNull();
+    expect(sprout.previousStampCount).toBe(2);
+    expect(sprout.nextStampCount).toBe(3);
+    expect(sprout.fromStage.id).toBe("first-sight");
+    expect(sprout.toStage.id).toBe("sprout-coast");
+    expect(sprout.fromStageIndex).toBe(0);
+    expect(sprout.toStageIndex).toBe(1);
+    expect(sprout.isMaxStageReached).toBe(false);
+    expect(sprout.title).toBe("小岛有新变化啦！");
+    expect(sprout.actionLabel).toBe("去看看我的知识岛");
+    expect(sprout.dismissLabel).toBe("知道啦");
+
+    expect(buildKnowledgeIslandStageTransition(6, 7).toStage.id).toBe("palm-camp");
+    expect(buildKnowledgeIslandStageTransition(14, 15).toStage.id).toBe("explorer-dock");
+
+    const lighthouse = buildKnowledgeIslandStageTransition(29, 30);
+
+    expect(lighthouse.toStage.id).toBe("knowledge-lighthouse");
+    expect(lighthouse.toStage.name).toBe("知识灯塔");
+    expect(lighthouse.isMaxStageReached).toBe(true);
+    // 最高阶段用儿童化的完成表达，不出现“满级 / 等级 / XP”。
+    for (const forbidden of ["满级", "等级", "Level", "XP", "经验值", "升级"]) {
+      expect(lighthouse.celebrateText).not.toContain(forbidden);
+      expect(lighthouse.title).not.toContain(forbidden);
+    }
+  });
+
+  it("newFeatures 是阶段配置的差集：toStage.features - fromStage.features", () => {
+    expect(buildKnowledgeIslandStageTransition(2, 3).newFeatures.map((feature) => feature.name)).toEqual([
+      "嫩芽",
+      "小草丛"
+    ]);
+    expect(buildKnowledgeIslandStageTransition(6, 7).newFeatures.map((feature) => feature.name)).toEqual([
+      "椰子树",
+      "小帐篷"
+    ]);
+    expect(buildKnowledgeIslandStageTransition(14, 15).newFeatures.map((feature) => feature.name)).toEqual([
+      "小码头",
+      "泊岸小船"
+    ]);
+    expect(buildKnowledgeIslandStageTransition(29, 30).newFeatures.map((feature) => feature.name)).toEqual([
+      "灯塔",
+      "灯光"
+    ]);
+
+    // 每件新元素都带图标（图标只在纯函数层定义一次）。
+    for (const transition of [
+      buildKnowledgeIslandStageTransition(2, 3),
+      buildKnowledgeIslandStageTransition(6, 7),
+      buildKnowledgeIslandStageTransition(14, 15),
+      buildKnowledgeIslandStageTransition(29, 30)
+    ]) {
+      expect(transition.hasNewFeatures).toBe(true);
+      expect(transition.newFeatures.every((feature) => feature.glyph)).toBe(true);
+    }
+  });
+
+  it("2 → 3 的差集确实等于「进阶后多出来的元素」，不重复前一阶段已经有的", () => {
+    const sprout = buildKnowledgeIslandStageTransition(2, 3);
+    const fromFeatures = stageAt(0).features;
+    const toFeatures = stageAt(3).features;
+
+    expect(toFeatures.filter((feature) => !fromFeatures.includes(feature))).toEqual(
+      sprout.newFeatures.map((feature) => feature.name)
+    );
+    // 沙滩 / 海浪 不是新出现的。
+    expect(sprout.newFeatures.map((feature) => feature.name)).not.toContain("沙滩");
+    expect(sprout.newFeatures.map((feature) => feature.name)).not.toContain("海浪");
+  });
+
+  it("island 直接复用 buildKnowledgeIslandGrowth，庆祝与收藏册是同一座岛", () => {
+    for (const [previousStampCount, nextStampCount] of [
+      [2, 3],
+      [6, 7],
+      [14, 15],
+      [29, 30]
+    ]) {
+      const transition = buildKnowledgeIslandStageTransition(previousStampCount, nextStampCount);
+
+      expect(transition.island).toEqual(buildKnowledgeIslandGrowth(nextStampCount));
+      expect(transition.island.currentStage.id).toBe(transition.toStage.id);
+      expect(transition.island.stampCount).toBe(nextStampCount);
+    }
+
+    // 最高阶段：不再提示“再攒 X 枚”。
+    const lighthouse = buildKnowledgeIslandStageTransition(29, 30);
+
+    expect(lighthouse.island.isMaxStage).toBe(true);
+    expect(lighthouse.island.progressPercent).toBe(100);
+    expect(lighthouse.island.remainingToNext).toBe(0);
+    expect(lighthouse.island.nextText).not.toContain("再攒");
+  });
+
+  it("一次跳过多个阶段也只产生一个 transition（不做庆祝队列）", () => {
+    const jumped = buildKnowledgeIslandStageTransition(2, 15);
+
+    expect(jumped).not.toBeNull();
+    expect(jumped.toStage.id).toBe("explorer-dock");
+    expect(jumped.fromStage.id).toBe("first-sight");
+    expect(jumped.toStageIndex).toBe(3);
+    // 期间跨过的所有新元素一次性给全：嫩芽 / 小草丛 / 椰子树 / 小帐篷 / 小码头 / 泊岸小船。
+    expect(jumped.newFeatures.map((feature) => feature.name)).toEqual([
+      "嫩芽",
+      "小草丛",
+      "椰子树",
+      "小帐篷",
+      "小码头",
+      "泊岸小船"
+    ]);
+
+    const bigJump = buildKnowledgeIslandStageTransition(0, 30);
+
+    expect(bigJump.toStage.id).toBe("knowledge-lighthouse");
+    expect(bigJump.isMaxStageReached).toBe(true);
+    expect(bigJump.newFeatures).toHaveLength(stageAt(30).features.length - stageAt(0).features.length);
+  });
+
+  it("非法输入一律返回 null，绝不因为容错归零产生虚假庆祝", () => {
+    // 反方向：第二个参数非法。
+    const brokenPairs = [
+      [undefined, undefined],
+      [null, null],
+      ["", ""],
+      ["abc", "def"],
+      [NaN, NaN],
+      [-5, -1],
+      [{}, []],
+      [true, false],
+      [() => {}, () => {}],
+      // 一边合法、一边非法：不允许把非法那边归零后继续比较。
+      [undefined, 3],
+      [null, 3],
+      ["abc", 3],
+      [3, undefined],
+      [3, null],
+      [3, "abc"],
+      [{}, 3],
+      [[], 3],
+      [NaN, 3],
+      [-1, 3],
+      [3, {}],
+      [3, []],
+      [3, NaN],
+      [3, -1],
+      // 严格 number 语义：数字字符串也不接受。
+      ["2", 3],
+      [3, "4"],
+      ["2", "3"],
+      // 小数不是非负整数。
+      [2.5, 3],
+      [2, 3.5],
+      [2.5, 3.5],
+      // 其它类型
+      [true, 3],
+      [3, true],
+      [() => {}, 3],
+      [3, () => {}],
+      [Number.MAX_SAFE_INTEGER + 2, 3]
+    ];
+
+    for (const [previousStampCount, nextStampCount] of brokenPairs) {
+      expect(buildKnowledgeIslandStageTransition(previousStampCount, nextStampCount)).toBeNull();
+    }
+  });
+
+  it("合法输入就是两个非负整数 number，transition 里原样保留", () => {    const transition = buildKnowledgeIslandStageTransition(2, 3);
+
+    expect(transition.previousStampCount).toBe(2);
+    expect(transition.nextStampCount).toBe(3);
+    expect(Number.isInteger(transition.previousStampCount)).toBe(true);
+    expect(Number.isInteger(transition.nextStampCount)).toBe(true);
+  });
+
+  it("展示层仍然容错归零，与 transition 的严格语义刻意不同", () => {
+    // 展示：异常输入 → 0 枚，仍然能渲染。
+    for (const brokenInput of [undefined, null, "", "abc", NaN, -1, {}, []]) {
+      expect(normalizeKnowledgeIslandStampCount(brokenInput)).toBe(0);
+      expect(buildKnowledgeIslandGrowth(brokenInput).stampCount).toBe(0);
+    }
+
+    // 一次性事件：同样的输入必须直接 null，不能变成 0 → N。
+    expect(buildKnowledgeIslandStageTransition(undefined, 3)).toBeNull();
+    expect(isValidKnowledgeIslandStampCount(undefined)).toBe(false);
+    expect(isValidKnowledgeIslandStampCount(0)).toBe(true);
+  });
+
+  it("真实领取路径只 +1：只有阈值那一枚会产生反馈", () => {
+    const thresholds = KNOWLEDGE_ISLAND_STAGES.map((stage) => stage.threshold).filter((threshold) => threshold > 0);
+
+    for (let stampCount = 0; stampCount <= 35; stampCount += 1) {
+      // 真实路径里 previous 会被 max(0, next - 1) 兜到 0，同时必须是合法整数。
+      const transition = buildKnowledgeIslandStageTransition(Math.max(0, stampCount - 1), stampCount);
+      const shouldCelebrate = thresholds.includes(stampCount);
+
+      if (shouldCelebrate) {
+        expect(transition).not.toBeNull();
+        expect(transition.nextStampCount).toBe(stampCount);
+      } else {
+        expect(transition).toBeNull();
+      }
+    }
   });
 });

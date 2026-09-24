@@ -2,6 +2,7 @@
 import { computed, defineAsyncComponent } from "vue";
 import { useRoute } from "vue-router";
 import AdventureCollectionBook from "./components/AdventureCollectionBook.vue";
+import KnowledgeIslandStageCelebration from "./components/KnowledgeIslandStageCelebration.vue";
 import PracticeHomeView from "./views/PracticeHomeView.vue";
 import StudyMapView from "./views/StudyMapView.vue";
 import { createRouterDrivenPages } from "./composables/app/useRouterDrivenPages";
@@ -20,6 +21,7 @@ const WrongQuestionReviewView = defineAsyncComponent(() => import("./views/Wrong
 export default {
   components: {
     AdventureCollectionBook,
+    KnowledgeIslandStageCelebration,
     PracticeHomeView,
     KnowledgeStudyView,
     StudyMapView,
@@ -589,5 +591,13 @@ export default {
 
     <!-- 📖 我的探险收藏册：全局弹窗，首页与闯关地图共用 -->
     <AdventureCollectionBook v-model="isBackpackOpen" :book="collectionBook" />
+
+    <!-- 🏝️ 知识岛阶段变化反馈：只有真实领取刚好跨过阶段阈值时才出现，
+         属于临时 UI 状态（不持久化）。点「去看看我的知识岛」会先关掉它再打开上面的收藏册。 -->
+    <KnowledgeIslandStageCelebration
+      :celebration="knowledgeIslandStageCelebration"
+      @close="closeKnowledgeIslandStageCelebration"
+      @open-island="openKnowledgeIslandFromCelebration"
+    />
   </div>
 </template>

@@ -55,6 +55,7 @@ import {
   writeGrowthProgressCache
 } from "../utils/growthProgress";
 import { buildAdventureCollectionBook } from "../utils/adventureCollectionBook";
+import { buildKnowledgeIslandStageTransition } from "../utils/knowledgeIslandGrowth";
 import { createAppRouting } from "./app/useAppRouting";
 import { createHomeSelections } from "./app/useHomeSelections";
 import { createStudyRecordRuntime } from "./app/useStudyRecordRuntime";
@@ -1177,6 +1178,9 @@ export function useTriviaApp() {
   const isDailyChestClaiming = ref(false);
   const dailyChestErrorMessage = ref("");
   const justClaimedDailyChestDateKey = ref("");
+  // 知识岛阶段变化反馈：纯临时 UI 状态，不落盘、不进 growth_progress。
+  // 只在“服务端确认这次真的新领到一枚印章，并且这一枚刚好跨过阶段阈值”时被填上。
+  const knowledgeIslandStageCelebration = ref(null);
   let growthProgressRequestController = null;
 
   function applyGrowthProgress(nextProgress) {
@@ -1233,13 +1237,28 @@ export function useTriviaApp() {
 
     try {
       const payload = await requestDailyChestClaim({ dateKey });
+      const nextGrowthProgress = applyGrowthProgress(payload?.growthProgress);
 
-      applyGrowthProgress(payload?.growthProgress);
       // 服务端说“今天已经领过”时只对齐状态，不再提示新获得印章。
       justClaimedDailyChestDateKey.value = payload?.alreadyClaimed ? "" : dateKey;
 
+      // 阶段变化反馈的唯一入口：以服务端结果为准，不看领取前的本地缓存
+      // （本地镜像可能落后于服务端）。
+      //   alreadyClaimed === false  → 这一次真的新领到 1 枚，领取前就是 next - 1；
+      //   其他情况（已经领过 / 没有账本）→ 不产生任何一次性反馈。
+      knowledgeIslandStageCelebration.value =
+        payload?.alreadyClaimed === false
+          ? buildKnowledgeIslandStageTransition(
+              Math.max(0, nextGrowthProgress.totalDailyChests - 1),
+              nextGrowthProgress.totalDailyChests
+            )
+          : null;
+
       return payload;
     } catch (error) {
+      // 网络失败 / 服务端拒绝：没有任何真实领取，也就不该有任何庆祝。
+      knowledgeIslandStageCelebration.value = null;
+
       if (error?.name !== "AbortError") {
         dailyChestErrorMessage.value = error?.message || "宝箱暂时打不开，待会儿再试一次。";
       }
@@ -2252,6 +2271,19 @@ export function useTriviaApp() {
     isBackpackOpen.value = false;
   }
 
+  // 阶段变化反馈只有一个出口：关掉。
+  // 关掉之后不做任何记录——下次能不能再庆祝，完全取决于下一次服务端真实领取。
+  function closeKnowledgeIslandStageCelebration() {
+    knowledgeIslandStageCelebration.value = null;
+  }
+
+  // 「去看看我的知识岛」：先关反馈层，再打开现有的探险收藏册。
+  // 不新增 route、不新增页面；章节用现有的 homeCollectionChapterId（首页那一章）。
+  function openKnowledgeIslandFromCelebration() {
+    closeKnowledgeIslandStageCelebration();
+    openBackpack(homeCollectionChapterId.value);
+  }
+
   function closeLockedStageModal() {
     isLockedStageModalOpen.value = false;
   }
@@ -2633,6 +2665,15 @@ export function useTriviaApp() {
     }
   });
 
+  // 知识岛阶段变化反馈同样是根级临时状态，生命周期与收藏册一致：
+  // 切换视图（含浏览器前进/后退）就关掉，避免盖在新页面上。
+  // 点「去看看我的知识岛」本身不切视图，所以不会被这里误关。
+  watch(currentView, () => {
+    if (knowledgeIslandStageCelebration.value) {
+      closeKnowledgeIslandStageCelebration();
+    }
+  });
+
   watch(currentView, (nextView) => {
     if (nextView !== VIEW_MODE.HOME) {
       clearHomeWelcomeRequest();
@@ -2973,6 +3014,9 @@ export function useTriviaApp() {
     homeCollectionChapterId,
     collectionBookChapter,
     collectionBook,
+    knowledgeIslandStageCelebration,
+    closeKnowledgeIslandStageCelebration,
+    openKnowledgeIslandFromCelebration,
     adminKey,
     activeToolSectionId,
     activeSettingsSectionId,
