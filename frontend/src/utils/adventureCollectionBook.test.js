@@ -260,4 +260,59 @@ describe("adventureCollectionBook · 章节作用域", () => {
     expect(book.achievements.title).toBe("本章成就");
     expect(book.stamps.countLabel).toBe("探险印章");
   });
+
+  it("第一块是「我的知识岛」，并带上长期 / 跨章节的作用域提示", () => {
+    const book = buildAdventureCollectionBook({
+      chapter: GRADE_THREE_UPPER,
+      stages: STAGES,
+      chapterProgress: buildProgress(),
+      achievements: [],
+      growthProgress: buildGrowthProgress({ dateKeys: ["2026-09-22", "2026-09-21", "2026-09-20"] })
+    });
+
+    // 第一块换了标题，但印章数据一个都没少。
+    expect(book.stamps.islandTitle).toBe("我的知识岛");
+    expect(book.stamps.total).toBe(3);
+    expect(book.stamps.countText).toBe("累计 3 枚探险印章");
+    // 顶部作用域仍然只描述当前章节。
+    expect(book.scopeLabel).toBe("三年级 · 上册 · 方法上手线");
+    // 长期作用域只在知识岛块内部说明一次。
+    expect(book.stamps.knowledgeIsland.islandScopeText).toContain("长期成长");
+    expect(book.stamps.knowledgeIsland.islandScopeText).toContain("小岛长大");
+    expect(book.stamps.islandHintText).toContain("现在的小岛有");
+    // 下面两块仍然明确是本章作用域。
+    expect(book.rewards.title).toContain("本章");
+    expect(book.achievements.title).toContain("本章");
+  });
+
+  it("换章节只影响本章两块，知识岛逐字段不变（跨章节审计）", () => {
+    const growthProgress = buildGrowthProgress({ dateKeys: ["2026-09-22", "2026-09-21"] });
+    // 三年级：2 件收藏；四年级：5 件收藏，其余数据故意不同。
+    const threeBook = buildAdventureCollectionBook({
+      chapter: GRADE_THREE_UPPER,
+      stages: STAGES,
+      chapterProgress: buildProgress({ rewards: [true, true] }),
+      achievements: [{ id: "first-clear", glyph: "启", name: "初次靠岸", isUnlocked: true, progressText: "已通过 2 关" }],
+      growthProgress
+    });
+    const fourBook = buildAdventureCollectionBook({
+      chapter: GRADE_FOUR_UPPER,
+      stages: STAGES,
+      chapterProgress: buildProgress({ rewards: [true, true, true, true, true] }),
+      achievements: [{ id: "collector-3", glyph: "藏", name: "收藏上手", isUnlocked: false, progressText: "收藏 5 / 3" }],
+      growthProgress
+    });
+
+    // 知识岛：与章节无关，逐字段一致。
+    expect(fourBook.stamps.knowledgeIsland).toEqual(threeBook.stamps.knowledgeIsland);
+    expect(fourBook.stamps.total).toBe(threeBook.stamps.total);
+    expect(fourBook.stamps.recentClaims).toEqual(threeBook.stamps.recentClaims);
+    expect(fourBook.stamps.islandTitle).toBe(threeBook.stamps.islandTitle);
+
+    // 本章两块：随章节变化。
+    expect(fourBook.scopeLabel).not.toBe(threeBook.scopeLabel);
+    expect(fourBook.rewards.earnedCount).not.toBe(threeBook.rewards.earnedCount);
+    expect(fourBook.achievements.items[0].id).not.toBe(threeBook.achievements.items[0].id);
+    expect(fourBook.achievements.text).not.toBe(threeBook.achievements.text);
+  });
 });

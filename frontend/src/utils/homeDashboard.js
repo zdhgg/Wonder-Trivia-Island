@@ -10,6 +10,7 @@ import {
 } from "./studyWeakPoints";
 import { countChapterRewards, evaluateChapterAchievements } from "./challengeAchievements";
 import { buildGrowthStampText, getDailyChestClaim, getExplorerStampCount } from "./growthProgress";
+import { buildKnowledgeIslandGrowth } from "./knowledgeIslandGrowth";
 import { CHALLENGE_STAGES } from "../composables/challenge/challengeConfig";
 
 const CHINESE_DIGITS = Object.freeze(["零", "一", "二", "三", "四", "五", "六", "七", "八", "九"]);
@@ -223,6 +224,8 @@ export function buildHomeGrowth({
   const normalizedStarTotal = toNonNegativeInteger(starTotal);
   // 探险印章是长期账本里的独立累计数，不参与上面三个“本章指标”的口径。
   const normalizedStampCount = toNonNegativeInteger(stampCount);
+  // 知识岛摘要和收藏册调的是同一个纯函数，所以同一个印章数在两边永远是同一个阶段。
+  const knowledgeIsland = buildKnowledgeIslandGrowth(normalizedStampCount);
 
   return {
     totalStars: normalizedStars,
@@ -238,6 +241,10 @@ export function buildHomeGrowth({
     stampCount: normalizedStampCount,
     // 只说一次数字（印章数 = 开过的宝箱数），不要“累计开启 N 个宝箱 · N 枚印章”。
     stampText: buildGrowthStampText({ totalDailyChests: normalizedStampCount }),
+    // 首页只做轻量摘要：岛名 + 印章数 + 下一变化，不把整座岛搬到首页。
+    knowledgeIsland,
+    knowledgeIslandTitle: "我的知识岛",
+    knowledgeIslandText: `${knowledgeIsland.currentStage.name} · ${knowledgeIsland.stampText}`,
     nextAchievement,
     allAchievementsDone: achievementList.length > 0 && unlockedCount >= achievementList.length
   };

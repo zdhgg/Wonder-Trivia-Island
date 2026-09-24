@@ -1,13 +1,17 @@
 // 探险收藏册 ViewModel：把已有的三类成长数据整理成孩子能看懂的展示结构。
 //
 // 纯函数，不读全局状态、不写任何进度、不新增奖励规则：
-// - 探险印章：来自持久化成长账本（growthProgress.totalDailyChests / dailyClaims）
+// - 探险印章 / 知识岛：来自持久化成长账本（growthProgress.totalDailyChests / dailyClaims）
 // - 本章航海收藏：来自当前章节的关卡奖励配置（stage.reward）+ 本章 progress
 // - 本章成就：直接接收 challengeAchievements 已经判定好的结果，不重新定义规则
+//
+// 知识岛阶段不在这里另算一套：直接复用 knowledgeIslandGrowth.buildKnowledgeIslandGrowth()，
+// 首页摘要也调同一个纯函数，所以同样印章数在两边永远是同一个阶段。
 //
 // 章节作用域由调用方决定（传哪一章，就只展示那一章的数据），
 // 这样首页 / 闯关地图各自用自己那一章，不会出现“首页 A 章、点进去 B 章”。
 import { normalizeGrowthProgress } from "./growthProgress";
+import { buildKnowledgeIslandGrowth } from "./knowledgeIslandGrowth";
 
 export const COLLECTION_BOOK_RECENT_STAMP_LIMIT = 5;
 
@@ -71,12 +75,18 @@ export function buildCollectionStampSection({
   const normalizedProgress = normalizeGrowthProgress(growthProgress);
   const total = normalizedProgress.totalDailyChests;
   const recentClaims = listRecentDailyChestClaims(normalizedProgress, recentStampLimit);
+  // 知识岛阶段完全由印章数推导，不读第二个数字、不写回任何地方。
+  const knowledgeIsland = buildKnowledgeIslandGrowth(total);
 
   return {
     total,
     hasStamps: total > 0,
     countText: `累计 ${total} 枚探险印章`,
     countLabel: "探险印章",
+    // 「我的知识岛」：探险印章成了小岛成长的动力来源，原来的印章数据一个都没少。
+    knowledgeIsland,
+    islandTitle: "我的知识岛",
+    islandHintText: knowledgeIsland.stageHintText,
     recentClaims,
     hasRecentClaims: recentClaims.length > 0,
     recentTitle: "最近领取",

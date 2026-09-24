@@ -43,15 +43,20 @@ const emit = defineEmits(["open-backpack"]);
       </li>
     </ul>
 
-    <!-- 长期成长摘要：整行就是热区，点开同一个探险收藏册（右上角按钮仍然保留）。 -->
+    <!-- 长期成长摘要：整行就是热区，点开同一个探险收藏册（右上角按钮仍然保留）。
+         只做轻量摘要：岛名 + 已经攒了多少枚印章 + 下一次变化，不把整座岛搬到首页。 -->
     <button
       class="growth-summary__stamps"
       type="button"
-      aria-label="打开我的探险收藏册，查看探险印章"
+      :aria-label="`打开我的探险收藏册，查看我的知识岛（${growth.stampText}）`"
       @click="emit('open-backpack')"
     >
-      <span class="growth-summary__stamps-glyph" aria-hidden="true">🧭</span>
-      <span class="growth-summary__stamps-text">{{ growth.stampText }}</span>
+      <span class="growth-summary__stamps-glyph" aria-hidden="true">{{ growth.knowledgeIsland.currentStage.glyph }}</span>
+      <span class="growth-summary__stamps-copy">
+        <span class="growth-summary__stamps-island">{{ growth.knowledgeIslandTitle }}</span>
+        <span class="growth-summary__stamps-text">{{ growth.knowledgeIslandText }}</span>
+        <span class="growth-summary__stamps-next">{{ growth.knowledgeIsland.nextText }}</span>
+      </span>
       <span class="growth-summary__stamps-more" aria-hidden="true">›</span>
     </button>
 
@@ -187,11 +192,11 @@ const emit = defineEmits(["open-backpack"]);
   font-weight: 700;
 }
 
-/* 长期成长的一条轻量信息：不做第四个指标卡，只写一行印章数，整行可点进收藏册。 */
+/* 长期成长的一条轻量信息：不做第四个指标卡，只写“知识岛现在到哪一步了”，整行可点进收藏册。 */
 .growth-summary__stamps {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   width: 100%;
   margin: 0;
   padding: 8px 12px;
@@ -223,13 +228,36 @@ const emit = defineEmits(["open-backpack"]);
 }
 
 .growth-summary__stamps-glyph {
-  font-size: 0.94rem;
+  flex-shrink: 0;
+  font-size: 1.2rem;
   line-height: 1;
 }
 
-.growth-summary__stamps-text {
+.growth-summary__stamps-copy {
+  display: grid;
+  gap: 1px;
   flex: 1;
   min-width: 0;
+}
+
+.growth-summary__stamps-island {
+  color: var(--color-ink);
+  font-size: 0.86rem;
+  font-weight: 900;
+}
+
+.growth-summary__stamps-text {
+  min-width: 0;
+  color: var(--color-ink-soft);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.growth-summary__stamps-next {
+  min-width: 0;
+  color: #1f6b51;
+  font-size: 0.78rem;
+  font-weight: 900;
 }
 
 .growth-summary__stamps-more {

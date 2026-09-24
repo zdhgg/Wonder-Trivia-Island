@@ -243,12 +243,12 @@ test.describe("首页奖励闭环", () => {
     const dialog = page.getByRole("dialog", { name: COLLECTION_DIALOG });
 
     await expect(dialog).toBeVisible();
-    await expect(dialog.getByRole("region", { name: "探险印章" })).toContainText("累计 1 枚探险印章");
+    await expect(dialog.getByRole("region", { name: "我的知识岛" })).toContainText("累计 1 枚探险印章");
     // 只打开收藏册，不会因为点它而重复领取
     expect(await readClaimedStampCount(page)).toBe(1);
   });
 
-  test("我的成长印章摘要整行可点，打开同一个收藏册", async ({ page }) => {
+  test("我的成长知识岛摘要整行可点，打开同一个收藏册", async ({ page }) => {
     await page.goto("/");
     await seedStorage(page, { [CHALLENGE_KEY]: buildProgress({ clearedStageCount: 2, earnedRewardCount: 2 }), [TASKS_KEY]: buildTasks(0) });
 
@@ -263,19 +263,32 @@ test.describe("首页奖励闭环", () => {
     await gotoHome(page);
 
     const growth = page.getByRole("region", { name: "我的成长" });
-    const stampsRow = growth.getByRole("button", { name: "打开我的探险收藏册，查看探险印章" });
+    const islandRow = growth.getByRole("button", { name: /打开我的探险收藏册，查看我的知识岛/ });
 
-    await expect(stampsRow).toBeVisible();
+    await expect(islandRow).toBeVisible();
+    await expect(growth).toContainText("我的知识岛");
     await expect(growth).toContainText("已经攒了 1 枚探险印章");
+    // 只累计、不消费：印章数不会被花掉，也不会出现第二套成长数字。
+    await expect(growth).not.toContainText("等级");
+    await expect(growth).not.toContainText("经验值");
     // 旧的报表腔文案不再出现
     await expect(growth).not.toContainText("累计开启");
 
-    await stampsRow.click();
+    await islandRow.click();
 
     const dialog = page.getByRole("dialog", { name: COLLECTION_DIALOG });
 
     await expect(dialog).toBeVisible();
-    await expect(dialog.getByRole("region", { name: "探险印章" })).toContainText("累计 1 枚探险印章");
+    await expect(dialog.getByRole("region", { name: "我的知识岛" })).toContainText("累计 1 枚探险印章");
+    // 首页摘要与收藏册是同一个阶段（都来自同一个纯函数）。
+    const homeStage = await page.evaluate(async () => {
+      const { buildKnowledgeIslandGrowth } = await import("/src/utils/knowledgeIslandGrowth.js");
+
+      return buildKnowledgeIslandGrowth(1).currentStage.name;
+    });
+
+    await expect(islandRow).toContainText(homeStage);
+    await expect(dialog.getByRole("region", { name: "我的知识岛" })).toContainText(homeStage);
 
     // 关闭后右上角的入口仍然在，两个入口指向同一个收藏册
     await dialog.getByRole("button", { name: "关闭我的探险收藏册" }).click();

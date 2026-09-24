@@ -2,8 +2,10 @@
 // 我的探险收藏册：全局弹窗，首页与闯关地图共用同一个组件。
 //
 // 组件只负责展示与关闭，不做任何数据判定：
-// 印章 / 航海收藏 / 成就三块内容全部由 utils/adventureCollectionBook.js 生成，
+// 知识岛 / 印章 / 航海收藏 / 成就四块内容全部由 utils 里的纯函数算好，
 // 章节作用域由调用方（useTriviaApp.openBackpack(chapterId)）决定。
+import KnowledgeIslandGrowth from "./KnowledgeIslandGrowth.vue";
+
 const props = defineProps({
   modelValue: {
     type: Boolean,
@@ -41,18 +43,24 @@ function close() {
       </div>
 
       <div class="adventure-modal-body">
-        <!-- 第一块：探险印章（长期账本） -->
-        <section class="collection-book__section" aria-label="探险印章">
+        <!-- 第一块：我的知识岛（长期账本：累计探险印章 → 小岛成长阶段） -->
+        <section class="collection-book__section" aria-label="我的知识岛">
           <header class="collection-book__section-head">
             <h4 class="collection-book__section-title">
-              <span aria-hidden="true">🧭</span> 探险印章
+              <span aria-hidden="true">🏝️</span> {{ book.stamps.islandTitle }}
             </h4>
             <span class="collection-book__section-count">{{ book.stamps.countText }}</span>
           </header>
 
-          <template v-if="book.stamps.hasStamps">
-            <p class="collection-book__hint">{{ book.stamps.hintText }}</p>
+          <!-- 作用域澄清：顶部“年级 · 学期 · 路线”是本章作用域，
+               这一行只说明知识岛是长期、跨章节累计的，不属于任何一章。 -->
+          <p class="collection-book__scope-note">{{ book.stamps.knowledgeIsland.islandScopeText }}</p>
 
+          <KnowledgeIslandGrowth :island="book.stamps.knowledgeIsland" />
+
+          <p class="collection-book__hint">{{ book.stamps.islandHintText }}</p>
+
+          <template v-if="book.stamps.hasStamps">
             <div v-if="book.stamps.hasRecentClaims" class="collection-book__stamps">
               <span class="collection-book__stamps-label">{{ book.stamps.recentTitle }}</span>
               <ul class="collection-book__stamp-list">

@@ -3488,6 +3488,20 @@ select {
   font-weight: 700;
 }
 
+/* 知识岛的作用域提示：很轻的一行，只用来区分“长期跨章节”与下面两块的“本章”。
+   顶部 scopeLabel（年级 · 学期 · 路线）保持不变。 */
+.collection-book__scope-note {
+  margin: 0;
+  padding: 3px 10px;
+  justify-self: start;
+  border-radius: 999px;
+  background: rgba(184, 242, 223, 0.42);
+  color: #1f6b51;
+  font-size: 0.76rem;
+  font-weight: 900;
+  line-height: 1.5;
+}
+
 .collection-book__empty {
   margin: 0;
   padding: 14px 16px;

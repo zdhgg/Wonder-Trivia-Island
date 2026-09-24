@@ -1,11 +1,13 @@
 const { test, expect } = require("@playwright/test");
+const { KNOWLEDGE_ISLAND_REGION } = require("../support/knowledge-island");
 
 // 场景 5：探险收藏册（Phase 2B）——把已有成长数据收藏化展示。
 //
 // 覆盖两条容易串台的路径：
 //   1. 首页入口 → 必须用首页成长区对应的那一章；
 //   2. 闯关地图入口 → 必须用当前选中的那一章。
-// 另外验证探险印章（Phase 2A 的持久化账本）在收藏册里可见，且没有印章时是儿童化空状态。
+// 另外验证探险印章（Phase 2A 的持久化账本）在收藏册第一块「我的知识岛」里可见
+// （Phase 2C-A 把原来的“探险印章”块升级成知识岛成长），且没有印章时是儿童化空状态。
 //
 // 关于首页章节：app 里 watch(selectedChallengeChapterId) 会把首页挑战章节同步为选中章节，
 // 所以“首页那一章”= 档案年级 + 当前选中章节。测试里两者显式保持一致，避免互相打架。
@@ -150,7 +152,7 @@ test.describe("探险收藏册", () => {
     await expect(dialog).not.toContainText("5 / 7");
 
     // 三块内容都在，且收藏数与首页成长区完全一致（同一个章节口径）。
-    await expect(dialog.getByRole("region", { name: "探险印章" })).toBeVisible();
+    await expect(dialog.getByRole("region", { name: KNOWLEDGE_ISLAND_REGION })).toBeVisible();
     await expect(dialog.getByRole("region", { name: "本章航海收藏" })).toContainText("2 / 7");
     await expect(dialog.getByRole("region", { name: "本章成就" })).toBeVisible();
     await expect(growth).toContainText("2 / 7");
@@ -225,34 +227,34 @@ test.describe("探险收藏册", () => {
     await page.reload();
 
     let dialog = await openCollectionBookFromHome(page);
-    let stampSection = dialog.getByRole("region", { name: "探险印章" });
+    let islandSection = dialog.getByRole("region", { name: KNOWLEDGE_ISLAND_REGION });
 
-    await expect(stampSection).toContainText("累计 1 枚探险印章");
-    await expect(stampSection).toContainText(getTodayStampLabel());
-    await expect(stampSection).not.toContainText("还没有探险印章");
+    await expect(islandSection).toContainText("累计 1 枚探险印章");
+    await expect(islandSection).toContainText("已经攒了 1 枚探险印章");
+    await expect(islandSection).toContainText(getTodayStampLabel());
 
     // 再刷新一次：印章来自服务端账本，不该丢。
     await page.reload();
 
     dialog = await openCollectionBookFromHome(page);
-    stampSection = dialog.getByRole("region", { name: "探险印章" });
+    islandSection = dialog.getByRole("region", { name: KNOWLEDGE_ISLAND_REGION });
 
-    await expect(stampSection).toContainText("累计 1 枚探险印章");
-    await expect(stampSection).toContainText(getTodayStampLabel());
+    await expect(islandSection).toContainText("累计 1 枚探险印章");
+    await expect(islandSection).toContainText(getTodayStampLabel());
   });
 
   test("还没有印章时收藏册给出儿童化空状态", async ({ page }) => {
     await page.goto("/");
 
     const dialog = await openCollectionBookFromHome(page);
-    const stampSection = dialog.getByRole("region", { name: "探险印章" });
+    const islandSection = dialog.getByRole("region", { name: KNOWLEDGE_ISLAND_REGION });
 
-    await expect(stampSection).toContainText("累计 0 枚探险印章");
-    await expect(stampSection).toContainText("还没有探险印章");
-    await expect(stampSection).toContainText("今日宝箱");
+    await expect(islandSection).toContainText("累计 0 枚探险印章");
+    await expect(islandSection).toContainText("还没有探险印章");
+    await expect(islandSection).toContainText("今日宝箱");
 
     // 没有印章时不出现任何领取日期。
-    await expect(stampSection.locator(".collection-book__stamp")).toHaveCount(0);
+    await expect(islandSection.locator(".collection-book__stamp")).toHaveCount(0);
   });
 
   test("收藏册打开时浏览器后退，弹窗不会残留在新页面上", async ({ page }) => {
