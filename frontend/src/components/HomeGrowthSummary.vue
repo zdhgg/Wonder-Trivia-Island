@@ -1,14 +1,25 @@
 <script setup>
+import { computed } from "vue";
+
 // 首页“我的成长”：把已经拿到的星星 / 航海收藏 / 成就摆到孩子面前，
 // 并给一个“最接近完成”的下一成就。完整收藏与成就列表在“我的探险收藏册”里。
 const props = defineProps({
   growth: {
     type: Object,
     required: true
+  },
+  // 成长纪念册入口文案（homeDashboard.buildHomeGrowthBookEntry）。
+  // 单独一个 prop 而不是塞进 growth：它和星星 / 收藏 / 成就那三个“本章指标”不同源。
+  growthBookEntry: {
+    type: Object,
+    default: () => ({})
   }
 });
 
-const emit = defineEmits(["open-backpack"]);
+const emit = defineEmits(["open-backpack", "open-growth-book"]);
+
+// 兜底成空对象：老调用方（或测试）不传时，标题还在、提示语为空，不会渲染出 undefined。
+const growthBookEntry = computed(() => props.growthBookEntry ?? {});
 </script>
 
 <template>
@@ -58,6 +69,22 @@ const emit = defineEmits(["open-backpack"]);
         <span class="growth-summary__stamps-next">{{ growth.knowledgeIsland.nextText }}</span>
       </span>
       <span class="growth-summary__stamps-more" aria-hidden="true">›</span>
+    </button>
+
+    <!-- 成长纪念册入口：和知识岛同一层的轻量入口，但走独立页面。
+         这里只说“一起经历的事”，不显示任何条数 / 进度——首页本轮不请求足迹接口。 -->
+    <button
+      class="growth-summary__book"
+      type="button"
+      :aria-label="growthBookEntry.ariaLabel"
+      @click="emit('open-growth-book')"
+    >
+      <span class="growth-summary__book-glyph" aria-hidden="true">{{ growthBookEntry.icon }}</span>
+      <span class="growth-summary__book-copy">
+        <strong class="growth-summary__book-title">我们的成长纪念册</strong>
+        <span class="growth-summary__book-hint">{{ growthBookEntry.hint }}</span>
+      </span>
+      <span class="growth-summary__book-more" aria-hidden="true">›</span>
     </button>
 
     <div v-if="growth.nextAchievement" class="growth-summary__next">
@@ -266,6 +293,75 @@ const emit = defineEmits(["open-backpack"]);
   font-weight: 900;
 }
 
+/* 成长纪念册入口：和知识岛摘要一样是整行可点的轻量入口，
+   但换一套纸张色，和「印章 / 收藏 / 成就」这些有分母的指标区分开。 */
+.growth-summary__book {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+  padding: 8px 12px;
+  border: 1.5px solid rgba(255, 214, 160, 0.72);
+  border-radius: 14px;
+  background: rgba(255, 244, 226, 0.72);
+  color: var(--color-ink-soft);
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 800;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
+}
+
+.growth-summary__book:hover {
+  border-color: rgba(255, 174, 66, 0.62);
+  background: rgba(255, 238, 205, 0.92);
+  color: var(--color-ink);
+}
+
+.growth-summary__book:focus-visible {
+  outline: none;
+  border-color: rgba(255, 174, 66, 0.9);
+  box-shadow: 0 0 0 3px rgba(255, 214, 128, 0.4);
+}
+
+.growth-summary__book-glyph {
+  flex-shrink: 0;
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.growth-summary__book-copy {
+  display: grid;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+
+.growth-summary__book-title {
+  color: var(--color-ink);
+  font-size: 0.86rem;
+  font-weight: 900;
+}
+
+.growth-summary__book-hint {
+  min-width: 0;
+  color: var(--color-ink-soft);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.growth-summary__book-more {
+  flex-shrink: 0;
+  font-size: 1rem;
+  font-weight: 900;
+}
+
 .growth-summary__next {
   display: grid;
   gap: 8px;
@@ -367,6 +463,7 @@ const emit = defineEmits(["open-backpack"]);
   .growth-summary__more,
   .growth-summary__more:hover,
   .growth-summary__stamps,
+  .growth-summary__book,
   .growth-summary__next-fill {
     transition: none;
     transform: none;

@@ -11,6 +11,7 @@ import {
 import { countChapterRewards, evaluateChapterAchievements } from "./challengeAchievements";
 import { buildGrowthStampText, getDailyChestClaim, getExplorerStampCount } from "./growthProgress";
 import { buildKnowledgeIslandGrowth } from "./knowledgeIslandGrowth";
+import { FOOTPRINT_SUMMARY_EMPTY_TEXT } from "./growthFootprints";
 import { CHALLENGE_STAGES } from "../composables/challenge/challengeConfig";
 
 const CHINESE_DIGITS = Object.freeze(["零", "一", "二", "三", "四", "五", "六", "七", "八", "九"]);
@@ -247,6 +248,15 @@ export function buildHomeGrowth({
     knowledgeIslandText: `${knowledgeIsland.currentStage.name} · ${knowledgeIsland.stampText}`,
     nextAchievement,
     allAchievementsDone: achievementList.length > 0 && unlockedCount >= achievementList.length
+  };
+}
+
+export function buildHomeGrowthBookEntry() {
+  return {
+    icon: "📖",
+    // 和纪念册内部空状态同一句文案：同一件事在首页和纪念册里不会出现两种说法。
+    hint: FOOTPRINT_SUMMARY_EMPTY_TEXT,
+    ariaLabel: "打开我们的成长纪念册"
   };
 }
 
@@ -698,6 +708,8 @@ export function buildHomeDashboard({
     advice,
     adventure,
     growth,
+    // 成长纪念册的首页入口：只给文案，不含计数——首页本轮不从服务端取足迹。
+    growthBookEntry: buildHomeGrowthBookEntry(),
     dailyTasks: dailyTaskItems,
     dailyChest: buildHomeDailyChest({
       tasks: dailyTaskItems,

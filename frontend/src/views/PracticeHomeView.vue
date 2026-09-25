@@ -47,6 +47,7 @@ const emit = defineEmits([
   "open-wrong-review",
   "start-weak-point-practice",
   "open-backpack",
+  "open-growth-book",
   "claim-daily-chest"
 ]);
 
@@ -200,7 +201,12 @@ function handleTeacherTip(tip) {
         </div>
       </div>
 
-      <HomeGrowthSummary :growth="props.homeDashboard.growth" @open-backpack="emit('open-backpack')" />
+      <HomeGrowthSummary
+        :growth="props.homeDashboard.growth"
+        :growth-book-entry="props.homeDashboard.growthBookEntry"
+        @open-backpack="emit('open-backpack')"
+        @open-growth-book="emit('open-growth-book')"
+      />
     </div>
 
     <HomeTeacherTips :tips="teacherTips" @select-tip="handleTeacherTip" />

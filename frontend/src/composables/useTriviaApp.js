@@ -1959,6 +1959,26 @@ export function useTriviaApp() {
     wrongBookFocusTag.value = "";
     resetQuizPracticeContext();
     showHomeView();
+
+    // showHomeView() 只改业务状态，路由同步靠 currentView 的 watcher。
+    // 但成长纪念册这类「已迁入 RouterView、且不参与 currentView 的页面」进来时，
+    // currentView 本来就是 home，watcher 不会触发，于是这里显式把路由推回首页。
+    if (route.name !== APP_ROUTE_NAME.HOME) {
+      void router.push({ name: APP_ROUTE_NAME.HOME });
+    }
+  }
+
+  // 成长纪念册是路由驱动页面（渲染由 route.name 决定），这里只负责把路由指过去。
+  // currentView 保持不变：它决定的是「尚未迁移的页面渲染哪一个」，纪念册不走这条路。
+  function openGrowthBookView() {
+    closeQuizSettings();
+    closeAudioSettings();
+    wrongBookFocusTag.value = "";
+    resetQuizPracticeContext();
+
+    if (route.name !== APP_ROUTE_NAME.GROWTH_BOOK) {
+      void router.push({ name: APP_ROUTE_NAME.GROWTH_BOOK });
+    }
   }
 
   // 资料变更后只更新首页欢迎区的本地状态。
@@ -3154,6 +3174,7 @@ export function useTriviaApp() {
     getChallengeStageClass,
     clearChallengeOutcome,
     openHomeView,
+    openGrowthBookView,
     openChallengeWorld,
     openChallengeView,
     openQuizView,

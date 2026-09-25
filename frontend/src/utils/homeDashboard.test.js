@@ -7,6 +7,7 @@ import {
   buildHomeDailyChest,
   buildHomeDashboard,
   buildHomeGrowth,
+  buildHomeGrowthBookEntry,
   buildHomeWelcomeSummary,
   buildPracticeScope,
   buildTeacherTips,
@@ -16,6 +17,7 @@ import {
   resolveWeakPointContext,
   selectNextAchievement
 } from "./homeDashboard.js";
+import { FOOTPRINT_SUMMARY_EMPTY_TEXT } from "./growthFootprints.js";
 
 const STAGE_IDS = Object.freeze(["stage-1", "stage-2", "stage-3", "stage-4", "stage-5", "stage-6", "stage-7"]);
 
@@ -698,6 +700,36 @@ describe("homeDashboard · 首页成长口径只认首页那一章", () => {
     expect(source.rewardTotal).toBe(STAGE_IDS.length);
     expect(source.achievements).toHaveLength(8);
     expect(source.achievements.filter((achievement) => achievement.isUnlocked)).toEqual([]);
+  });
+});
+
+// 首页的成长纪念册入口：只给「翻进去看看」的理由，不给任何分母。
+// 首页本轮不请求足迹接口，所以入口文案是固定的，不随条数变化。
+describe("homeDashboard · 成长纪念册入口", () => {
+  it("入口文案固定，且和纪念册内部空状态是同一句", () => {
+    const entry = buildHomeGrowthBookEntry();
+
+    expect(entry.icon).toBe("📖");
+    expect(entry.hint).toBe(FOOTPRINT_SUMMARY_EMPTY_TEXT);
+    expect(entry.ariaLabel).toContain("成长纪念册");
+  });
+
+  it("不做游戏化：没有进度、分母、经验值、成就这类说法", () => {
+    const entry = buildHomeGrowthBookEntry();
+    const texts = [entry.hint, entry.ariaLabel];
+
+    for (const text of texts) {
+      expect(text).not.toMatch(/\d+\s*\/\s*\d+/);
+      for (const forbiddenWord of ["进度", "经验", "升级", "加油", "完成率", "成就", "印章", "宝箱", "任务", "积分", "等级"]) {
+        expect(text, `${text} 不应该出现「${forbiddenWord}」`).not.toContain(forbiddenWord);
+      }
+    }
+  });
+
+  it("组装进首页 ViewModel，和我的成长放在一起", () => {
+    const dashboard = buildHomeDashboard({ growthSource: {}, achievements: [] });
+
+    expect(dashboard.growthBookEntry).toEqual(buildHomeGrowthBookEntry());
   });
 });
 
