@@ -1,6 +1,10 @@
 const { randomUUID } = require("node:crypto");
 const express = require("express");
 const { all, createDatabaseConnection, get, run, runInSavepoint } = require("../db/database");
+const {
+  ensurePhotosTable,
+  insertPhotoList
+} = require("./growthFootprintPhotos");
 
 // 「下次我们一起做什么」（Phase 2D-B1）。
 //
@@ -200,7 +204,7 @@ function serializePlanRow(row) {
   };
 }
 
-function serializeFootprintRow(row) {
+function serializeFootprintRow(row, photos = []) {
   if (!row) {
     return null;
   }
@@ -212,6 +216,7 @@ function serializeFootprintRow(row) {
     title: String(row.title ?? ""),
     note: String(row.note ?? ""),
     tags: parseStoredTags(row.tags_json),
+    photos: Array.isArray(photos) ? photos : [],
     createdAt: String(row.created_at ?? ""),
     updatedAt: String(row.updated_at ?? "")
   };
@@ -222,6 +227,7 @@ function ensureGrowthPlansTables(db) {
   run(db, createUniqueIndexSql);
   run(db, createOrderIndexSql);
   run(db, createFootprintsTableSql);
+  ensurePhotosTable(db);
 }
 
 function parsePlanId(rawValue) {
@@ -670,6 +676,14 @@ router.post("/:id/complete", (req, res, next) => {
 
     const footprintRow = runInSavepoint(db, "complete_growth_plan", () => {
       const insertedRow = insertFootprint(db, profileId, validationResult.value);
+      const footprintId = Number(insertedRow.id);
+      // 照片和足迹、删想做在同一个 savepoint 里：照片不合法时整件事都不发生，
+      // 那条想做会原样留在清单里。
+      const photoResult = insertPhotoList(db, footprintId, profileId, req.body?.photos);
+
+      if (photoResult.message) {
+        throw Object.assign(new Error(photoResult.message), { isPhotoValidationError: true });
+      }
 
       run(
         db,
@@ -680,14 +694,21 @@ router.post("/:id/complete", (req, res, next) => {
         [planId, profileId]
       );
 
-      return insertedRow;
+      return { insertedRow, photos: photoResult.values };
     });
 
     res.status(201).json({
-      footprint: serializeFootprintRow(footprintRow),
+      footprint: serializeFootprintRow(footprintRow.insertedRow, footprintRow.photos),
       completedPlanId: planId
     });
   } catch (error) {
+    if (error?.isPhotoValidationError) {
+      res.status(400).json({
+        message: error.message
+      });
+      return;
+    }
+
     next(error);
   } finally {
     db.close();

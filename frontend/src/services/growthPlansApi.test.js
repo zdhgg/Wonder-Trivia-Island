@@ -213,6 +213,18 @@ describe("growthPlansApi · 完成 → 一条足迹", () => {
     expect(body).toEqual({ occurredOn: "2026-10-18", category: "explore", tags: [] });
   });
 
+  it("有照片时随完成请求一起提交（服务端在同一个事务里写足迹 + 照片）", async () => {
+    const dataUrl = "data:image/jpeg;base64,aGVsbG8=";
+
+    stubFetch(async () => buildResponse({ status: 201, payload: { footprint: buildRawFootprint() } }));
+
+    await completeGrowthPlan(5, { occurredOn: "2026-10-18", category: "explore", photos: [dataUrl] });
+
+    const [, init] = readLastFetchCall();
+
+    expect(JSON.parse(init.body).photos).toEqual([dataUrl]);
+  });
+
   it("完成被拒绝时抛错，调用方不会误以为已经写进纪念册", async () => {
     stubFetch(async () =>
       buildResponse({ ok: false, status: 400, payload: { message: "occurredOn 不能晚于今天（2026-10-18）。" } })

@@ -70,7 +70,9 @@ app.use(
     skip: () => process.env.NODE_ENV === "test"
   })
 );
-app.use(express.json({ limit: "2mb" }));
+// 照片以 data URL 随记录一起提交（前端已经压到 1280px），
+// 一条记录最多 6 张，所以这里给到 12mb：够用，但仍能挡住明显异常的请求体。
+app.use(express.json({ limit: "12mb" }));
 
 app.get("/health", (req, res) => {
   res.json({

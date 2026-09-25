@@ -10,6 +10,8 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
+import FootprintPhotoPicker from "../components/growth/FootprintPhotoPicker.vue";
+import { useFootprintPhotos } from "../composables/growth/useFootprintPhotos.js";
 import { useGrowthBook } from "../composables/growth/useGrowthBook.js";
 import { APP_ROUTE_NAME } from "../router/routes.js";
 import {
@@ -36,9 +38,26 @@ const {
   createFootprint,
   updateFootprint,
   deleteFootprint,
+  uploadFootprintPhoto,
+  deleteFootprintPhoto,
   clearFormErrors,
   clearErrorMessage
 } = growthBook;
+
+// 表单里的照片：新增时先攒着、随保存一起提交；编辑旧记录时选一张传一张。
+const footprintPhotos = useFootprintPhotos();
+const {
+  photos: formPhotos,
+  pendingDataUrls: pendingPhotos,
+  photoError,
+  isPhotoBusy,
+  maxPhotos,
+  reset: resetPhotos,
+  addFiles: addPhotoFiles,
+  detachPendingPhoto,
+  attachPhoto,
+  removePhoto
+} = footprintPhotos;
 
 const isFormOpen = ref(false);
 // 空串 = 正在新增；数字 = 正在编辑哪一条。
@@ -100,6 +119,7 @@ const tagsIssue = computed(() => issueMessageFor("tags"));
 function resetDraft() {
   draft.value = createEmptyDraft();
   draftIssues.value = [];
+  resetPhotos();
   clearFormErrors();
 }
 
@@ -120,6 +140,8 @@ async function openEditForm(footprint) {
     note: footprint.note,
     tags: [...footprint.tags]
   };
+  // 编辑时照片已经是服务端上的东西：显示出来，选一张传一张。
+  footprintPhotos.applyServerPhotos(footprint.photos);
   isFormOpen.value = true;
   await focusForm();
 }
@@ -148,6 +170,52 @@ function toggleTag(tagId) {
   draft.value = { ...draft.value, tags: selectedTags };
 }
 
+// 新增：照片先攒在本地（随保存一起提交）。
+// 编辑：记录已经有 id，所以一张一张直接传上去，界面立刻能看出来哪些已经存好了。
+async function handleAddPhotos(files) {
+  if (!isEditing.value) {
+    await addPhotoFiles(files);
+    return;
+  }
+
+  const footprintId = Number(editingFootprintId.value);
+
+  if (!footprintId) {
+    return;
+  }
+
+  for (const file of files) {
+    // 每次都从「一张」开始：压缩和校验规则与新增完全同一套，只是传完就发。
+    // eslint-disable-next-line no-await-in-loop
+    const accepted = await addPhotoFiles([file]);
+
+    if (!accepted) {
+      return;
+    }
+
+    const [dataUrl] = pendingPhotos.value;
+
+    detachPendingPhoto(0);
+
+    // eslint-disable-next-line no-await-in-loop
+    const didUpload = await attachPhoto(dataUrl, (value) => uploadFootprintPhoto(footprintId, value));
+
+    if (!didUpload) {
+      return;
+    }
+  }
+}
+
+async function handleRemovePhoto(photo) {
+  const footprintId = Number(editingFootprintId.value);
+
+  if (!footprintId) {
+    return;
+  }
+
+  await removePhoto(photo.id, (photoId) => deleteFootprintPhoto(footprintId, photoId));
+}
+
 // 提交前先本地校验一遍，只为了把 issues 逐字段显示出来；
 // 真正的权威校验仍在 useGrowthBook（同一套纯函数）与服务端。
 function collectDraftIssues() {
@@ -164,7 +232,8 @@ async function handleSubmit() {
 
   const didSave = isEditing.value
     ? await updateFootprint(Number(editingFootprintId.value), draft.value)
-    : await createFootprint(draft.value);
+    // 新增时把还没上传的照片一起提交：服务端在同一个 savepoint 里写记录 + 照片。
+    : await createFootprint({ ...draft.value, photos: [...pendingPhotos.value] });
 
   if (didSave) {
     isFormOpen.value = false;
@@ -344,6 +413,19 @@ onBeforeUnmount(() => {
           <p v-if="noteIssue" class="growth-book__field-issue">{{ noteIssue }}</p>
         </div>
 
+        <!-- 照片：新增时随保存一起提交，编辑旧记录时选一张传一张。 -->
+        <FootprintPhotoPicker
+          :photos="formPhotos"
+          :pending-data-urls="pendingPhotos"
+          :footprint-id="Number(editingFootprintId) || 0"
+          :max-photos="maxPhotos"
+          :is-busy="isPhotoBusy || isSaving"
+          :error-message="photoError"
+          @add-file="handleAddPhotos"
+          @remove-photo="handleRemovePhoto"
+          @remove-pending="detachPendingPhoto"
+        />
+
         <div class="growth-book__form-actions">
           <button class="growth-book__button" type="button" :disabled="isSaving" @click="closeForm">先不记了</button>
           <button class="growth-book__button growth-book__button--primary" type="submit" :disabled="isSaving">
@@ -383,6 +465,18 @@ onBeforeUnmount(() => {
 
               <h3 class="growth-book__entry-title">{{ footprint.title }}</h3>
               <p v-if="footprint.note" class="growth-book__entry-note">{{ footprint.note }}</p>
+
+              <!-- 照片排在正文之后：先读文字，再看那天的样子。 -->
+              <ul v-if="footprint.photos.length" class="growth-book__entry-photos">
+                <li v-for="photo in footprint.photos" :key="photo.id" class="growth-book__entry-photo">
+                  <img
+                    class="growth-book__entry-photo-image"
+                    :src="photo.url"
+                    :alt="`${footprint.title} 的照片`"
+                    loading="lazy"
+                  />
+                </li>
+              </ul>
 
               <div v-if="footprint.tagMetas.length" class="growth-book__entry-tags">
                 <span v-for="tag in footprint.tagMetas" :key="tag.id" class="growth-book__entry-tag">{{ tag.displayLabel }}</span>
@@ -850,6 +944,32 @@ onBeforeUnmount(() => {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+/* 纪念册里的照片：一排小图，点开看原图（浏览器自带行为），不做灯箱。 */
+.growth-book__entry-photos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.growth-book__entry-photo {
+  width: 116px;
+  height: 116px;
+  border: 1.5px solid rgba(36, 50, 74, 0.1);
+  border-radius: 18px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.growth-book__entry-photo-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .growth-book__entry-tag {

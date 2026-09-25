@@ -12,6 +12,8 @@
 // /api/growth-footprints 记录；页面只负责交互与排版。
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
+import FootprintPhotoPicker from "../components/growth/FootprintPhotoPicker.vue";
+import { useFootprintPhotos } from "../composables/growth/useFootprintPhotos.js";
 import { useGrowthPlans } from "../composables/growth/useGrowthPlans.js";
 import { APP_ROUTE_NAME } from "../router/routes.js";
 import {
@@ -62,6 +64,18 @@ const completionNoteRef = ref(null);
 const completionAnchorRef = ref(null);
 // 刚收进纪念册的那一条：完成表单会关掉，但需要告诉人去哪儿找它。
 const justCompletedPlan = ref(null);
+
+// 完成时选的照片：这一条记录还没有 id，所以先攒着、随完成请求一起提交。
+const footprintPhotos = useFootprintPhotos();
+const {
+  pendingDataUrls: pendingPhotos,
+  photoError,
+  isPhotoBusy,
+  maxPhotos,
+  reset: resetPhotos,
+  addFiles: addPhotoFiles,
+  detachPendingPhoto
+} = footprintPhotos;
 
 const todayDateKey = getLocalDateKey();
 const noteLimit = MAX_FOOTPRINT_NOTE_LENGTH;
@@ -172,6 +186,7 @@ async function submitCustomPlan() {
 async function openCompletion(plan) {
   completingPlan.value = plan;
   completionDraft.value = createEmptyCompletionDraft(plan);
+  resetPhotos();
   clearCompletionIssues();
 
   await nextTick();
@@ -183,7 +198,12 @@ async function openCompletion(plan) {
 function closeCompletion() {
   completingPlan.value = null;
   completionDraft.value = createEmptyCompletionDraft();
+  resetPhotos();
   clearCompletionIssues();
+}
+
+async function handleAddCompletionPhotos(files) {
+  await addPhotoFiles(files);
 }
 
 function toggleCompletionTag(tagId) {
@@ -201,7 +221,10 @@ async function submitCompletion() {
     return;
   }
 
-  const footprint = await completePlan(plan, completionDraft.value);
+  const footprint = await completePlan(plan, {
+    ...completionDraft.value,
+    photos: [...pendingPhotos.value]
+  });
 
   if (footprint) {
     justCompletedPlan.value = plan;
@@ -405,6 +428,19 @@ onBeforeUnmount(() => {
           <p v-if="completionNoteIssue" class="growth-plans__field-issue">{{ completionNoteIssue }}</p>
           <p v-if="completionTitleIssue" class="growth-plans__field-issue">{{ completionTitleIssue }}</p>
         </div>
+
+        <!-- 照片随完成请求一起提交：服务端在同一个事务里写足迹 + 照片 + 删掉这条想做。 -->
+        <div class="growth-plans__fieldset--wide">
+          <FootprintPhotoPicker
+            :photos="[]"
+            :pending-data-urls="pendingPhotos"
+            :max-photos="maxPhotos"
+            :is-busy="isPhotoBusy || isCompleting"
+            :error-message="photoError"
+            @add-file="handleAddCompletionPhotos"
+            @remove-pending="detachPendingPhoto"
+          />
+        </div>
       </div>
 
       <div class="growth-plans__form-actions">
@@ -412,7 +448,7 @@ onBeforeUnmount(() => {
         <button
           class="growth-plans__button growth-plans__button--primary"
           type="button"
-          :disabled="isCompleting"
+          :disabled="isCompleting || isPhotoBusy"
           @click="submitCompletion"
         >
           {{ isCompleting ? "正在收进纪念册…" : "收进成长纪念册" }}

@@ -1,4 +1,4 @@
-import { normalizeFootprints } from "../utils/growthFootprints.js";
+import { normalizeFootprints, normalizeFootprintPhotos } from "../utils/growthFootprints.js";
 
 // 共同成长足迹的接口封装（Phase 2D-A2）：只读写独立的 /api/growth-footprints，
 // 不混进挑战存档 / 错题本 / 每日宝箱请求，也不在任何失败路径上伪造本地记录。
@@ -111,4 +111,48 @@ export async function deleteFootprint(footprintId, signal) {
 
   // 删除是硬删除，服务端只回 message + deletedId；这里回显请求用的 id，方便调用方过滤本地列表。
   return footprintId;
+}
+
+// 给已有的一条足迹追加一张照片。
+// dataUrl 由 utils/growthPhotoUpload.js 压好（长边 1280 / JPEG），所以请求体只有几百 KB。
+export async function uploadFootprintPhoto(footprintId, dataUrl, signal) {
+  const response = await fetch(`/api/growth-footprints/${encodeURIComponent(footprintId)}/photos`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ dataUrl: String(dataUrl ?? "") }),
+    signal
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw new Error(payload?.message || `保存照片失败：${response.status}`);
+  }
+
+  const [photo] = normalizeFootprintPhotos([payload?.photo]);
+
+  if (!photo) {
+    throw new Error("照片格式不正确。");
+  }
+
+  return photo;
+}
+
+export async function deleteFootprintPhoto(footprintId, photoId, signal) {
+  const response = await fetch(
+    `/api/growth-footprints/${encodeURIComponent(footprintId)}/photos/${encodeURIComponent(photoId)}`,
+    {
+      method: "DELETE",
+      signal
+    }
+  );
+
+  if (!response.ok) {
+    const payload = await readJson(response);
+
+    throw new Error(payload?.message || `删掉这张照片失败：${response.status}`);
+  }
+
+  return photoId;
 }

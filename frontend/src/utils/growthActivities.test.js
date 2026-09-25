@@ -12,27 +12,51 @@ import {
 import { FOOTPRINT_CATEGORY_IDS } from "./growthFootprints.js";
 
 describe("growthActivities · 内置推荐", () => {
-  it("六个展示分组都在，每组都有自己的文案和图标", () => {
+  it("九个展示分组都在，每组都有自己的文案和图标", () => {
     expect(GROWTH_ACTIVITY_GROUPS.map((group) => group.id)).toEqual([
       "explore",
       "create",
       "outdoor",
       "together",
+      "cook",
       "chat",
-      "learning"
+      "learning",
+      "play",
+      "ritual"
     ]);
     expect(GROWTH_ACTIVITY_GROUPS.map((group) => group.label)).toEqual([
       "一起探索",
       "一起动手",
       "一起出门",
       "一起生活",
+      "一起做饭",
       "一起聊天",
-      "一起学点东西"
+      "一起学点东西",
+      "一起玩",
+      "一点仪式感"
     ]);
 
     for (const group of GROWTH_ACTIVITY_GROUPS) {
       expect(group.glyph, group.id).toBeTruthy();
-      expect(group.activities.length, group.id).toBeGreaterThanOrEqual(3);
+      expect(group.activities.length, group.id).toBeGreaterThanOrEqual(5);
+    }
+  });
+
+  it("内容要够丰富：不少于 45 条，且不只是学习类", () => {
+    expect(GROWTH_ACTIVITY_COUNT).toBeGreaterThanOrEqual(45);
+
+    // 学习 / 探索类加起来不允许超过一半：这是一起生活，不是课程表。
+    const studyishCount = GROWTH_ACTIVITY_RECOMMENDATIONS.filter((activity) =>
+      ["learning", "explore"].includes(activity.groupId)
+    ).length;
+
+    expect(studyishCount / GROWTH_ACTIVITY_COUNT).toBeLessThan(0.5);
+  });
+
+  it("生活感的分组一个都不能少", () => {
+    // 用户点名要有的几类：做饭、观察、小游戏、仪式感、聊天、出门。
+    for (const requiredGroupId of ["cook", "play", "ritual", "chat", "outdoor", "together"]) {
+      expect(GROWTH_ACTIVITY_GROUPS.some((group) => group.id === requiredGroupId), requiredGroupId).toBe(true);
     }
   });
 

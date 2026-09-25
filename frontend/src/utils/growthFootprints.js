@@ -188,6 +188,36 @@ export function normalizeFootprintTags(rawTags) {
 //   注意这里只做真实日历日归一化，未来日期会原样保留
 // - category 原样保留，另给一份安全的 categoryMeta
 // - 长度不在这里截断：长度是校验层的事，归一化层不改写记录内容
+// - photos：只保留形状可信的那几张（有 id、有可用的 /api 地址），坏数据直接丢掉，
+//   而不是在页面上渲染一个破图。
+export function normalizeFootprintPhoto(rawPhoto) {
+  const source = rawPhoto && typeof rawPhoto === "object" ? rawPhoto : {};
+  const id = toPositiveInteger(source.id);
+  const url = normalizeFootprintText(source.url);
+
+  if (id <= 0 || !url.startsWith("/api/")) {
+    return null;
+  }
+
+  const byteSize = Number(source.byteSize);
+
+  return {
+    id,
+    url,
+    mimeType: normalizeFootprintText(source.mimeType),
+    byteSize: Number.isFinite(byteSize) && byteSize > 0 ? Math.round(byteSize) : 0,
+    createdAt: normalizeFootprintText(source.createdAt)
+  };
+}
+
+export function normalizeFootprintPhotos(rawPhotos) {
+  if (!Array.isArray(rawPhotos)) {
+    return [];
+  }
+
+  return rawPhotos.map((photo) => normalizeFootprintPhoto(photo)).filter(Boolean);
+}
+
 export function normalizeFootprint(rawFootprint) {
   const source = rawFootprint && typeof rawFootprint === "object" ? rawFootprint : {};
   const category = normalizeFootprintText(source.category);
@@ -202,6 +232,7 @@ export function normalizeFootprint(rawFootprint) {
     note: normalizeFootprintText(source.note),
     tags,
     tagMetas: tags.map((tag) => getFootprintTagMeta(tag)),
+    photos: normalizeFootprintPhotos(source.photos),
     createdAt: normalizeFootprintText(source.createdAt),
     updatedAt: normalizeFootprintText(source.updatedAt)
   };
@@ -288,6 +319,14 @@ export function validateFootprintDraft(draft = {}, { referenceDate = new Date() 
     } else {
       tags = FOOTPRINT_TAG_IDS.filter((tagId) => rawTags.includes(tagId));
     }
+  }
+
+  // 照片是「已经存下来的东西」，不是用户手填的字段：这里只挡住形状不对的输入。
+  // 数量上限由服务端把关（前端只在上传前提示），照片本身也不进 value——
+  // 草稿校验只管「文字部分能不能提交」，照片走专门的接口追加，
+  // 这样编辑一条老记录不会因为照片把整次提交打回。
+  if (source.photos !== undefined && source.photos !== null && !Array.isArray(source.photos)) {
+    issues.push({ field: "photos", message: "照片格式不正确。" });
   }
 
   return {

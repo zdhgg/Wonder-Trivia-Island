@@ -310,6 +310,38 @@ describe("growthFootprints · normalizeFootprint", () => {
     expect(normalizeFootprints([null])[0].id).toBe(0);
   });
 
+  it("照片：形状可信的留下，坏数据直接丢掉（不会渲染破图）", () => {
+    const footprint = normalizeFootprint(
+      buildRawFootprint({
+        photos: [
+          { id: 3, url: "/api/growth-footprints/photos/3", mimeType: "image/jpeg", byteSize: 240000, createdAt: "x" },
+          { id: 0, url: "/api/growth-footprints/photos/0" },
+          { id: 4, url: "https://example.com/photo.jpg" },
+          { id: 5, url: "" },
+          { id: 6 },
+          null,
+          "nope",
+          { id: "7", url: "/api/growth-footprints/photos/7" }
+        ]
+      })
+    );
+
+    expect(footprint.photos).toHaveLength(1);
+    expect(footprint.photos[0]).toEqual({
+      id: 3,
+      url: "/api/growth-footprints/photos/3",
+      mimeType: "image/jpeg",
+      byteSize: 240000,
+      createdAt: "x"
+    });
+  });
+
+  it("没有 photos 字段时是空数组，不是 undefined", () => {
+    expect(normalizeFootprint(buildRawFootprint()).photos).toEqual([]);
+    expect(normalizeFootprint(buildRawFootprint({ photos: "nope" })).photos).toEqual([]);
+    expect(normalizeFootprints([{ id: 1 }, { id: 2, photos: [{ id: 9, url: "/api/x" }] }]).map((item) => item.photos.length)).toEqual([0, 1]);
+  });
+
   it("排序契约与服务端一致：occurredOn DESC，同日 id DESC", () => {
     const sorted = sortFootprintsDesc([
       buildTimelineFootprint(1, "2026-10-01"),
@@ -443,6 +475,24 @@ describe("growthFootprints · validateFootprintDraft", () => {
     expect(result.value).toBeNull();
     expect(result.issues.map((issue) => issue.field)).toEqual(["occurredOn", "category", "title", "note", "tags"]);
     expect(result.issues.every((issue) => Boolean(issue.message))).toBe(true);
+  });
+
+  it("照片不影响文字部分的校验，也不会出现在可提交的值里", () => {
+    // 照片走单独的接口追加，所以它既不参与校验、也不进 value：
+    // 编辑一条老记录时不会因为照片把整次提交打回。
+    const withPhotos = validate(buildDraft({ photos: [{ id: 1, url: "/api/growth-footprints/photos/1" }] }));
+
+    expect(withPhotos.isValid).toBe(true);
+    expect(withPhotos.value).toEqual({
+      occurredOn: REFERENCE_DATE_KEY,
+      category: "explore",
+      title: "第一次一起做火山实验",
+      note: "冒泡特别开心。",
+      tags: ["first", "coop"]
+    });
+
+    // 形状明显不对的照片仍然会被指出来。
+    expect(validate(buildDraft({ photos: "nope" })).issues.map((issue) => issue.field)).toEqual(["photos"]);
   });
 
   it("非法草稿输入不会抛错", () => {

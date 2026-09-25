@@ -976,10 +976,10 @@ test("creating a footprint never touches growth progress, challenge progress or 
   assert.equal(listPayload.growthProgress, undefined);
   assert.equal(listPayload.stamps, undefined);
   assert.deepEqual(Object.keys(listPayload), ["footprints"]);
-  // 列表里没有任何奖励字段，只有真实事实。
+  // 列表里没有任何奖励字段，只有真实事实（photos 是这条记录自己的回忆，不是奖励）。
   assert.deepEqual(
     Object.keys(listPayload.footprints[0]).sort(),
-    ["category", "createdAt", "id", "note", "occurredOn", "tags", "title", "updatedAt"]
+    ["category", "createdAt", "id", "note", "occurredOn", "photos", "tags", "title", "updatedAt"]
   );
 
   // 四张表各自独立存在。

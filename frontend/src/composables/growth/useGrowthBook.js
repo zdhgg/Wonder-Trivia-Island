@@ -2,8 +2,10 @@ import { computed, ref } from "vue";
 import {
   createFootprint as createFootprintRequest,
   deleteFootprint as deleteFootprintRequest,
+  deleteFootprintPhoto as deleteFootprintPhotoRequest,
   fetchFootprints,
-  updateFootprint as updateFootprintRequest
+  updateFootprint as updateFootprintRequest,
+  uploadFootprintPhoto as uploadFootprintPhotoRequest
 } from "../../services/growthFootprintsApi.js";
 import {
   buildFootprintSummary,
@@ -26,6 +28,8 @@ export function useGrowthBook(options = {}) {
     createFootprint: createFootprintRequest,
     updateFootprint: updateFootprintRequest,
     deleteFootprint: deleteFootprintRequest,
+    uploadFootprintPhoto: uploadFootprintPhotoRequest,
+    deleteFootprintPhoto: deleteFootprintPhotoRequest,
     ...(options.api || {})
   };
 
@@ -86,6 +90,8 @@ export function useGrowthBook(options = {}) {
     return result;
   }
 
+  // 新增时可以同时带上刚选的照片（服务端在一个 savepoint 里写记录 + 照片）。
+  // 校验只认文字字段，photos 不参与，所以这里直接透传。
   async function createFootprint(draft, { referenceDate } = {}) {
     const result = validateDraft(draft, referenceDate);
 
@@ -97,7 +103,12 @@ export function useGrowthBook(options = {}) {
     errorMessage.value = "";
 
     try {
-      const createdFootprint = ensureFootprint(await api.createFootprint(result.value));
+      const createdFootprint = ensureFootprint(
+        await api.createFootprint({
+          ...result.value,
+          ...(Array.isArray(draft?.photos) && draft.photos.length > 0 ? { photos: draft.photos } : {})
+        })
+      );
       const withoutCreated = footprints.value.filter((item) => item.id !== createdFootprint.id);
 
       applyFootprints([...withoutCreated, createdFootprint]);
@@ -109,6 +120,15 @@ export function useGrowthBook(options = {}) {
     } finally {
       isSaving.value = false;
     }
+  }
+
+  // 给已有记录加 / 删一张照片：单独的小请求，不走整条记录的保存流程。
+  async function uploadFootprintPhoto(footprintId, dataUrl) {
+    return api.uploadFootprintPhoto(footprintId, dataUrl);
+  }
+
+  async function deleteFootprintPhoto(footprintId, photoId) {
+    return api.deleteFootprintPhoto(footprintId, photoId);
   }
 
   async function updateFootprint(footprintId, draft, { referenceDate } = {}) {
@@ -175,6 +195,8 @@ export function useGrowthBook(options = {}) {
     createFootprint,
     updateFootprint,
     deleteFootprint,
+    uploadFootprintPhoto,
+    deleteFootprintPhoto,
     validateDraft,
     clearFormErrors,
     clearErrorMessage

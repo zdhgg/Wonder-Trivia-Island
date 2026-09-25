@@ -128,11 +128,14 @@ export function useGrowthPlans(options = {}) {
     errorMessage.value = "";
 
     try {
+      // 照片随完成请求一起提交：服务端在同一个 savepoint 里写足迹 + 照片 + 删想做，
+      // 所以不存在「记录进去了、照片没存上」的中间状态。
       const footprint = await api.completeGrowthPlan(plan.id, {
         occurredOn: result.value.occurredOn,
         category: result.value.category,
         tags: result.value.tags,
-        note: result.value.note
+        note: result.value.note,
+        photos: Array.isArray(draft.photos) ? draft.photos : []
       });
 
       plans.value = plans.value.filter((item) => item.id !== plan.id);

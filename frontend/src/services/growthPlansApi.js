@@ -141,11 +141,11 @@ export async function deleteGrowthPlan(planId, signal) {
   return planId;
 }
 
-// 完成：服务端在一个事务里写足迹 + 删想做，所以这里要么拿到足迹、要么抛错，
-// 不存在「足迹写进去了但清单没删掉」的中间状态。
+// 完成：服务端在一个事务里写足迹（含照片）+ 删想做，所以这里要么拿到足迹、要么抛错，
+// 不存在「足迹写进去了但清单没删掉」或者「记录在、照片没存上」的中间状态。
 export async function completeGrowthPlan(
   planId,
-  { occurredOn, category, tags = [], note = "" } = {},
+  { occurredOn, category, tags = [], note = "", photos = [] } = {},
   signal
 ) {
   const body = {
@@ -156,6 +156,10 @@ export async function completeGrowthPlan(
 
   if (String(note ?? "").trim()) {
     body.note = String(note).trim();
+  }
+
+  if (Array.isArray(photos) && photos.length > 0) {
+    body.photos = photos;
   }
 
   const response = await fetch(`/api/growth-plans/${encodeURIComponent(planId)}/complete`, {

@@ -399,6 +399,7 @@ test("a completed plan shows up in the memory book exactly like a hand-written f
       "id",
       "note",
       "occurredOn",
+      "photos",
       "tags",
       "title",
       "updatedAt"

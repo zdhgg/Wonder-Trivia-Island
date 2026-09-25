@@ -2,8 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createFootprint,
   deleteFootprint,
+  deleteFootprintPhoto,
   fetchFootprints,
-  updateFootprint
+  updateFootprint,
+  uploadFootprintPhoto
 } from "./growthFootprintsApi.js";
 
 // 边界：服务端 growth_footprints 是纪念册的唯一事实来源。
@@ -167,5 +169,94 @@ describe("growthFootprintsApi · 新增 / 修改 / 删除", () => {
     stubFetch(async () => buildResponse({ ok: false, status: 404, payload: { message: "这条足迹不存在。" } }));
 
     await expect(deleteFootprint(7)).rejects.toThrow("这条足迹不存在");
+  });
+});
+
+describe("growthFootprintsApi · 照片", () => {
+  const DATA_URL = "data:image/jpeg;base64,aGVsbG8=";
+  const RAW_PHOTO = {
+    id: 21,
+    url: "/api/growth-footprints/photos/21",
+    mimeType: "image/jpeg",
+    byteSize: 240000,
+    createdAt: "2026-10-18T20:00:00.000Z"
+  };
+
+  it("新增时可以把照片随记录一起提交", async () => {
+    stubFetch(async () => buildResponse({ status: 201, payload: { footprint: buildRawFootprint({ photos: [RAW_PHOTO] }) } }));
+
+    const footprint = await createFootprint({
+      occurredOn: "2026-10-18",
+      category: "explore",
+      title: "一起看星星",
+      note: "",
+      tags: [],
+      photos: [DATA_URL]
+    });
+    const [, init] = readLastFetchCall();
+
+    expect(JSON.parse(init.body).photos).toEqual([DATA_URL]);
+    expect(footprint.photos).toHaveLength(1);
+    expect(footprint.photos[0].url).toBe("/api/growth-footprints/photos/21");
+  });
+
+  it("给已有记录追加照片走 POST /:id/photos", async () => {
+    stubFetch(async () => buildResponse({ status: 201, payload: { photo: RAW_PHOTO } }));
+
+    const photo = await uploadFootprintPhoto(7, DATA_URL);
+    const [url, init] = readLastFetchCall();
+
+    expect(url).toBe("/api/growth-footprints/7/photos");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body)).toEqual({ dataUrl: DATA_URL });
+    expect(photo.id).toBe(21);
+  });
+
+  it("上传被拒绝时抛错，不会返回一个本地伪造的照片", async () => {
+    stubFetch(async () => buildResponse({ ok: false, status: 400, payload: { message: "一条记录最多放 6 张照片。" } }));
+
+    await expect(uploadFootprintPhoto(7, DATA_URL)).rejects.toThrow("最多放 6 张照片");
+  });
+
+  it("上传成功但响应不是照片形状时同样抛错", async () => {
+    stubFetch(async () => buildResponse({ status: 201, payload: {} }));
+
+    await expect(uploadFootprintPhoto(7, DATA_URL)).rejects.toThrow("照片格式不正确");
+  });
+
+  it("删照片走 DELETE /:id/photos/:photoId", async () => {
+    stubFetch(async () => buildResponse({ payload: { deletedId: 21 } }));
+
+    await expect(deleteFootprintPhoto(7, 21)).resolves.toBe(21);
+
+    const [url, init] = readLastFetchCall();
+
+    expect(url).toBe("/api/growth-footprints/7/photos/21");
+    expect(init.method).toBe("DELETE");
+  });
+
+  it("删照片失败时抛错", async () => {
+    stubFetch(async () => buildResponse({ ok: false, status: 404, payload: { message: "这张照片不在了。" } }));
+
+    await expect(deleteFootprintPhoto(7, 21)).rejects.toThrow("这张照片不在了");
+  });
+
+  it("列表响应里的坏照片会被丢掉，不会渲染出破图", async () => {
+    stubFetch(async () =>
+      buildResponse({
+        payload: {
+          footprints: [
+            buildRawFootprint({
+              photos: [RAW_PHOTO, { id: 0, url: "/api/x" }, { id: 9, url: "https://example.com/a.jpg" }, null]
+            })
+          ]
+        }
+      })
+    );
+
+    const [footprint] = await fetchFootprints();
+
+    expect(footprint.photos).toHaveLength(1);
+    expect(footprint.photos[0].id).toBe(21);
   });
 });
