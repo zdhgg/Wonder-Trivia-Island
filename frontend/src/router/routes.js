@@ -9,6 +9,7 @@ export const APP_ROUTE_NAME = Object.freeze({
   STUDY_MAP: "study-map",
   STUDY_PLAYER: "study-player",
   WRONG_BOOK: "wrong-book",
+  GROWTH_BOOK: "growth-book",
   TOOLS: "tools",
   SETTINGS: "settings"
 });
@@ -16,7 +17,8 @@ export const APP_ROUTE_NAME = Object.freeze({
 // 已迁入 RouterView 的页面：路由本身负责渲染页面组件
 export const ROUTER_DRIVEN_PAGE_ROUTE_NAMES = Object.freeze([
   APP_ROUTE_NAME.TOOLS,
-  APP_ROUTE_NAME.SETTINGS
+  APP_ROUTE_NAME.SETTINGS,
+  APP_ROUTE_NAME.GROWTH_BOOK
 ]);
 
 export function isRouterDrivenPageRoute(routeName) {
@@ -71,6 +73,11 @@ export const APP_ROUTES = Object.freeze([
     path: "/wrong-book",
     name: APP_ROUTE_NAME.WRONG_BOOK,
     component: RoutePlaceholder
+  },
+  {
+    path: "/growth-book",
+    name: APP_ROUTE_NAME.GROWTH_BOOK,
+    component: () => import("../views/GrowthBookView.vue")
   },
   {
     path: "/tools/:section?",
