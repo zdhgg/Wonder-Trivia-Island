@@ -48,7 +48,9 @@ test.describe("成长纪念册", () => {
     const homeEntry = page.getByRole("button", { name: HOME_ENTRY_LABEL });
 
     await expect(homeEntry).toBeVisible();
-    await expect(page.locator(".growth-summary__book-hint")).toHaveText("还没有一起经历的故事，找个时间一起做点什么吧。");
+    await expect(
+      page.locator(".growth-summary__entry", { hasText: "我们的成长纪念册" }).locator(".growth-summary__entry-hint")
+    ).toHaveText("还没有一起经历的故事，找个时间一起做点什么吧。");
 
     await homeEntry.click();
     await expect(page).toHaveURL(/#\/growth-book/);
@@ -101,7 +103,8 @@ test.describe("成长纪念册", () => {
     await expect(page.getByRole("heading", { name: "纪念册还是空的" })).toBeVisible();
 
     // 回首页：路由回到 /，并且还能再进去。
-    await page.getByRole("button", { name: "返回首页" }).click();
+    // 注意「返回首页」在纪念册和想一起做两个页面里都存在，这里限定在纪念册的页头里点。
+    await page.locator(".growth-book__hero").getByRole("button", { name: "返回首页" }).click();
     await expect(page).not.toHaveURL(/#\/growth-book/);
     await expect(page.getByRole("button", { name: HOME_ENTRY_LABEL })).toBeVisible();
 

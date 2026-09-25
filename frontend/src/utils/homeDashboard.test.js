@@ -8,6 +8,7 @@ import {
   buildHomeDashboard,
   buildHomeGrowth,
   buildHomeGrowthBookEntry,
+  buildHomeGrowthPlansEntry,
   buildHomeWelcomeSummary,
   buildPracticeScope,
   buildTeacherTips,
@@ -730,6 +731,36 @@ describe("homeDashboard · 成长纪念册入口", () => {
     const dashboard = buildHomeDashboard({ growthSource: {}, achievements: [] });
 
     expect(dashboard.growthBookEntry).toEqual(buildHomeGrowthBookEntry());
+  });
+});
+
+// 「下次我们一起做什么」的首页入口：指的还是**没发生**的事，
+// 所以文案是「想 / 下次」的语气，也不能出现任务、进度、条数这类压力。
+describe("homeDashboard · 想一起做入口", () => {
+  it("入口文案固定，说的是下次一起做什么", () => {
+    const entry = buildHomeGrowthPlansEntry();
+
+    expect(entry.icon).toBe("🌤️");
+    expect(entry.hint).toContain("一起做点什么");
+    expect(entry.ariaLabel).toContain("下次我们一起做什么");
+  });
+
+  it("不报条数、不做游戏化", () => {
+    const entry = buildHomeGrowthPlansEntry();
+
+    for (const text of [entry.hint, entry.ariaLabel]) {
+      expect(text).not.toMatch(/\d/);
+      for (const forbiddenWord of ["进度", "经验", "升级", "完成率", "成就", "印章", "宝箱", "任务", "积分", "等级", "排行榜", "待办"]) {
+        expect(text, `${text} 不应该出现「${forbiddenWord}」`).not.toContain(forbiddenWord);
+      }
+    }
+  });
+
+  it("组装进首页 ViewModel，和成长纪念册入口并列", () => {
+    const dashboard = buildHomeDashboard({ growthSource: {}, achievements: [] });
+
+    expect(dashboard.growthPlansEntry).toEqual(buildHomeGrowthPlansEntry());
+    expect(dashboard.growthBookEntry).not.toEqual(dashboard.growthPlansEntry);
   });
 });
 

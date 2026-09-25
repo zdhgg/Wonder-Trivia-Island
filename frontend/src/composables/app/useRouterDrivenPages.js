@@ -23,8 +23,9 @@ export function createRouterDrivenPages({ route, app, settingsCenter, toolsCente
           isBackupBusy: settingsCenter.isBackupBusy.value,
           backupStats: settingsCenter.backupStats.value
         };
-      // 成长纪念册自己取数、自己管表单，不依赖应用状态，所以没有 props 要映射。
+      // 成长纪念册 / 想一起做都自己取数、自己管表单，不依赖应用状态，所以没有 props 要映射。
       case APP_ROUTE_NAME.GROWTH_BOOK:
+      case APP_ROUTE_NAME.GROWTH_PLANS:
       default:
         return {};
     }
@@ -54,6 +55,7 @@ export function createRouterDrivenPages({ route, app, settingsCenter, toolsCente
           onImportBackup: settingsCenter.importBackup
         };
       case APP_ROUTE_NAME.GROWTH_BOOK:
+      case APP_ROUTE_NAME.GROWTH_PLANS:
       default:
         return {};
     }

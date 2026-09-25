@@ -1981,6 +1981,30 @@ export function useTriviaApp() {
     }
   }
 
+  // 「下次我们一起做什么」：同样是路由驱动页面，同样不看 currentView。
+  function openGrowthPlansView() {
+    closeQuizSettings();
+    closeAudioSettings();
+    wrongBookFocusTag.value = "";
+    resetQuizPracticeContext();
+
+    if (route.name !== APP_ROUTE_NAME.GROWTH_PLANS) {
+      void router.push({ name: APP_ROUTE_NAME.GROWTH_PLANS });
+    }
+  }
+
+  // 首页「我的成长」里的成长入口统一走这里（HomeGrowthSummary 只报 id，不认路由）。
+  function openHomeGrowthEntry(entryId = "") {
+    switch (String(entryId || "")) {
+      case "growth-plans":
+        openGrowthPlansView();
+        return;
+      case "growth-book":
+      default:
+        openGrowthBookView();
+    }
+  }
+
   // 资料变更后只更新首页欢迎区的本地状态。
   //
   // AI welcome 目前暂停自动生成：首页“今天先做什么”已经由 homeDashboard.advice
@@ -3175,6 +3199,8 @@ export function useTriviaApp() {
     clearChallengeOutcome,
     openHomeView,
     openGrowthBookView,
+    openGrowthPlansView,
+    openHomeGrowthEntry,
     openChallengeWorld,
     openChallengeView,
     openQuizView,

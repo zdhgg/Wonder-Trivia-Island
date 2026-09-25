@@ -97,6 +97,7 @@ describe("router driven pages · 路由页面判定", () => {
     expect(createPages(APP_ROUTE_NAME.TOOLS).pages.isRouterDrivenPageActive.value).toBe(true);
     expect(createPages(APP_ROUTE_NAME.SETTINGS).pages.isRouterDrivenPageActive.value).toBe(true);
     expect(createPages(APP_ROUTE_NAME.GROWTH_BOOK).pages.isRouterDrivenPageActive.value).toBe(true);
+    expect(createPages(APP_ROUTE_NAME.GROWTH_PLANS).pages.isRouterDrivenPageActive.value).toBe(true);
 
     for (const otherRouteName of [
       APP_ROUTE_NAME.HOME,
@@ -129,6 +130,13 @@ describe("router driven pages · 路由页面判定", () => {
 
   it("成长纪念册自己取数，不需要任何 props / 事件映射", () => {
     const { pages } = createPages(APP_ROUTE_NAME.GROWTH_BOOK);
+
+    expect(pages.routerDrivenPageProps.value).toEqual({});
+    expect(pages.routerDrivenPageListeners.value).toEqual({});
+  });
+
+  it("想一起做同样自己取数，不需要任何 props / 事件映射", () => {
+    const { pages } = createPages(APP_ROUTE_NAME.GROWTH_PLANS);
 
     expect(pages.routerDrivenPageProps.value).toEqual({});
     expect(pages.routerDrivenPageListeners.value).toEqual({});

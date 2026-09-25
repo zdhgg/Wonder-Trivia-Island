@@ -8,18 +8,39 @@ const props = defineProps({
     type: Object,
     required: true
   },
-  // 成长纪念册入口文案（homeDashboard.buildHomeGrowthBookEntry）。
-  // 单独一个 prop 而不是塞进 growth：它和星星 / 收藏 / 成就那三个“本章指标”不同源。
+  // 「成长纪念册 / 下次一起做什么」这两条入口的文案
+  // （homeDashboard.buildHomeGrowthBookEntry / buildHomeGrowthPlansEntry）。
+  // 单独一个 prop 而不是塞进 growth：它们和星星 / 收藏 / 成就那三个“本章指标”不同源。
   growthBookEntry: {
+    type: Object,
+    default: () => ({})
+  },
+  growthPlansEntry: {
     type: Object,
     default: () => ({})
   }
 });
 
-const emit = defineEmits(["open-backpack", "open-growth-book"]);
+const emit = defineEmits(["open-backpack", "open-entry"]);
 
+// 两条成长入口用同一个渲染模板，只有文案和去往的页面不同。
 // 兜底成空对象：老调用方（或测试）不传时，标题还在、提示语为空，不会渲染出 undefined。
-const growthBookEntry = computed(() => props.growthBookEntry ?? {});
+const growthEntries = computed(() => [
+  {
+    id: "growth-book",
+    title: "我们的成长纪念册",
+    icon: props.growthBookEntry?.icon ?? "",
+    hint: props.growthBookEntry?.hint ?? "",
+    ariaLabel: props.growthBookEntry?.ariaLabel ?? "打开我们的成长纪念册"
+  },
+  {
+    id: "growth-plans",
+    title: "下次我们一起做什么",
+    icon: props.growthPlansEntry?.icon ?? "",
+    hint: props.growthPlansEntry?.hint ?? "",
+    ariaLabel: props.growthPlansEntry?.ariaLabel ?? "打开下次我们一起做什么"
+  }
+]);
 </script>
 
 <template>
@@ -71,20 +92,23 @@ const growthBookEntry = computed(() => props.growthBookEntry ?? {});
       <span class="growth-summary__stamps-more" aria-hidden="true">›</span>
     </button>
 
-    <!-- 成长纪念册入口：和知识岛同一层的轻量入口，但走独立页面。
-         这里只说“一起经历的事”，不显示任何条数 / 进度——首页本轮不请求足迹接口。 -->
+    <!-- 成长纪念册 / 下次一起做什么：和知识岛同一层的轻量入口，各自走独立页面。
+         这里只说“一起经历的事”和“想一起做的事”，不显示任何条数 / 进度——
+         首页本轮不请求足迹与清单接口，免得清单变成待办面板。 -->
     <button
-      class="growth-summary__book"
+      v-for="entry in growthEntries"
+      :key="entry.id"
+      class="growth-summary__entry"
       type="button"
-      :aria-label="growthBookEntry.ariaLabel"
-      @click="emit('open-growth-book')"
+      :aria-label="entry.ariaLabel"
+      @click="emit('open-entry', entry.id)"
     >
-      <span class="growth-summary__book-glyph" aria-hidden="true">{{ growthBookEntry.icon }}</span>
-      <span class="growth-summary__book-copy">
-        <strong class="growth-summary__book-title">我们的成长纪念册</strong>
-        <span class="growth-summary__book-hint">{{ growthBookEntry.hint }}</span>
+      <span class="growth-summary__entry-glyph" aria-hidden="true">{{ entry.icon }}</span>
+      <span class="growth-summary__entry-copy">
+        <strong class="growth-summary__entry-title">{{ entry.title }}</strong>
+        <span class="growth-summary__entry-hint">{{ entry.hint }}</span>
       </span>
-      <span class="growth-summary__book-more" aria-hidden="true">›</span>
+      <span class="growth-summary__entry-more" aria-hidden="true">›</span>
     </button>
 
     <div v-if="growth.nextAchievement" class="growth-summary__next">
@@ -293,9 +317,9 @@ const growthBookEntry = computed(() => props.growthBookEntry ?? {});
   font-weight: 900;
 }
 
-/* 成长纪念册入口：和知识岛摘要一样是整行可点的轻量入口，
+/* 成长的几个入口：和知识岛摘要一样是整行可点的轻量入口，
    但换一套纸张色，和「印章 / 收藏 / 成就」这些有分母的指标区分开。 */
-.growth-summary__book {
+.growth-summary__entry {
   appearance: none;
   display: flex;
   align-items: center;
@@ -318,45 +342,45 @@ const growthBookEntry = computed(() => props.growthBookEntry ?? {});
     color 160ms ease;
 }
 
-.growth-summary__book:hover {
+.growth-summary__entry:hover {
   border-color: rgba(255, 174, 66, 0.62);
   background: rgba(255, 238, 205, 0.92);
   color: var(--color-ink);
 }
 
-.growth-summary__book:focus-visible {
+.growth-summary__entry:focus-visible {
   outline: none;
   border-color: rgba(255, 174, 66, 0.9);
   box-shadow: 0 0 0 3px rgba(255, 214, 128, 0.4);
 }
 
-.growth-summary__book-glyph {
+.growth-summary__entry-glyph {
   flex-shrink: 0;
   font-size: 1.2rem;
   line-height: 1;
 }
 
-.growth-summary__book-copy {
+.growth-summary__entry-copy {
   display: grid;
   gap: 1px;
   flex: 1;
   min-width: 0;
 }
 
-.growth-summary__book-title {
+.growth-summary__entry-title {
   color: var(--color-ink);
   font-size: 0.86rem;
   font-weight: 900;
 }
 
-.growth-summary__book-hint {
+.growth-summary__entry-hint {
   min-width: 0;
   color: var(--color-ink-soft);
   font-size: 0.78rem;
   font-weight: 800;
 }
 
-.growth-summary__book-more {
+.growth-summary__entry-more {
   flex-shrink: 0;
   font-size: 1rem;
   font-weight: 900;
@@ -463,7 +487,7 @@ const growthBookEntry = computed(() => props.growthBookEntry ?? {});
   .growth-summary__more,
   .growth-summary__more:hover,
   .growth-summary__stamps,
-  .growth-summary__book,
+  .growth-summary__entry,
   .growth-summary__next-fill {
     transition: none;
     transform: none;

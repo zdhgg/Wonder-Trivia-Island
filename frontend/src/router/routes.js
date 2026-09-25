@@ -10,6 +10,7 @@ export const APP_ROUTE_NAME = Object.freeze({
   STUDY_PLAYER: "study-player",
   WRONG_BOOK: "wrong-book",
   GROWTH_BOOK: "growth-book",
+  GROWTH_PLANS: "growth-plans",
   TOOLS: "tools",
   SETTINGS: "settings"
 });
@@ -18,7 +19,8 @@ export const APP_ROUTE_NAME = Object.freeze({
 export const ROUTER_DRIVEN_PAGE_ROUTE_NAMES = Object.freeze([
   APP_ROUTE_NAME.TOOLS,
   APP_ROUTE_NAME.SETTINGS,
-  APP_ROUTE_NAME.GROWTH_BOOK
+  APP_ROUTE_NAME.GROWTH_BOOK,
+  APP_ROUTE_NAME.GROWTH_PLANS
 ]);
 
 export function isRouterDrivenPageRoute(routeName) {
@@ -78,6 +80,11 @@ export const APP_ROUTES = Object.freeze([
     path: "/growth-book",
     name: APP_ROUTE_NAME.GROWTH_BOOK,
     component: () => import("../views/GrowthBookView.vue")
+  },
+  {
+    path: "/growth-plans",
+    name: APP_ROUTE_NAME.GROWTH_PLANS,
+    component: () => import("../views/GrowthPlansView.vue")
   },
   {
     path: "/tools/:section?",

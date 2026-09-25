@@ -31,7 +31,7 @@ describe("app routes", () => {
     expect(catchAllRoute.redirect).toEqual({ name: APP_ROUTE_NAME.HOME });
   });
 
-  it("已迁入 RouterView 的页面（工具台 / 设置 / 成长纪念册）挂的是真实组件，而不是占位组件", () => {
+  it("已迁入 RouterView 的页面（工具台 / 设置 / 纪念册 / 想一起做）挂的是真实组件，而不是占位组件", () => {
     for (const routeName of ROUTER_DRIVEN_PAGE_ROUTE_NAMES) {
       const route = findRoute(routeName);
 
@@ -65,10 +65,15 @@ describe("app routes", () => {
     expect(findRoute(APP_ROUTE_NAME.GROWTH_BOOK).path).toBe("/growth-book");
   });
 
+  it("想一起做也是独立页面，路径不带参数", () => {
+    expect(findRoute(APP_ROUTE_NAME.GROWTH_PLANS).path).toBe("/growth-plans");
+  });
+
   it("isRouterDrivenPageRoute 只认得已迁移的页面", () => {
     expect(isRouterDrivenPageRoute(APP_ROUTE_NAME.TOOLS)).toBe(true);
     expect(isRouterDrivenPageRoute(APP_ROUTE_NAME.SETTINGS)).toBe(true);
     expect(isRouterDrivenPageRoute(APP_ROUTE_NAME.GROWTH_BOOK)).toBe(true);
+    expect(isRouterDrivenPageRoute(APP_ROUTE_NAME.GROWTH_PLANS)).toBe(true);
     expect(isRouterDrivenPageRoute(APP_ROUTE_NAME.WRONG_BOOK)).toBe(false);
     expect(isRouterDrivenPageRoute(undefined)).toBe(false);
     expect(isRouterDrivenPageRoute("")).toBe(false);

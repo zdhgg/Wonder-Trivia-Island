@@ -5,6 +5,7 @@ const { closeDatabaseConnection, createDatabaseConnection, initializeDatabase } 
 const { ensureQuestionsTable } = require("./questions/repository");
 const challengeProgressRouter = require("./routes/challengeProgress");
 const growthFootprintsRouter = require("./routes/growthFootprints");
+const growthPlansRouter = require("./routes/growthPlans");
 const growthProgressRouter = require("./routes/growthProgress");
 const questionsRouter = require("./routes/questions");
 const studyRecordBookRouter = require("./routes/studyRecordBook");
@@ -87,6 +88,7 @@ app.use("/api/questions", attachDatabaseConnection, questionsRouter);
 app.use("/api/challenge-progress", challengeProgressRouter);
 app.use("/api/growth-progress", growthProgressRouter);
 app.use("/api/growth-footprints", growthFootprintsRouter);
+app.use("/api/growth-plans", growthPlansRouter);
 app.use("/api/study-record-book", studyRecordBookRouter);
 
 app.use((req, res) => {

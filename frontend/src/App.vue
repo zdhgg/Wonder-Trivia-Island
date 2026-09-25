@@ -189,7 +189,7 @@ export default {
         @open-knowledge-study="openStudyMapView"
         @open-wrong-review="openWrongBookView"
         @open-backpack="openBackpack(homeCollectionChapterId)"
-        @open-growth-book="openGrowthBookView"
+        @open-entry="openHomeGrowthEntry"
         @claim-daily-chest="claimDailyChest"
       />
 

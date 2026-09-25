@@ -260,6 +260,17 @@ export function buildHomeGrowthBookEntry() {
   };
 }
 
+// 「下次我们一起做什么」的首页入口文案。
+// 这条入口指的是**还没发生**的事，所以文案刻意是「想」「下次」的语气：
+// 首页上只说这是一个可以随便挑的地方，不报条数（报条数就变成待办清单了）。
+export function buildHomeGrowthPlansEntry() {
+  return {
+    icon: "🌤️",
+    hint: "想一起做点什么？挑一件放进清单里",
+    ariaLabel: "打开下次我们一起做什么"
+  };
+}
+
 // ---------------------------------------------------------------------------
 // 今天的探险：主线任务卡。
 // ---------------------------------------------------------------------------
@@ -710,6 +721,8 @@ export function buildHomeDashboard({
     growth,
     // 成长纪念册的首页入口：只给文案，不含计数——首页本轮不从服务端取足迹。
     growthBookEntry: buildHomeGrowthBookEntry(),
+    // 想一起做的首页入口：同样只有文案，没有「还剩几件」这种压力。
+    growthPlansEntry: buildHomeGrowthPlansEntry(),
     dailyTasks: dailyTaskItems,
     dailyChest: buildHomeDailyChest({
       tasks: dailyTaskItems,
