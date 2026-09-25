@@ -528,14 +528,12 @@ router.use(createPhotoRouter({ store: milestonePhotos, ownerTable: "growth_miles
 
 module.exports = router;
 module.exports.ensureGrowthMilestonesTable = ensureGrowthMilestonesTable;
+// 「她的成长」自己的取图入口：/api/growth-milestones/photos/:photoId。
+// 只查成长记录照片表——两边的照片 id 各表独立自增，会重复，必须分开解释。
 module.exports.createMilestonePhotoMediaRouter = () =>
   createPhotoMediaRouter({
-    // 取图入口是两条线共用的，所以两张照片表都要在。
+    store: milestonePhotos,
     ensureOwnerTables(db) {
       ensureGrowthMilestonesTable(db);
-
-      const { ensureGrowthFootprintsTable } = require("./growthFootprints");
-
-      ensureGrowthFootprintsTable(db);
     }
   });

@@ -632,15 +632,12 @@ router.use(createPhotoRouter({ store: footprintPhotos, ownerTable: "growth_footp
 module.exports = router;
 // 照片模块也需要「两张表都在」（图片本体请求可能先到），所以这里把手建表能力交出去。
 module.exports.ensureGrowthFootprintsTable = ensureGrowthFootprintsTable;
-// 图片本体入口由 app.js 显式挂在 /api/growth-footprints 上：
-// 它要同时认识足迹照片和成长记录照片，所以不能在两个 router 里各挂一份。
+// 「我们一起」自己的取图入口：/api/growth-footprints/photos/:photoId。
+// 只查足迹照片表——milestone 的 /photos/1 是另一张照片，不能在这里解释。
 module.exports.createFootprintPhotoMediaRouter = () =>
   createPhotoMediaRouter({
+    store: footprintPhotos,
     ensureOwnerTables(db) {
       ensureGrowthFootprintsTable(db);
-
-      const { ensureGrowthMilestonesTable } = require("./growthMilestones");
-
-      ensureGrowthMilestonesTable(db);
     }
   });

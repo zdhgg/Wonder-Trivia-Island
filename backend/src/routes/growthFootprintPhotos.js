@@ -542,11 +542,16 @@ function createPhotoRouter({ store, ownerTable }) {
 module.exports = {
   MAX_PHOTOS_PER_RECORD,
   MAX_PHOTO_BYTES,
-  // 图片本体：/api/<records>/photos/:photoId
+  // 图片本体：/api/<records>/photos/:photoId（每条记录线各自一个）
+  //
+  // 两条线的照片 id **只在自己那张表里唯一**（各表独立的 AUTOINCREMENT），
+  // 所以取图入口必须按线分开：/api/growth-footprints/photos/1 和
+  // /api/growth-milestones/photos/1 是两张不同的照片，不能共用一个入口。
+  //
   // 挂在 /api 下（和别的接口同一个代理前缀），前端 <img src> 直接可用。
   // 本地家庭系统、照片 id 不可枚举，这里不再做一次 profile 校验：
   // 校验会把 <img> 变成需要带凭证的请求，收益却接近于零。
-  createPhotoMediaRouter({ ensureOwnerTables }) {
+  createPhotoMediaRouter({ store, ensureOwnerTables }) {
     const router = express.Router();
 
     router.get("/photos/:photoId", (req, res, next) => {
@@ -563,26 +568,18 @@ module.exports = {
 
       try {
         // 图片本体可能在任何一次记录接口之前被请求（比如刷新后浏览器直接取图），
-        // 而且纪念册的两条线共用这个取图入口（id 全局自增，不会撞），
-        // 所以两张表都要保证存在、都要找一遍。
+        // 所以这里保证这一条线相关的表都在。
         ensureOwnerTables(db);
-        let row = null;
 
-        for (const store of [footprintPhotos, milestonePhotos]) {
-          row = get(
-            db,
-            `
-              SELECT file_name, mime_type
-              FROM ${store.tableName}
-              WHERE id = ?
-            `,
-            [photoId]
-          );
-
-          if (row) {
-            break;
-          }
-        }
+        const row = get(
+          db,
+          `
+            SELECT file_name, mime_type
+            FROM ${store.tableName}
+            WHERE id = ?
+          `,
+          [photoId]
+        );
 
         if (!row) {
           sendPhotoNotFound(res);

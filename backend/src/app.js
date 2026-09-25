@@ -90,12 +90,14 @@ app.get("/api/health", (req, res) => {
 app.use("/api/questions", attachDatabaseConnection, questionsRouter);
 app.use("/api/challenge-progress", challengeProgressRouter);
 app.use("/api/growth-progress", growthProgressRouter);
-// 照片取图入口：/api/growth-footprints/photos/:photoId（纪念册两条线共用这一个入口，
-// 因为它要同时认识足迹照片和成长记录照片，所以不能塞进任一 router 里）。
+// 照片取图入口按记录线分开：两条线的照片 id 是各表独立自增的，会重复，
+// 共用 /api/growth-footprints/photos/:id 会产生歧义（同一串数字指向两张照片）。
+// 所以 /api/growth-footprints/photos/:id 只解释足迹照片，
+// /api/growth-milestones/photos/:id 只解释成长记录照片。
+// 每个入口都要挂在各自的 router 之前，否则会被 /:id 当成记录 id。
 app.use("/api/growth-footprints", growthFootprintsRouter.createFootprintPhotoMediaRouter());
 app.use("/api/growth-footprints", growthFootprintsRouter);
 app.use("/api/growth-plans", growthPlansRouter);
-// 「她的成长」：纪念册的第二条记录线。它的 /photos/:photoId 必须挂在 /:id 之前。
 app.use(
   "/api/growth-milestones",
   growthMilestonesRouter.createMilestonePhotoMediaRouter(),
