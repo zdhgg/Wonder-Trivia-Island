@@ -27,6 +27,13 @@ export function isRouterDrivenPageRoute(routeName) {
   return ROUTER_DRIVEN_PAGE_ROUTE_NAMES.includes(String(routeName || ""));
 }
 
+// 成长纪念册里的两条记录线：共同经历（足迹）与她自己的成长。
+// 放在路由常量旁边，因为首页入口和页面内切换都要用同一个名字。
+export const GROWTH_BOOK_TAB = Object.freeze({
+  TOGETHER: "together",
+  MILESTONES: "milestones"
+});
+
 // 尚未迁移的页面：App.vue 仍按 currentView 用 v-if 渲染，这里只登记 URL
 const RoutePlaceholder = {
   name: "RoutePlaceholder",

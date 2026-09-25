@@ -205,6 +205,7 @@ function handleTeacherTip(tip) {
         :growth="props.homeDashboard.growth"
         :growth-book-entry="props.homeDashboard.growthBookEntry"
         :growth-plans-entry="props.homeDashboard.growthPlansEntry"
+        :milestone-entry="props.homeDashboard.milestoneEntry"
         @open-backpack="emit('open-backpack')"
         @open-entry="emit('open-entry', $event)"
       />

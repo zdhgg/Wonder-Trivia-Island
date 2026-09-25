@@ -9,6 +9,7 @@ import {
   buildHomeGrowth,
   buildHomeGrowthBookEntry,
   buildHomeGrowthPlansEntry,
+  buildHomeMilestoneEntry,
   buildHomeWelcomeSummary,
   buildPracticeScope,
   buildTeacherTips,
@@ -761,6 +762,37 @@ describe("homeDashboard · 想一起做入口", () => {
 
     expect(dashboard.growthPlansEntry).toEqual(buildHomeGrowthPlansEntry());
     expect(dashboard.growthBookEntry).not.toEqual(dashboard.growthPlansEntry);
+  });
+});
+
+// 「她的成长」的首页入口：指向纪念册的另一页，说的是她自己的成长瞬间。
+describe("homeDashboard · 她的成长入口", () => {
+  it("入口文案固定，说的是她自己的事", () => {
+    const entry = buildHomeMilestoneEntry();
+
+    expect(entry.icon).toBe("🌱");
+    expect(entry.hint).toContain("她自己的成长");
+    expect(entry.ariaLabel).toBe("打开她的成长");
+  });
+
+  it("不做评价、不做游戏化：没有优良中差、分数、指数、条数", () => {
+    const entry = buildHomeMilestoneEntry();
+
+    for (const text of [entry.hint, entry.ariaLabel]) {
+      expect(text).not.toMatch(/\d/);
+
+      for (const forbiddenWord of ["优", "良", "分数", "得分", "指数", "排名", "打卡", "进度", "成就", "积分", "等级"]) {
+        expect(text, `${text} 不应该出现「${forbiddenWord}」`).not.toContain(forbiddenWord);
+      }
+    }
+  });
+
+  it("组装进首页 ViewModel，和另外两个成长入口并列", () => {
+    const dashboard = buildHomeDashboard({ growthSource: {}, achievements: [] });
+
+    expect(dashboard.milestoneEntry).toEqual(buildHomeMilestoneEntry());
+    expect(dashboard.milestoneEntry).not.toEqual(dashboard.growthBookEntry);
+    expect(dashboard.milestoneEntry).not.toEqual(dashboard.growthPlansEntry);
   });
 });
 

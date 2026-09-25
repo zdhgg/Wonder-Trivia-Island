@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   APP_ROUTES,
   APP_ROUTE_NAME,
+  GROWTH_BOOK_TAB,
   ROUTER_DRIVEN_PAGE_ROUTE_NAMES,
   isRouterDrivenPageRoute
 } from "./routes";
@@ -63,6 +64,10 @@ describe("app routes", () => {
 
   it("成长纪念册是独立页面，路径不带参数", () => {
     expect(findRoute(APP_ROUTE_NAME.GROWTH_BOOK).path).toBe("/growth-book");
+  });
+
+  it("纪念册的两条记录线有稳定的名字（页面与首页入口共用）", () => {
+    expect(GROWTH_BOOK_TAB).toEqual({ TOGETHER: "together", MILESTONES: "milestones" });
   });
 
   it("想一起做也是独立页面，路径不带参数", () => {

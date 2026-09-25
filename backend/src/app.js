@@ -5,6 +5,7 @@ const { closeDatabaseConnection, createDatabaseConnection, initializeDatabase } 
 const { ensureQuestionsTable } = require("./questions/repository");
 const challengeProgressRouter = require("./routes/challengeProgress");
 const growthFootprintsRouter = require("./routes/growthFootprints");
+const growthMilestonesRouter = require("./routes/growthMilestones");
 const growthPlansRouter = require("./routes/growthPlans");
 const growthProgressRouter = require("./routes/growthProgress");
 const questionsRouter = require("./routes/questions");
@@ -89,8 +90,17 @@ app.get("/api/health", (req, res) => {
 app.use("/api/questions", attachDatabaseConnection, questionsRouter);
 app.use("/api/challenge-progress", challengeProgressRouter);
 app.use("/api/growth-progress", growthProgressRouter);
+// 照片取图入口：/api/growth-footprints/photos/:photoId（纪念册两条线共用这一个入口，
+// 因为它要同时认识足迹照片和成长记录照片，所以不能塞进任一 router 里）。
+app.use("/api/growth-footprints", growthFootprintsRouter.createFootprintPhotoMediaRouter());
 app.use("/api/growth-footprints", growthFootprintsRouter);
 app.use("/api/growth-plans", growthPlansRouter);
+// 「她的成长」：纪念册的第二条记录线。它的 /photos/:photoId 必须挂在 /:id 之前。
+app.use(
+  "/api/growth-milestones",
+  growthMilestonesRouter.createMilestonePhotoMediaRouter(),
+  growthMilestonesRouter
+);
 app.use("/api/study-record-book", studyRecordBookRouter);
 
 app.use((req, res) => {

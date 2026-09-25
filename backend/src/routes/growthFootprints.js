@@ -2,12 +2,9 @@ const { randomUUID } = require("node:crypto");
 const express = require("express");
 const { all, createDatabaseConnection, get, run, runInSavepoint } = require("../db/database");
 const {
-  ensurePhotosTable,
-  insertPhotoList,
-  listStoredPhotos,
-  listStoredPhotosByFootprintIds,
-  removeStoredPhotosForFootprint,
-  router: photoRouter
+  createPhotoMediaRouter,
+  createPhotoRouter,
+  footprintPhotos
 } = require("./growthFootprintPhotos");
 
 // 共同成长足迹（Phase 2D-A1）：一条记录 = 真实发生过的一件「一起经历的事」。
@@ -217,7 +214,7 @@ function serializeFootprintRow(row, photos = []) {
 function ensureGrowthFootprintsTable(db) {
   run(db, createTableSql);
   run(db, createIndexSql);
-  ensurePhotosTable(db);
+  footprintPhotos.ensureTable(db);
 }
 
 // 返回 { message, value }：message 非空表示校验失败（对应 400），value 是可直接落库的字段集合。
@@ -366,7 +363,7 @@ function listStoredFootprints(db, profileId) {
     [profileId]
   );
   // 一次把这一批足迹的照片全取回来，避免每条记录各查一次。
-  const photosByFootprintId = listStoredPhotosByFootprintIds(
+  const photosByFootprintId = footprintPhotos.listPhotosByOwnerIds(
     db,
     rows.map((row) => Number(row.id))
   );
@@ -378,7 +375,7 @@ function listStoredFootprints(db, profileId) {
 function getSerializedFootprint(db, footprintId, profileId) {
   const row = getStoredFootprint(db, footprintId, profileId);
 
-  return row ? serializeFootprintRow(row, listStoredPhotos(db, footprintId)) : null;
+  return row ? serializeFootprintRow(row, footprintPhotos.listPhotos(db, footprintId)) : null;
 }
 
 // 只按 (id, profile_id) 取：别人的 id 会自然查不到，不需要先 SELECT 再判断归属。
@@ -511,7 +508,7 @@ router.post("/", (req, res, next) => {
     const created = runInSavepoint(db, "create_growth_footprint", () => {
       const createdRow = insertStoredFootprint(db, profileId, validationResult.value);
       const footprintId = Number(createdRow.id);
-      const photoResult = insertPhotoList(db, footprintId, profileId, req.body?.photos);
+      const photoResult = footprintPhotos.insertPhotoList(db, footprintId, profileId, req.body?.photos);
 
       if (photoResult.message) {
         throw Object.assign(new Error(photoResult.message), { isPhotoValidationError: true });
@@ -571,7 +568,7 @@ router.patch("/:id", (req, res, next) => {
     }
 
     res.json({
-      footprint: serializeFootprintRow(updatedRow, listStoredPhotos(db, footprintId))
+      footprint: serializeFootprintRow(updatedRow, footprintPhotos.listPhotos(db, footprintId))
     });
   } catch (error) {
     next(error);
@@ -599,7 +596,7 @@ router.delete("/:id", (req, res, next) => {
 
     // 删记录时把照片一起删掉（先删文件再删行）：纪念册里不该留下没人认领的照片文件。
     const deleteResult = runInSavepoint(db, "delete_growth_footprint", () => {
-      removeStoredPhotosForFootprint(db, footprintId);
+      footprintPhotos.removePhotosForOwner(db, footprintId);
 
       return run(
         db,
@@ -630,8 +627,20 @@ router.delete("/:id", (req, res, next) => {
 
 // 照片接口：/api/growth-footprints/photos/:photoId（图片本体）等。
 // 这些具体路径必须挂在下面的 /:id 之前，否则 /photos/3 会被当成 id 为 "photos" 的请求。
-router.use(photoRouter);
+router.use(createPhotoRouter({ store: footprintPhotos, ownerTable: "growth_footprints" }));
 
 module.exports = router;
 // 照片模块也需要「两张表都在」（图片本体请求可能先到），所以这里把手建表能力交出去。
 module.exports.ensureGrowthFootprintsTable = ensureGrowthFootprintsTable;
+// 图片本体入口由 app.js 显式挂在 /api/growth-footprints 上：
+// 它要同时认识足迹照片和成长记录照片，所以不能在两个 router 里各挂一份。
+module.exports.createFootprintPhotoMediaRouter = () =>
+  createPhotoMediaRouter({
+    ensureOwnerTables(db) {
+      ensureGrowthFootprintsTable(db);
+
+      const { ensureGrowthMilestonesTable } = require("./growthMilestones");
+
+      ensureGrowthMilestonesTable(db);
+    }
+  });

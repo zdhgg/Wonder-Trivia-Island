@@ -7,13 +7,14 @@
 //
 // 数据全部来自 /api/growth-footprints（服务端是唯一事实来源，刷新后仍在），
 // 页面本身只负责表单交互与排版：分组 / 排序 / 校验都用 utils/growthFootprints 的纯函数。
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
-import { useRouter } from "vue-router";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
 import FootprintPhotoPicker from "../components/growth/FootprintPhotoPicker.vue";
+import GrowthMilestonePanel from "../components/growth/GrowthMilestonePanel.vue";
 import { useFootprintPhotos } from "../composables/growth/useFootprintPhotos.js";
 import { useGrowthBook } from "../composables/growth/useGrowthBook.js";
-import { APP_ROUTE_NAME } from "../router/routes.js";
+import { APP_ROUTE_NAME, GROWTH_BOOK_TAB } from "../router/routes.js";
 import {
   FOOTPRINT_CATEGORIES,
   FOOTPRINT_CATEGORY_IDS,
@@ -25,6 +26,7 @@ import {
 } from "../utils/growthFootprints.js";
 
 const router = useRouter();
+const route = useRoute();
 const growthBook = useGrowthBook();
 const {
   monthGroups,
@@ -62,6 +64,14 @@ const {
 const isFormOpen = ref(false);
 // 空串 = 正在新增；数字 = 正在编辑哪一条。
 const editingFootprintId = ref("");
+
+// 纪念册的两条线：我们一起（足迹）/ 她的成长（成长记录）。
+// 用 ?tab=milestones 记录当前在哪一页，刷新和分享链接都能回到同一页。
+const activeTab = ref(
+  String(route.query?.tab || "") === GROWTH_BOOK_TAB.MILESTONES ? GROWTH_BOOK_TAB.MILESTONES : GROWTH_BOOK_TAB.TOGETHER
+);
+const milestonePanelRef = ref(null);
+const isTogetherTab = computed(() => activeTab.value === GROWTH_BOOK_TAB.TOGETHER);
 const draft = ref(createEmptyDraft());
 const draftIssues = ref([]);
 const pendingDelete = ref(null);
@@ -272,6 +282,20 @@ function goHome() {
   void router.push({ name: APP_ROUTE_NAME.HOME });
 }
 
+// 切换记录线：地址栏跟着变（replace，不往后退栈里塞两步）。
+// 每条线的「记一件新的事」由各自的区域提供，切换时不会硬塞一个表单给用户。
+function switchTab(tabId) {
+  if (activeTab.value === tabId) {
+    return;
+  }
+
+  activeTab.value = tabId;
+  void router.replace({
+    name: APP_ROUTE_NAME.GROWTH_BOOK,
+    query: tabId === GROWTH_BOOK_TAB.MILESTONES ? { tab: GROWTH_BOOK_TAB.MILESTONES } : {}
+  });
+}
+
 function formatDayLabel(dateKey) {
   const matched = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
 
@@ -310,26 +334,57 @@ onBeforeUnmount(() => {
   <section class="growth-book">
     <header class="growth-book__hero">
       <div class="growth-book__hero-copy">
-        <p class="growth-book__eyebrow">共同成长足迹</p>
+        <p class="growth-book__eyebrow">成长纪念册</p>
         <h1 class="growth-book__title">我们的成长纪念册</h1>
         <p class="growth-book__lead">
-          把爸爸和女儿真正一起做过的事，按它发生的那一天收进来。以后翻回去看，都是真的。
+          一起做过的事记在「我们一起」，她自己的成长瞬间记在「她的成长」。翻回去看的时候，都是真的。
         </p>
-        <p class="growth-book__count">{{ summary.countText }}</p>
       </div>
 
       <div class="growth-book__hero-actions">
-        <button class="growth-book__button growth-book__button--primary" type="button" @click="openCreateForm">
-          ✏️ 记一件新的事
-        </button>
         <button class="growth-book__button" type="button" @click="goHome">返回首页</button>
       </div>
     </header>
 
-    <p v-if="errorMessage" class="growth-book__alert" role="alert">
-      <span>{{ errorMessage }}</span>
-      <button class="growth-book__alert-action" type="button" @click="clearErrorMessage">知道了</button>
-    </p>
+    <!-- 两条记录线的切换：合起来仍是一本纪念册，分开放是因为它们记的不是一回事。 -->
+    <div class="growth-book__tabs" role="tablist" aria-label="纪念册的记录线">
+      <button
+        :class="['growth-book__tab', { 'growth-book__tab--active': isTogetherTab }]"
+        type="button"
+        role="tab"
+        :aria-selected="isTogetherTab"
+        @click="switchTab(GROWTH_BOOK_TAB.TOGETHER)"
+      >
+        <span aria-hidden="true">👨‍👧</span> 我们一起
+      </button>
+      <button
+        :class="['growth-book__tab', { 'growth-book__tab--active': !isTogetherTab }]"
+        type="button"
+        role="tab"
+        :aria-selected="!isTogetherTab"
+        @click="switchTab(GROWTH_BOOK_TAB.MILESTONES)"
+      >
+        <span aria-hidden="true">🌱</span> 她的成长
+      </button>
+    </div>
+
+    <!-- 第二条线：她自己的成长记录，自己取数、自己管表单。 -->
+    <GrowthMilestonePanel v-if="!isTogetherTab" ref="milestonePanelRef" />
+
+    <template v-else>
+      <p class="growth-book__count">{{ summary.countText }}</p>
+
+      <div class="growth-book__section-head">
+        <h2 class="growth-book__section-title">我们一起做过的事</h2>
+        <button class="growth-book__button growth-book__button--primary" type="button" @click="openCreateForm">
+          ✏️ 记一件新的事
+        </button>
+      </div>
+
+      <p v-if="errorMessage" class="growth-book__alert" role="alert">
+        <span>{{ errorMessage }}</span>
+        <button class="growth-book__alert-action" type="button" @click="clearErrorMessage">知道了</button>
+      </p>
 
     <!-- 新增 / 编辑共用同一套表单：只有标题与提交文案不同。 -->
     <section v-if="isFormOpen" ref="formAnchorRef" class="growth-book__form" aria-labelledby="growth-book-form-title">
@@ -496,6 +551,7 @@ onBeforeUnmount(() => {
 
     <!-- 删除只要简单确认：说清楚删的是哪一条就够，不需要输入标题。 -->
     <ConfirmDialog
+      v-if="isTogetherTab"
       v-model="isDeleteConfirmOpen"
       title-id="growth-book-delete-confirm-title"
       semantic-tone="danger"
@@ -509,6 +565,7 @@ onBeforeUnmount(() => {
       @confirm="confirmDelete"
       @cancel="cancelDelete"
     />
+    </template>
   </section>
 </template>
 
@@ -569,6 +626,65 @@ onBeforeUnmount(() => {
   color: var(--color-ink);
   font-size: 0.92rem;
   font-weight: 800;
+}
+
+/* 两条记录线的切换：像给纪念册分了两页，而不是两个不同的系统。 */
+.growth-book__tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.growth-book__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 8px 16px;
+  border: 1.5px solid rgba(36, 50, 74, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--color-ink-soft);
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    color 160ms ease;
+}
+
+.growth-book__tab:hover {
+  border-color: rgba(124, 216, 184, 0.46);
+  color: var(--color-ink);
+}
+
+.growth-book__tab:focus-visible {
+  outline: none;
+  border-color: rgba(124, 216, 184, 0.8);
+  box-shadow: 0 0 0 3px rgba(124, 216, 184, 0.22);
+}
+
+.growth-book__tab--active {
+  border-color: rgba(124, 216, 184, 0.62);
+  background: linear-gradient(180deg, rgba(184, 242, 223, 0.92) 0%, rgba(255, 255, 255, 0.94) 100%);
+  color: var(--color-ink);
+}
+
+.growth-book__section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.growth-book__section-title {
+  margin: 0;
+  color: var(--color-ink);
+  font-family: "ZCOOL KuaiLe", "Baloo 2", "Trebuchet MS", sans-serif;
+  font-size: 1.15rem;
 }
 
 .growth-book__hero-actions {
@@ -1026,6 +1142,20 @@ onBeforeUnmount(() => {
 
   .growth-book__hero-actions .growth-book__button {
     flex: 1 1 140px;
+  }
+
+  /* 窄屏上两条记录线各占一半，一眼能看出是并列的两个入口。 */
+  .growth-book__tabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .growth-book__tab {
+    justify-content: center;
+  }
+
+  .growth-book__section-head .growth-book__button {
+    width: 100%;
   }
 
   .growth-book__form {

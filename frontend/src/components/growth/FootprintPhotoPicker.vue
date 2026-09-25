@@ -37,6 +37,11 @@ const props = defineProps({
   errorMessage: {
     type: String,
     default: ""
+  },
+  // 相册里的两条线（我们一起 / 她的成长）都用这个选择器，只有标题不同。
+  label: {
+    type: String,
+    default: "照片"
   }
 });
 
@@ -78,7 +83,7 @@ function removePending(index) {
 <template>
   <div class="footprint-photos">
     <div class="footprint-photos__head">
-      <span class="footprint-photos__label">照片</span>
+      <span class="footprint-photos__label">{{ label }}</span>
       <span class="footprint-photos__hint">
         {{ totalCount() }} / {{ maxPhotos }}
         <template v-if="maxPhotos > 0">· 一次出去玩的照片放几张就够</template>

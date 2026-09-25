@@ -2,8 +2,7 @@ const { randomUUID } = require("node:crypto");
 const express = require("express");
 const { all, createDatabaseConnection, get, run, runInSavepoint } = require("../db/database");
 const {
-  ensurePhotosTable,
-  insertPhotoList
+  footprintPhotos
 } = require("./growthFootprintPhotos");
 
 // 「下次我们一起做什么」（Phase 2D-B1）。
@@ -227,7 +226,7 @@ function ensureGrowthPlansTables(db) {
   run(db, createUniqueIndexSql);
   run(db, createOrderIndexSql);
   run(db, createFootprintsTableSql);
-  ensurePhotosTable(db);
+  footprintPhotos.ensureTable(db);
 }
 
 function parsePlanId(rawValue) {
@@ -679,7 +678,7 @@ router.post("/:id/complete", (req, res, next) => {
       const footprintId = Number(insertedRow.id);
       // 照片和足迹、删想做在同一个 savepoint 里：照片不合法时整件事都不发生，
       // 那条想做会原样留在清单里。
-      const photoResult = insertPhotoList(db, footprintId, profileId, req.body?.photos);
+      const photoResult = footprintPhotos.insertPhotoList(db, footprintId, profileId, req.body?.photos);
 
       if (photoResult.message) {
         throw Object.assign(new Error(photoResult.message), { isPhotoValidationError: true });

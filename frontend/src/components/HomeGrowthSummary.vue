@@ -18,27 +18,41 @@ const props = defineProps({
   growthPlansEntry: {
     type: Object,
     default: () => ({})
+  },
+  milestoneEntry: {
+    type: Object,
+    default: () => ({})
   }
 });
 
 const emit = defineEmits(["open-backpack", "open-entry"]);
 
-// 两条成长入口用同一个渲染模板，只有文案和去往的页面不同。
-// 兜底成空对象：老调用方（或测试）不传时，标题还在、提示语为空，不会渲染出 undefined。
+// 三条成长入口用同一个渲染模板，只有文案、去往的地方和底色不同。
+// 纪念册那两条（我们一起 / 她的成长）同色系，因为它们翻开的是同一本纪念册。
 const growthEntries = computed(() => [
   {
     id: "growth-book",
     title: "我们的成长纪念册",
     icon: props.growthBookEntry?.icon ?? "",
     hint: props.growthBookEntry?.hint ?? "",
-    ariaLabel: props.growthBookEntry?.ariaLabel ?? "打开我们的成长纪念册"
+    ariaLabel: props.growthBookEntry?.ariaLabel ?? "打开我们的成长纪念册",
+    tone: "book"
   },
   {
     id: "growth-plans",
     title: "下次我们一起做什么",
     icon: props.growthPlansEntry?.icon ?? "",
     hint: props.growthPlansEntry?.hint ?? "",
-    ariaLabel: props.growthPlansEntry?.ariaLabel ?? "打开下次我们一起做什么"
+    ariaLabel: props.growthPlansEntry?.ariaLabel ?? "打开下次我们一起做什么",
+    tone: "plan"
+  },
+  {
+    id: "growth-milestones",
+    title: "她的成长",
+    icon: props.milestoneEntry?.icon ?? "",
+    hint: props.milestoneEntry?.hint ?? "",
+    ariaLabel: props.milestoneEntry?.ariaLabel ?? "打开她的成长",
+    tone: "book"
   }
 ]);
 </script>
@@ -98,7 +112,7 @@ const growthEntries = computed(() => [
     <button
       v-for="entry in growthEntries"
       :key="entry.id"
-      class="growth-summary__entry"
+      :class="['growth-summary__entry', `growth-summary__entry--${entry.tone}`]"
       type="button"
       :aria-label="entry.ariaLabel"
       @click="emit('open-entry', entry.id)"
@@ -342,10 +356,22 @@ const growthEntries = computed(() => [
     color 160ms ease;
 }
 
+/* 纪念册那两条同色系：翻开的是同一本纪念册；
+   「下次一起做什么」是另一类事（还没发生），换成偏天空的底色。 */
+.growth-summary__entry--plan {
+  border-color: rgba(173, 235, 255, 0.9);
+  background: rgba(236, 249, 255, 0.8);
+}
+
 .growth-summary__entry:hover {
   border-color: rgba(255, 174, 66, 0.62);
   background: rgba(255, 238, 205, 0.92);
   color: var(--color-ink);
+}
+
+.growth-summary__entry--plan:hover {
+  border-color: rgba(122, 200, 230, 0.8);
+  background: rgba(222, 244, 255, 0.96);
 }
 
 .growth-summary__entry:focus-visible {

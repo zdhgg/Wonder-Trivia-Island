@@ -271,6 +271,16 @@ export function buildHomeGrowthPlansEntry() {
   };
 }
 
+// 「她的成长」的首页入口文案：打开的是纪念册的另一页，说的是她自己的成长瞬间。
+// 同样不报条数、不做评价——只说明这里记的是她经历的事。
+export function buildHomeMilestoneEntry() {
+  return {
+    icon: "🌱",
+    hint: "她自己的成长瞬间，也记在纪念册里",
+    ariaLabel: "打开她的成长"
+  };
+}
+
 // ---------------------------------------------------------------------------
 // 今天的探险：主线任务卡。
 // ---------------------------------------------------------------------------
@@ -723,6 +733,8 @@ export function buildHomeDashboard({
     growthBookEntry: buildHomeGrowthBookEntry(),
     // 想一起做的首页入口：同样只有文案，没有「还剩几件」这种压力。
     growthPlansEntry: buildHomeGrowthPlansEntry(),
+    // 她的成长：纪念册的第二条记录线，入口只说「记的是她自己的事」。
+    milestoneEntry: buildHomeMilestoneEntry(),
     dailyTasks: dailyTaskItems,
     dailyChest: buildHomeDailyChest({
       tasks: dailyTaskItems,

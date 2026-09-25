@@ -2,7 +2,7 @@ import { storeToRefs } from "pinia";
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { playAudioCue, syncAudioSettings, unlockAudioEngine } from "../audio/audioEngine";
-import { APP_ROUTE_NAME } from "../router/routes";
+import { APP_ROUTE_NAME, GROWTH_BOOK_TAB } from "../router/routes";
 import {
   fetchQuestionCoverage,
   fetchQuestionStats,
@@ -1970,15 +1970,25 @@ export function useTriviaApp() {
 
   // 成长纪念册是路由驱动页面（渲染由 route.name 决定），这里只负责把路由指过去。
   // currentView 保持不变：它决定的是「尚未迁移的页面渲染哪一个」，纪念册不走这条路。
-  function openGrowthBookView() {
+  // options.tab 用来直接落在「她的成长」那一页（首页入口会这么调）。
+  function openGrowthBookView({ tab = "" } = {}) {
     closeQuizSettings();
     closeAudioSettings();
     wrongBookFocusTag.value = "";
     resetQuizPracticeContext();
 
-    if (route.name !== APP_ROUTE_NAME.GROWTH_BOOK) {
-      void router.push({ name: APP_ROUTE_NAME.GROWTH_BOOK });
+    const normalizedTab = String(tab || "").trim();
+    const isSameTarget = route.name === APP_ROUTE_NAME.GROWTH_BOOK &&
+      String(route.query?.tab || "") === normalizedTab;
+
+    if (isSameTarget) {
+      return;
     }
+
+    void router.push({
+      name: APP_ROUTE_NAME.GROWTH_BOOK,
+      ...(normalizedTab ? { query: { tab: normalizedTab } } : {})
+    });
   }
 
   // 「下次我们一起做什么」：同样是路由驱动页面，同样不看 currentView。
@@ -1998,6 +2008,9 @@ export function useTriviaApp() {
     switch (String(entryId || "")) {
       case "growth-plans":
         openGrowthPlansView();
+        return;
+      case "growth-milestones":
+        openGrowthBookView({ tab: GROWTH_BOOK_TAB.MILESTONES });
         return;
       case "growth-book":
       default:

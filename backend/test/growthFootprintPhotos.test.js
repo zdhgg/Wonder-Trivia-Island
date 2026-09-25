@@ -7,12 +7,14 @@ const test = require("node:test");
 // 绝不碰 backend/data/trivia.db 与真实的 backend/data/growth-photos。
 const tempDir = path.join(__dirname, ".tmp");
 const tempDbPath = path.join(tempDir, "growth-photos.test.db");
-const photosDir = path.join(tempDir, "growth-photos");
+// 每个测试文件用自己的照片目录：测试之间不互相删对方的文件。
+const photosDir = path.join(tempDir, "growth-footprint-photos");
 
 fs.rmSync(photosDir, { recursive: true, force: true });
 fs.mkdirSync(tempDir, { recursive: true });
 process.env.NODE_ENV = "test";
 process.env.TRIVIA_DB_PATH = tempDbPath;
+process.env.TRIVIA_PHOTOS_DIR = photosDir;
 
 const app = require("../src/app");
 const { closeDatabaseConnection, createDatabaseConnection, run } = require("../src/db/database");
