@@ -155,6 +155,32 @@ describe("growthFootprints · 日期判断", () => {
     // 非法输入退回「现在」，不抛错。
     expect(getLocalDateKey("not-a-date")).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
+
+  it("未来但真实的日期在第 1 层合法，是否允许提交由第 2 层决定", () => {
+    // 第 1 层（isValidFootprintDate / normalizeFootprintDate）：只管「是不是真实存在的日历日」。
+    // 未来日期在这一层是合法的——不能把「未来检查」塞回这里。
+    expect(isValidFootprintDate("2099-01-01")).toBe(true);
+    expect(normalizeFootprintDate("2099-01-01")).toBe("2099-01-01");
+    expect(normalizeFootprint(buildRawFootprint({ occurredOn: "2099-01-01" })).occurredOn).toBe("2099-01-01");
+
+    // 对照：真正不存在的日历日在第 1 层就该被判非法。
+    expect(isValidFootprintDate("2099-02-30")).toBe(false);
+    expect(normalizeFootprintDate("2099-02-30")).toBe("");
+
+    // 第 2 层（validateFootprintDraft）：在真实日期成立之后，才追加「不得晚于参考日」。
+    const result = validateFootprintDraft(
+      { occurredOn: "2099-01-01", category: "explore", title: "未来的事" },
+      { referenceDate: REFERENCE_DATE }
+    );
+
+    expect(result.isValid).toBe(false);
+    expect(result.value).toBeNull();
+    expect(result.issues.map((issue) => issue.field)).toContain("occurredOn");
+
+    // real calendar date ≠ allowed submission date：
+    // 同一个 2099-01-01，第 1 层为 true，第 2 层为 invalid。
+    expect(isValidFootprintDate("2099-01-01")).toBe(true);
+  });
 });
 
 describe("growthFootprints · 标签归一化", () => {
@@ -186,6 +212,45 @@ describe("growthFootprints · normalizeFootprint", () => {
     expect(footprint.tagMetas.map((tag) => tag.displayLabel)).toEqual(["✨ 第一次", "🤝 一起合作"]);
     expect(footprint.createdAt).toBe("2026-10-18T09:12:00.000Z");
     expect(footprint.updatedAt).toBe("2026-10-18T09:12:00.000Z");
+  });
+
+  it("id 只接受真正的正整数 number，其它一律归零（与服务端 id 语义严格一致）", () => {
+    // 合法：原样保留，不做任何解析或改写。
+    for (const validId of [1, 3, 999, Number.MAX_SAFE_INTEGER]) {
+      expect(normalizeFootprint(buildRawFootprint({ id: validId })).id, String(validId)).toBe(validId);
+    }
+
+    // 非法：全部必须是 0。
+    // 尤其是 "3.7" / "1e3" / "01" 不能再被 parseInt 猜成 3 / 1 / 1，
+    // number 3.7 也不能被读成 3（那会显示一个服务端根本不存在的 id）。
+    const invalidIds = [
+      0,
+      -1,
+      3.7,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+      Number.MAX_SAFE_INTEGER + 1,
+      "1",
+      "01",
+      "3.7",
+      "1e3",
+      "abc",
+      "",
+      null,
+      undefined,
+      {},
+      [],
+      true,
+      false
+    ];
+
+    for (const invalidId of invalidIds) {
+      expect(normalizeFootprint(buildRawFootprint({ id: invalidId })).id, String(invalidId)).toBe(0);
+    }
+
+    // 列表路径同样严格。
+    expect(normalizeFootprints([{ id: "1" }, { id: 2 }]).map((footprint) => footprint.id)).toEqual([0, 2]);
   });
 
   it("CRLF 归一成 LF，首尾空白被 trim，但内部换行与 emoji 一个不少", () => {

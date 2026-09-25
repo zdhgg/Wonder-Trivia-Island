@@ -68,7 +68,8 @@ export function normalizeFootprintText(value) {
     .trim();
 }
 
-// 浏览器本地今天。注意：前端**不知道**服务器时钟，所以这里只用于表单默认值与体验层校验，
+// 浏览器本地今天。注意：前端**不知道**服务器时钟，所以它只是第 2 层提交规则的参考日
+// （表单默认值 + validateFootprintDraft 的「不得晚于」判断），
 // 真正的「不得晚于今天」由服务端按它自己的本地日期再判一次。
 export function getLocalDateKey(referenceDate = new Date()) {
   const resolvedDate =
@@ -79,10 +80,18 @@ export function getLocalDateKey(referenceDate = new Date()) {
   return `${resolvedDate.getFullYear()}-${month}-${day}`;
 }
 
-// 严格判断真实日历日：格式 + 逐字段比对，绝不接受会把 2026-02-30 静默归一化成 3 月 2 日的写法。
+// 只判断「这个字符串是否表示一个真实存在的日历日」：格式 + 逐字段比对。
 //
-// 注意：日期**没有**最早年份下限，合法规则只有三条——
-//   1. YYYY-MM-DD 格式；2. 真实存在的日历日；3. 不晚于参考日（默认浏览器本地今天）。
+// 它**不**判断「这个日期是否允许提交」——未来日期、超过参考日之类都不在这一层。
+// 所以 2099-01-01 在这里是 true（它确实是真实日历日），
+// 只是稍后会被 validateFootprintDraft() 以「不能选到未来」拒绝。
+//
+// 两层职责刻意分开，别把未来检查塞进本函数：
+//   第 1 层（本函数）              真实日历日：YYYY-MM-DD 且真实存在
+//   第 2 层（validateFootprintDraft）提交规则：在真实日期成立的基础上，不得晚于浏览器本地参考日
+// 服务端同样是两层：normalizeOccurredOn() 判真实日期，normalizeFootprintInput() 再判不晚于服务器本地今天。
+//
+// 第 1 层没有最早年份下限，只有「格式」和「真实存在」两条规则；
 // 下面 setFullYear 的基准日只是构造用的壳子，三个字段都会被显式覆盖，不构成任何日期下限。
 export function isValidFootprintDate(value) {
   const matched = FOOTPRINT_DATE_PATTERN.exec(String(value ?? "").trim());
@@ -107,7 +116,9 @@ export function isValidFootprintDate(value) {
   );
 }
 
-// 合法 → "YYYY-MM-DD"；不合法 → ""（不猜、不归一化、不补零修复）。
+// 只做「真实日历日」归一化：合法 → "YYYY-MM-DD"，不合法 → ""（不猜、不归一化、不补零修复）。
+// 同样**不**负责判断这个日期是否未来：未来但真实的日期会原样返回，
+// 是否允许提交由 validateFootprintDraft() 决定。
 export function normalizeFootprintDate(value) {
   const normalized = String(value ?? "").trim();
 
@@ -144,10 +155,19 @@ export function getFootprintTagMeta(tag) {
   };
 }
 
+// 严格对齐服务端的 id 语义：只接受「真正的正整数 number」，其它一律 0。
+//
+// 这里刻意不用 parseInt 式的宽松解析：那会把 "3.7" / "1e3" / "01" 猜成 3 / 1 / 1，
+// 甚至把 number 3.7 读成 3——于是前端会显示一个服务端根本不存在的 id。
+// 也不接受数字字符串：服务端 JSON 里的 id 本来就是 number，没有兼容字符串的必要。
 function toPositiveInteger(value) {
-  const parsed = Number.parseInt(String(value ?? ""), 10);
-
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+  return typeof value === "number" &&
+    Number.isFinite(value) &&
+    Number.isInteger(value) &&
+    Number.isSafeInteger(value) &&
+    value > 0
+    ? value
+    : 0;
 }
 
 // 未知标签剔除、重复标签去重、顺序永远按 FOOTPRINT_TAGS 固定——
@@ -163,8 +183,9 @@ export function normalizeFootprintTags(rawTags) {
 }
 
 // 「服务端数据 → 展示模型」的安全归一化：只把可疑值降级，不伪造真实记录。
-// - id 不合法 → 0（调用方按「没有服务端 id」处理）
+// - id 不是「正整数 number」→ 0（严格对齐服务端 id 语义，见 toPositiveInteger）
 // - occurredOn 不是真实日历日 → ""（不会出现在时间线上，但原值仍可通过重新请求拿到）
+//   注意这里只做真实日历日归一化，未来日期会原样保留
 // - category 原样保留，另给一份安全的 categoryMeta
 // - 长度不在这里截断：长度是校验层的事，归一化层不改写记录内容
 export function normalizeFootprint(rawFootprint) {
@@ -211,6 +232,12 @@ function listTimelineFootprints(footprints) {
 
 // 前端校验是用户体验层，服务端仍是最终权威。
 // referenceDate 让单测不依赖真实当天；它代表「浏览器本地今天」。
+//
+// 这里是第 2 层「是否允许提交」，未来检查只在这一层做：
+//   normalizeFootprintDate() 已经保证了「真实日历日」；
+//   本函数在此基础上再补一条「不得晚于 referenceDate 的本地自然日」。
+// 所以同一个 2099-01-01：isValidFootprintDate() 是 true（那一天真实存在），
+// 但本函数会因为晚于参考日而判非法。服务端还会用它自己的本地今天再判一次。
 //
 // 返回 { isValid, issues, value }：issues 是 [{ field, message }] 供表单逐字段提示；
 // 只有全部通过时 value 才是可直接提交给服务端的形状，否则 value 为 null
