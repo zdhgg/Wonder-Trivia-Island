@@ -27,12 +27,33 @@ export function isRouterDrivenPageRoute(routeName) {
   return ROUTER_DRIVEN_PAGE_ROUTE_NAMES.includes(String(routeName || ""));
 }
 
-// 成长纪念册里的两条记录线：共同经历（足迹）与她自己的成长。
+// 成长纪念册里的三条页签：两条记录线，加上按日期混排的「全部」。
 // 放在路由常量旁边，因为首页入口和页面内切换都要用同一个名字。
 export const GROWTH_BOOK_TAB = Object.freeze({
   TOGETHER: "together",
-  MILESTONES: "milestones"
+  MILESTONES: "milestones",
+  ALL: "all"
 });
+
+export const GROWTH_BOOK_TAB_IDS = Object.freeze([
+  GROWTH_BOOK_TAB.ALL,
+  GROWTH_BOOK_TAB.TOGETHER,
+  GROWTH_BOOK_TAB.MILESTONES
+]);
+
+// ?tab= 里出现不认识的值时，回落到「全部」——它能看到两条线，是最安全的默认。
+export function normalizeGrowthBookTab(rawTab) {
+  const normalizedTab = String(rawTab ?? "").trim();
+
+  return GROWTH_BOOK_TAB_IDS.includes(normalizedTab) ? normalizedTab : GROWTH_BOOK_TAB.ALL;
+}
+
+export function buildGrowthBookQuery(tab) {
+  const normalizedTab = normalizeGrowthBookTab(tab);
+
+  // 默认页签不带参数，URL 尽量短。
+  return normalizedTab === GROWTH_BOOK_TAB.ALL ? {} : { tab: normalizedTab };
+}
 
 // 尚未迁移的页面：App.vue 仍按 currentView 用 v-if 渲染，这里只登记 URL
 const RoutePlaceholder = {

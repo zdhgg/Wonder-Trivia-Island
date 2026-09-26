@@ -28,6 +28,8 @@ async function openBookFromHome(page) {
   await page.getByRole("button", { name: HOME_ENTRY_LABEL }).click();
   await expect(page).toHaveURL(/#\/growth-book/);
   await expect(page.getByRole("heading", { name: BOOK_TITLE })).toBeVisible();
+  // 纪念册默认停在「全部」，这条用例覆盖的是「我们一起」那条线，所以先切过去。
+  await page.getByRole("tab", { name: /我们一起/ }).click();
 }
 
 async function fillFootprintForm(page, { title, note }) {
@@ -56,6 +58,9 @@ test.describe("成长纪念册", () => {
     await expect(page).toHaveURL(/#\/growth-book/);
     await expect(page.getByRole("heading", { name: BOOK_TITLE })).toBeVisible();
 
+    // 纪念册默认停在「全部」；这条用例覆盖的是「我们一起」那条线，先切过去。
+    await page.getByRole("tab", { name: /我们一起/ }).click();
+
     // 第一次进来是空的：空状态 + 「记下第一件事」。
     await expect(page.getByRole("heading", { name: "纪念册还是空的" })).toBeVisible();
 
@@ -75,8 +80,8 @@ test.describe("成长纪念册", () => {
     const entryTitle = page.locator(".growth-book__entry-title").first();
 
     await expect(entryTitle).toHaveText("第一次一起做火山实验");
-    // 月份分组标题跟着发生的那一天走。
-    await expect(page.locator(".growth-book__month-label").first()).toContainText("月");
+    // 月份分组标题跟着发生的那一天走（月份组由 BookMonthSection 渲染）。
+    await expect(page.locator(".book-month__label").first()).toContainText("月");
     await expect(page.locator(".growth-book__entry-tag")).toHaveCount(1);
 
     // 刷新后仍在（服务端持久化，不靠内存）。

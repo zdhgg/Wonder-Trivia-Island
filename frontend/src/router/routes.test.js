@@ -4,7 +4,9 @@ import {
   APP_ROUTE_NAME,
   GROWTH_BOOK_TAB,
   ROUTER_DRIVEN_PAGE_ROUTE_NAMES,
-  isRouterDrivenPageRoute
+  buildGrowthBookQuery,
+  isRouterDrivenPageRoute,
+  normalizeGrowthBookTab
 } from "./routes";
 
 function findRoute(routeName) {
@@ -66,8 +68,28 @@ describe("app routes", () => {
     expect(findRoute(APP_ROUTE_NAME.GROWTH_BOOK).path).toBe("/growth-book");
   });
 
-  it("纪念册的两条记录线有稳定的名字（页面与首页入口共用）", () => {
-    expect(GROWTH_BOOK_TAB).toEqual({ TOGETHER: "together", MILESTONES: "milestones" });
+  it("纪念册的三个页签有稳定的名字，且能从 URL 参数还原", () => {
+    expect(GROWTH_BOOK_TAB).toEqual({ TOGETHER: "together", MILESTONES: "milestones", ALL: "all" });
+
+    // 认识的参数原样保留；不认识的（含没有参数）一律回落到「全部」。
+    expect(normalizeGrowthBookTab("together")).toBe(GROWTH_BOOK_TAB.TOGETHER);
+    expect(normalizeGrowthBookTab("milestones")).toBe(GROWTH_BOOK_TAB.MILESTONES);
+    expect(normalizeGrowthBookTab("all")).toBe(GROWTH_BOOK_TAB.ALL);
+    expect(normalizeGrowthBookTab("")).toBe(GROWTH_BOOK_TAB.ALL);
+    expect(normalizeGrowthBookTab(undefined)).toBe(GROWTH_BOOK_TAB.ALL);
+    expect(normalizeGrowthBookTab("nope")).toBe(GROWTH_BOOK_TAB.ALL);
+  });
+
+  it("默认页签（全部）不带查询参数，其它页签带 ?tab=", () => {
+    expect(buildGrowthBookQuery(GROWTH_BOOK_TAB.ALL)).toEqual({});
+    expect(buildGrowthBookQuery(undefined)).toEqual({});
+    expect(buildGrowthBookQuery(GROWTH_BOOK_TAB.TOGETHER)).toEqual({ tab: "together" });
+    expect(buildGrowthBookQuery(GROWTH_BOOK_TAB.MILESTONES)).toEqual({ tab: "milestones" });
+
+    // 写进 URL 再读回来，页签不变（刷新后仍停在同一页）。
+    for (const tab of Object.values(GROWTH_BOOK_TAB)) {
+      expect(normalizeGrowthBookTab(buildGrowthBookQuery(tab).tab)).toBe(tab);
+    }
   });
 
   it("想一起做也是独立页面，路径不带参数", () => {

@@ -8,11 +8,13 @@ import {
   MAX_FOOTPRINT_NOTE_LENGTH,
   MAX_FOOTPRINT_TITLE_LENGTH,
   buildFootprintSummary,
+  buildMergedTimelineSummary,
   getFootprintCategoryMeta,
   getFootprintTagMeta,
   getLocalDateKey,
   groupFootprintsByMonth,
   isValidFootprintDate,
+  mergeFootprintTimelines,
   normalizeFootprint,
   normalizeFootprintDate,
   normalizeFootprints,
@@ -568,8 +570,124 @@ describe("growthFootprints · groupFootprintsByMonth", () => {
   });
 });
 
-describe("growthFootprints · buildFootprintSummary", () => {
-  it("0 条：空状态文案，没有「最近一次」", () => {
+// 「全部」页签：两条记录线按真实日期混排。
+// 纯展示层汇总——只打 kind 标记，不动数据、不新建结构。
+describe("growthFootprints · mergeFootprintTimelines", () => {
+  // 页面传进来的成长记录是 normalizeMilestones 归一化过的（日期非法的记录已经在上面被丢弃），
+  // 所以这里的 fixture 模拟归一化之后的形状：没有 tags 字段。
+  function buildMilestone(overrides = {}) {
+    return {
+      id: 21,
+      occurredOn: "2026-10-18",
+      category: "classroom",
+      categoryMeta: { id: "classroom", displayLabel: "📚 学习课堂", isKnown: true },
+      title: "第一次自己举手回答问题",
+      note: "举了三次才被叫到。",
+      photos: [],
+      createdAt: "2026-10-18T09:12:00.000Z",
+      updatedAt: "2026-10-18T09:12:00.000Z",
+      ...overrides
+    };
+  }
+
+  it("两条线混排成一条时间线，月份降序、组内日期降序", () => {
+    const groups = mergeFootprintTimelines({
+      footprints: [
+        buildTimelineFootprint(1, "2026-10-05"),
+        buildTimelineFootprint(2, "2025-12-31")
+      ],
+      milestones: [
+        buildMilestone({ id: 21, occurredOn: "2026-10-18" }),
+        buildMilestone({ id: 22, occurredOn: "2025-12-31" })
+      ]
+    });
+
+    expect(groups.map((group) => group.key)).toEqual(["2026-10", "2025-12"]);
+    expect(groups[0].label).toBe("2026 年 10 月");
+    // 同一组里两条线交错：先按日期，再按 id。
+    expect(groups[0].items.map((item) => `${item.kind}-${item.id}`)).toEqual(["milestone-21", "footprint-1"]);
+    expect(groups[1].items.map((item) => `${item.kind}-${item.id}`)).toEqual(["milestone-22", "footprint-2"]);
+  });
+
+  it("每条记录都带上 kind，页面据此区分两条线", () => {
+    const [group] = mergeFootprintTimelines({
+      footprints: [buildTimelineFootprint(1, "2026-10-18")],
+      milestones: [buildMilestone({ id: 21, occurredOn: "2026-10-17" })]
+    });
+
+    expect(group.items.map((item) => item.kind)).toEqual(["footprint", "milestone"]);
+    // 原样保留各自字段：足迹有 tags，成长记录没有。
+    expect(group.items[0].tags).toEqual(["first", "coop"]);
+    expect(group.items[1].tags).toBeUndefined();
+    expect(group.items[1].categoryMeta.displayLabel).toBe("📚 学习课堂");
+  });
+
+  it("只有一条线有数据时也照常工作（另一条可以是空数组）", () => {
+    const onlyMilestones = mergeFootprintTimelines({ milestones: [buildMilestone()] });
+
+    expect(onlyMilestones).toHaveLength(1);
+    expect(onlyMilestones[0].items.map((item) => item.kind)).toEqual(["milestone"]);
+    expect(mergeFootprintTimelines()).toEqual([]);
+    expect(mergeFootprintTimelines({ footprints: [], milestones: [] })).toEqual([]);
+  });
+
+  it("成长记录不会被当成足迹解释：不会凭空多出 tags，日期坏掉的记录也不进时间线", () => {
+    // 这条回归来自一个真实 bug：把两条线的混合数组统一交给某一侧的归一化处理，
+    // 会让成长记录被套上 footprints 的语义（凭空多出 tags、日期校验换成另一套规则）。
+    // 所以这个函数只做合并 / 排序 / 分组，归一化由两条线各自负责。
+    const groups = mergeFootprintTimelines({
+      // 已经归一化过的足迹：日期非法的记录在这一步就已经被丢弃。
+      footprints: [buildTimelineFootprint(1, "2026-10-05")],
+      // 已经归一化过的成长记录：日期坏掉的那条 occurredOn 是空串。
+      milestones: [buildMilestone({ id: 22, occurredOn: "" }), buildMilestone({ id: 23, occurredOn: "2026-10-18" })]
+    });
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0].items.map((item) => `${item.kind}-${item.id}`)).toEqual(["milestone-23", "footprint-1"]);
+    // 成长记录身上不该出现 tags（那是「我们一起」的字段）。
+    expect(groups[0].items[0].tags).toBeUndefined();
+    expect(groups[0].items[1].tags).toEqual(["first", "coop"]);
+  });
+
+  it("不改动传入的数组（页面里的原始数据保持原样）", () => {
+    const footprints = [buildTimelineFootprint(1, "2026-10-18")];
+    const milestones = [buildMilestone({ id: 21, occurredOn: "2026-10-18" })];
+
+    mergeFootprintTimelines({ footprints, milestones });
+
+    expect(footprints).toHaveLength(1);
+    expect(milestones).toHaveLength(1);
+    expect(footprints[0].kind).toBeUndefined();
+    expect(milestones[0].kind).toBeUndefined();
+  });
+});
+
+describe("growthFootprints · buildMergedTimelineSummary", () => {
+  it("数的是两条线加起来的真实记录数", () => {
+    const summary = buildMergedTimelineSummary({
+      footprints: [buildTimelineFootprint(1, "2026-10-18")],
+      milestones: [
+        { id: 21, occurredOn: "2026-10-17", category: "classroom", title: "她的事", note: "", photos: [] },
+        { id: 22, occurredOn: "", category: "classroom", title: "日期坏掉的记录", note: "", photos: [] }
+      ]
+    });
+
+    expect(summary.count).toBe(2);
+    expect(summary.hasRecords).toBe(true);
+    expect(summary.countText).toBe("一共留下了 2 个成长瞬间");
+  });
+
+  it("空纪念册给一句话，不含分数 / 进度 / 成就", () => {
+    const summary = buildMergedTimelineSummary();
+
+    expect(summary.count).toBe(0);
+    expect(summary.hasRecords).toBe(false);
+    expect(summary.countText).toBe("纪念册还没有翻开过");
+    expect(summary.countText).not.toMatch(/\d+\s*\/\s*\d+/);
+  });
+});
+
+describe("growthFootprints · buildFootprintSummary", () => {  it("0 条：空状态文案，没有「最近一次」", () => {
     const summary = buildFootprintSummary([]);
 
     expect(summary.count).toBe(0);

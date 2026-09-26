@@ -1,4 +1,4 @@
-import { computed, ref } from "vue";
+import { computed, reactive, ref } from "vue";
 import {
   createMilestone as createMilestoneRequest,
   deleteMilestone as deleteMilestoneRequest,
@@ -172,6 +172,21 @@ export function useGrowthMilestones(options = {}) {
   }
 
   return {
+    // state 原样打包一份（reactive 会自动解包 ref），纪念册页面用 v-bind 交给
+    // 「她的成长」面板当 props：这样「全部」和「她的成长」看到的是同一份数据
+    // （一次请求、一处加载状态）。
+    // 注意这里只放「展示状态」——动作（load / createMilestone …）仍从 composable 上取；
+    // 也必须用 reactive 而不是普通对象，否则 v-bind 传下去的是 ref 对象本身。
+    state: reactive({
+      monthGroups,
+      isEmpty,
+      hasLoaded,
+      isLoading,
+      isSaving,
+      isDeleting,
+      errorMessage,
+      formErrorMessages
+    }),
     milestones,
     monthGroups,
     summary,

@@ -364,6 +364,67 @@ export function groupFootprintsByMonth(footprints = []) {
   return groups;
 }
 
+// 「全部」页签：把两条记录线按真实日期混排成一条时间线。
+//
+// 纯展示层的汇总：不新建数据、不复制记录，只在每条记录上标一个 kind，
+// 页面据此决定用哪套配色 / 标签（足迹有 tags，成长记录没有）。
+// 分组形状与 groupFootprintsByMonth 完全一致（key / year / month / label / items），
+// 所以三条页签可以共用同一套月份排版。
+//
+// 注意：这个函数只做「合并 + 排序 + 分组」，不做归一化——两条线各自由
+// normalizeFootprints / normalizeMilestones 归一化之后再传进来。
+// 把混在一起的数组交给其中任意一个归一化函数，都会让另一条线被错误解释
+// （比如成长记录被套上 footprints 的语义，凭空多出 tags、日期校验也换了规则）。
+export function mergeFootprintTimelines({ footprints = [], milestones = [] } = {}) {
+  const merged = [
+    ...(Array.isArray(footprints) ? footprints : []).map((footprint) => ({ ...footprint, kind: "footprint" })),
+    ...(Array.isArray(milestones) ? milestones : []).map((milestone) => ({ ...milestone, kind: "milestone" }))
+  ];
+  // 两条线各自的排序契约本来就一样（occurredOn DESC，同日 id DESC），
+  // 所以这里直接复用足迹的排序函数，同日时两条线的记录交错出现。
+  // 日期为空的记录（脏数据）无法在时间线上定位，和 groupFootprintsByMonth 一样不进时间线。
+  const timeline = sortFootprintsDesc(merged).filter(
+    (item) => typeof item.occurredOn === "string" && item.occurredOn.length > 0
+  );
+  const groups = [];
+  const groupIndexByKey = new Map();
+
+  for (const item of timeline) {
+    const key = item.occurredOn.slice(0, 7);
+    const year = Number.parseInt(key.slice(0, 4), 10);
+    const month = Number.parseInt(key.slice(5, 7), 10);
+
+    if (!groupIndexByKey.has(key)) {
+      groupIndexByKey.set(key, groups.length);
+      groups.push({
+        key,
+        year,
+        month,
+        label: `${year} 年 ${month} 月`,
+        items: []
+      });
+    }
+
+    groups[groupIndexByKey.get(key)].items.push(item);
+  }
+
+  return groups;
+}
+
+// 「全部」页签的一句话状态：只说记下了多少，不做评价、不给分母。
+export function buildMergedTimelineSummary({ footprints = [], milestones = [] } = {}) {
+  const count = mergeFootprintTimelines({ footprints, milestones }).reduce(
+    (total, group) => total + group.items.length,
+    0
+  );
+
+  return {
+    count,
+    hasRecords: count > 0,
+    countText: count > 0 ? `一共留下了 ${count} 个成长瞬间` : "纪念册还没有翻开过"
+  };
+}
+
 // 首页「我们的足迹」轻量摘要（Phase 2D-A3 才会接线，本轮只建立契约）。
 // 文案刻意不做游戏化：不说进度、不说完成率、不说经验值，只陈述留下了几个故事。
 export function buildFootprintSummary(footprints = []) {

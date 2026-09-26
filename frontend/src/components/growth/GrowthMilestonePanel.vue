@@ -4,10 +4,12 @@
 // 只做一件事：把她自己经历过的成长瞬间记下来——上课的情况、校园活动、兴趣变化、
 // 第一次做到某件事。**不评价她**：没有优良中差、没有分数、没有成长指数、没有排名。
 //
-// 它自己取数、自己管表单，和「我们一起」（GrowthBookView 里的足迹时间线）互不干扰；
-// 两条线共用同一个页面骨架与照片选择器，所以看起来仍是一本纪念册。
+// 数据由纪念册页面持有并传进来（props），不是本组件自己取：
+// 「全部」页签要把两条线混排，两边必须是同一份数据（一次请求、一处加载状态）。
+// 页面拿不到 props 时（比如单独使用这个面板）才会自己兜底取一次。
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import ConfirmDialog from "../ConfirmDialog.vue";
+import BookMonthSection from "./BookMonthSection.vue";
 import FootprintPhotoPicker from "./FootprintPhotoPicker.vue";
 import { useFootprintPhotos } from "../../composables/growth/useFootprintPhotos.js";
 import { useGrowthMilestones } from "../../composables/growth/useGrowthMilestones.js";
@@ -20,27 +22,125 @@ import {
   getMilestoneDateLimit
 } from "../../utils/growthMilestones.js";
 
-const growthMilestones = useGrowthMilestones();
-const {
-  monthGroups,
-  isEmpty,
-  isLoading,
-  isSaving,
-  isDeleting,
-  errorMessage,
-  load,
-  createMilestone,
-  updateMilestone,
-  deleteMilestone,
-  uploadMilestonePhoto,
-  deleteMilestonePhoto,
-  validateDraft,
-  clearFormErrors,
-  clearErrorMessage
-} = growthMilestones;
+const props = defineProps({
+  // 展示状态（页面里的 useGrowthMilestones().state）
+  monthGroups: {
+    type: Array,
+    default: null
+  },
+  isEmpty: {
+    type: Boolean,
+    default: false
+  },
+  isLoading: {
+    type: Boolean,
+    default: false
+  },
+  isSaving: {
+    type: Boolean,
+    default: false
+  },
+  isDeleting: {
+    type: Boolean,
+    default: false
+  },
+  errorMessage: {
+    type: String,
+    default: ""
+  },
+  // 动作（页面里的 useGrowthMilestones()）
+  createMilestone: {
+    type: Function,
+    default: null
+  },
+  updateMilestone: {
+    type: Function,
+    default: null
+  },
+  deleteMilestone: {
+    type: Function,
+    default: null
+  },
+  uploadMilestonePhoto: {
+    type: Function,
+    default: null
+  },
+  deleteMilestonePhoto: {
+    type: Function,
+    default: null
+  },
+  validateDraft: {
+    type: Function,
+    default: null
+  },
+  clearFormErrors: {
+    type: Function,
+    default: null
+  },
+  clearErrorMessage: {
+    type: Function,
+    default: null
+  }
+});
+
+// 兜底：没有传 monthGroups 时自己建一份 composable（单独用时也能工作）。
+const shouldOwnState = computed(() => props.monthGroups === null);
+const ownedMilestones = shouldOwnState.value ? useGrowthMilestones() : null;
+
+const monthGroups = computed(() => (shouldOwnState.value ? ownedMilestones.monthGroups.value : props.monthGroups));
+const isEmpty = computed(() => (shouldOwnState.value ? ownedMilestones.isEmpty.value : props.isEmpty));
+const isLoading = computed(() => (shouldOwnState.value ? ownedMilestones.isLoading.value : props.isLoading));
+const isSaving = computed(() => (shouldOwnState.value ? ownedMilestones.isSaving.value : props.isSaving));
+const isDeleting = computed(() => (shouldOwnState.value ? ownedMilestones.isDeleting.value : props.isDeleting));
+const errorMessage = computed(() => (shouldOwnState.value ? ownedMilestones.errorMessage.value : props.errorMessage));
+
+function createMilestone(...args) {
+  return (props.createMilestone ?? ownedMilestones?.createMilestone)?.(...args);
+}
+
+function updateMilestone(...args) {
+  return (props.updateMilestone ?? ownedMilestones?.updateMilestone)?.(...args);
+}
+
+function deleteMilestone(...args) {
+  return (props.deleteMilestone ?? ownedMilestones?.deleteMilestone)?.(...args);
+}
+
+function uploadMilestonePhoto(...args) {
+  return (props.uploadMilestonePhoto ?? ownedMilestones?.uploadMilestonePhoto)?.(...args);
+}
+
+function deleteMilestonePhoto(...args) {
+  return (props.deleteMilestonePhoto ?? ownedMilestones?.deleteMilestonePhoto)?.(...args);
+}
+
+function validateDraft(...args) {
+  return (props.validateDraft ?? ownedMilestones?.validateDraft)?.(...args);
+}
+
+function clearFormErrors() {
+  if (props.clearFormErrors) {
+    props.clearFormErrors();
+    return;
+  }
+
+  ownedMilestones?.clearFormErrors?.();
+}
+
+function clearErrorMessage() {
+  if (props.clearErrorMessage) {
+    props.clearErrorMessage();
+    return;
+  }
+
+  ownedMilestones?.clearErrorMessage?.();
+}
 
 // 浏览器本地今天：日期默认值与「不能选到未来」的上界（与「我们一起」同一口径）。
 const todayDateKey = getMilestoneDateLimit();
+
+// 照片大图由页面统一负责（三条页签共用一个 lightbox），这里只把「点了哪张」报上去。
+const emit = defineEmits(["open-photo"]);
 
 const isFormOpen = ref(false);
 // 空串 = 正在新增；数字 = 正在编辑哪一条。
@@ -52,8 +152,7 @@ const isDeleteConfirmOpen = ref(false);
 const formAnchorRef = ref(null);
 const titleInputRef = ref(null);
 
-// 只有最新一个月默认展开（与「我们一起」同一套一次性记账，避免和用户的手动开合打架）。
-const autoExpandedMonthKeys = new Set();
+// 月份组的展开状态由 BookMonthSection 自己管（只有最新那个月默认展开）。
 
 const footprintPhotos = useFootprintPhotos();
 const {
@@ -255,29 +354,21 @@ function formatDayLabel(dateKey) {
   return `${Number.parseInt(matched[3], 10)} 日`;
 }
 
-function isMonthAutoExpanded(monthKey) {
-  if (autoExpandedMonthKeys.has(monthKey)) {
-    return true;
-  }
-
-  if (monthGroups.value[0]?.key !== monthKey) {
-    return false;
-  }
-
-  autoExpandedMonthKeys.add(monthKey);
-  return true;
-}
-
+// 兜底模式下自己取一次数；页面持有数据时由页面负责加载。
 onMounted(async () => {
+  if (!shouldOwnState.value) {
+    return;
+  }
+
   abortController = typeof AbortController === "function" ? new AbortController() : null;
-  await load(abortController?.signal);
+  await ownedMilestones.load(abortController?.signal);
 });
 
 onBeforeUnmount(() => {
   abortController?.abort?.();
 });
 
-defineExpose({ openCreateForm });
+defineExpose({ openCreateForm, openEditForm });
 </script>
 
 <template>
@@ -400,13 +491,8 @@ defineExpose({ openCreateForm });
     </section>
 
     <div v-else class="milestones__months">
-      <section v-for="month in monthGroups" :key="month.key" class="milestones__month">
-        <details class="milestones__month-details" :open="isMonthAutoExpanded(month.key)">
-          <summary class="milestones__month-summary">
-            <span class="milestones__month-label">{{ month.label }}</span>
-            <span class="milestones__month-count">{{ month.items.length }} 件事</span>
-          </summary>
-
+      <section v-for="(month, monthIndex) in monthGroups" :key="month.key" class="milestones__month">
+        <BookMonthSection :label="month.label" :count="month.items.length" :default-open="monthIndex === 0">
           <ol class="milestones__entries">
             <li v-for="milestone in month.items" :key="milestone.id" class="milestones__entry">
               <div class="milestones__entry-head">
@@ -418,13 +504,21 @@ defineExpose({ openCreateForm });
               <p v-if="milestone.note" class="milestones__entry-note">{{ milestone.note }}</p>
 
               <ul v-if="milestone.photos.length" class="milestones__entry-photos">
-                <li v-for="photo in milestone.photos" :key="photo.id" class="milestones__entry-photo">
-                  <img
-                    class="milestones__entry-photo-image"
-                    :src="photo.url"
-                    :alt="`${milestone.title} 的照片`"
-                    loading="lazy"
-                  />
+                <li v-for="(photo, photoIndex) in milestone.photos" :key="photo.id" class="milestones__entry-photo">
+                  <!-- 点开看大图；同一组的其他照片可以在大图里左右翻。 -->
+                  <button
+                    class="milestones__entry-photo-button"
+                    type="button"
+                    :aria-label="`看大图：${milestone.title} 的第 ${photoIndex + 1} 张照片`"
+                    @click="emit('open-photo', milestone, photoIndex)"
+                  >
+                    <img
+                      class="milestones__entry-photo-image"
+                      :src="photo.url"
+                      :alt="`${milestone.title} 的照片`"
+                      loading="lazy"
+                    />
+                  </button>
                 </li>
               </ul>
 
@@ -440,7 +534,7 @@ defineExpose({ openCreateForm });
               </div>
             </li>
           </ol>
-        </details>
+        </BookMonthSection>
       </section>
     </div>
 
@@ -753,44 +847,11 @@ defineExpose({ openCreateForm });
   min-width: 0;
 }
 
-.milestones__month-details {
-  border: 1.5px solid rgba(124, 216, 184, 0.36);
-  border-radius: 24px;
+/* 这一条线的月份组用 BookMonthSection（外框与标题的样式跟着那个组件走），
+   这里只把底色换成偏绿的版本，一眼能看出是「她的成长」。 */
+.milestones__month :deep(.book-month) {
+  border-color: rgba(124, 216, 184, 0.36);
   background: linear-gradient(180deg, rgba(247, 253, 250, 0.94) 0%, rgba(255, 255, 255, 0.9) 100%);
-  box-shadow: 0 20px 30px -36px rgba(36, 50, 74, 0.28);
-  overflow: hidden;
-}
-
-.milestones__month-summary {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 14px 18px;
-  cursor: pointer;
-  list-style: none;
-}
-
-.milestones__month-summary::-webkit-details-marker {
-  display: none;
-}
-
-.milestones__month-summary:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px rgba(124, 216, 184, 0.28);
-}
-
-.milestones__month-label {
-  color: var(--color-ink);
-  font-family: "ZCOOL KuaiLe", "Baloo 2", "Trebuchet MS", sans-serif;
-  font-size: 1.1rem;
-}
-
-.milestones__month-count {
-  color: var(--color-ink-soft);
-  font-size: 0.85rem;
-  font-weight: 700;
 }
 
 .milestones__entries {
@@ -868,6 +929,22 @@ defineExpose({ openCreateForm });
   border-radius: 18px;
   overflow: hidden;
   background: rgba(255, 255, 255, 0.9);
+}
+
+/* 缩略图本身就是按钮：整块可点，点开看大图。 */
+.milestones__entry-photo-button {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.milestones__entry-photo-button:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 3px rgba(124, 216, 184, 0.9);
 }
 
 .milestones__entry-photo-image {

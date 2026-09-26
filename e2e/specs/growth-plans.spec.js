@@ -109,8 +109,13 @@ test.describe("下次我们一起做什么", () => {
     await expect(page.locator(".growth-plans__plan", { hasText: "一起看星星" })).toBeVisible();
 
     // 纪念册里能看到它，而且带着刚才补的标签和记录。
+    // （纪念册默认停在「全部」：这条记录在那儿也能看到，先确认这一点，再切到「我们一起」
+    //   确认它带着这条线自己的标签。）
     await page.locator(".growth-plans__hero").getByRole("button", { name: /成长纪念册/ }).click();
     await expect(page).toHaveURL(/#\/growth-book/);
+    await expect(page.locator(".growth-book__entry", { hasText: CUSTOM_PLAN_TITLE })).toBeVisible();
+
+    await page.getByRole("tab", { name: /我们一起/ }).click();
 
     const footprintEntry = page.locator(".growth-book__entry", { hasText: CUSTOM_PLAN_TITLE });
 

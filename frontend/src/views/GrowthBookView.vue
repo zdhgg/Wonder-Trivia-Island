@@ -10,18 +10,24 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import ConfirmDialog from "../components/ConfirmDialog.vue";
+import BookMonthSection from "../components/growth/BookMonthSection.vue";
 import FootprintPhotoPicker from "../components/growth/FootprintPhotoPicker.vue";
 import GrowthMilestonePanel from "../components/growth/GrowthMilestonePanel.vue";
+import PhotoLightbox from "../components/growth/PhotoLightbox.vue";
 import { useFootprintPhotos } from "../composables/growth/useFootprintPhotos.js";
 import { useGrowthBook } from "../composables/growth/useGrowthBook.js";
-import { APP_ROUTE_NAME, GROWTH_BOOK_TAB } from "../router/routes.js";
+import { useGrowthMilestones } from "../composables/growth/useGrowthMilestones.js";
+import { normalizeMilestones } from "../utils/growthMilestones.js";
+import { APP_ROUTE_NAME, GROWTH_BOOK_TAB, buildGrowthBookQuery, normalizeGrowthBookTab } from "../router/routes.js";
 import {
   FOOTPRINT_CATEGORIES,
   FOOTPRINT_CATEGORY_IDS,
   FOOTPRINT_TAGS,
   MAX_FOOTPRINT_NOTE_LENGTH,
   MAX_FOOTPRINT_TITLE_LENGTH,
+  buildMergedTimelineSummary,
   getLocalDateKey,
+  mergeFootprintTimelines,
   normalizeFootprintText
 } from "../utils/growthFootprints.js";
 
@@ -65,13 +71,59 @@ const isFormOpen = ref(false);
 // 空串 = 正在新增；数字 = 正在编辑哪一条。
 const editingFootprintId = ref("");
 
-// 纪念册的两条线：我们一起（足迹）/ 她的成长（成长记录）。
-// 用 ?tab=milestones 记录当前在哪一页，刷新和分享链接都能回到同一页。
-const activeTab = ref(
-  String(route.query?.tab || "") === GROWTH_BOOK_TAB.MILESTONES ? GROWTH_BOOK_TAB.MILESTONES : GROWTH_BOOK_TAB.TOGETHER
-);
+// 纪念册的三个页签：全部（按日期混排）/ 我们一起（足迹）/ 她的成长（成长记录）。
+// 用 ?tab= 记录当前在哪一页，刷新和分享链接都能回到同一页；默认页签不带参数。
+const activeTab = ref(normalizeGrowthBookTab(route.query?.tab));
 const milestonePanelRef = ref(null);
 const isTogetherTab = computed(() => activeTab.value === GROWTH_BOOK_TAB.TOGETHER);
+const isMilestonesTab = computed(() => activeTab.value === GROWTH_BOOK_TAB.MILESTONES);
+const isAllTab = computed(() => activeTab.value === GROWTH_BOOK_TAB.ALL);
+
+// 「全部」页签的数据：两条线各自的 composable 已经取好了，这里只做展示层混排。
+// 注意 useGrowthMilestones 必须在父组件里也建一份（而不是只活在子面板里），
+// 这样「全部」不挂载子面板时也有数据；两个实例各自请求一次是这台设备上的本地接口，代价可忽略。
+// 「全部」页签的数据：两条线各自的 composable 都在这里持有。
+// 「她的成长」面板通过 props 用同一份数据——这样「全部」和「她的成长」看到的
+// 永远是同一次请求的结果，也不会因为切换页签出现两份不一致的列表。
+const milestonesData = useGrowthMilestones();
+// state 里是「展示状态」（通过 props 传给面板），动作仍然直接从 composable 上取。
+const milestoneState = milestonesData.state;
+const { load: loadMilestones } = milestonesData;
+const mergedMonthGroups = computed(() =>
+  mergeFootprintTimelines({
+    footprints: growthBook.footprints.value,
+    // 成长记录由它自己的归一化负责（两条线的归一化不能混在一起做）。
+    milestones: normalizeMilestones(milestonesData.milestones.value)
+  })
+);
+const mergedSummary = computed(() =>
+  buildMergedTimelineSummary({
+    footprints: growthBook.footprints.value,
+    milestones: normalizeMilestones(milestonesData.milestones.value)
+  })
+);
+const isMergedLoading = computed(
+  () => !mergedSummary.value.hasRecords && (growthBook.isLoading.value || milestoneState.isLoading.value)
+);
+
+// 照片大图：记住「点开的是哪条记录的哪一张」，一组照片就是这一条记录自己的照片。
+const lightboxPhotos = ref([]);
+const lightboxStartIndex = ref(0);
+const lightboxTitle = ref("");
+const isLightboxOpen = ref(false);
+
+function openLightbox(record, photoIndex = 0) {
+  const photos = Array.isArray(record?.photos) ? record.photos : [];
+
+  if (photos.length === 0) {
+    return;
+  }
+
+  lightboxPhotos.value = photos;
+  lightboxStartIndex.value = photoIndex;
+  lightboxTitle.value = String(record.title ?? "");
+  isLightboxOpen.value = true;
+}
 const draft = ref(createEmptyDraft());
 const draftIssues = ref([]);
 const pendingDelete = ref(null);
@@ -79,10 +131,7 @@ const isDeleteConfirmOpen = ref(false);
 const formAnchorRef = ref(null);
 const dateInputRef = ref(null);
 
-// 只有最新一个月默认展开。
-// 这里刻意用「一次性记账」而不是 :open="index === 0"：后者是响应式绑定，
-// 每次列表变化都会把 DOM 的 open 状态按表达式重写，用户手动展开/收起的月份会被弹回去。
-const autoExpandedMonthKeys = new Set();
+// 月份组的展开状态由 BookMonthSection 自己管，页面只需要说明「最新那个月要展开」。
 
 // 浏览器本地今天：既是日期默认值，也是「不能选到未来」的 max。
 const todayDateKey = getLocalDateKey();
@@ -282,19 +331,46 @@ function goHome() {
   void router.push({ name: APP_ROUTE_NAME.HOME });
 }
 
-// 切换记录线：地址栏跟着变（replace，不往后退栈里塞两步）。
-// 每条线的「记一件新的事」由各自的区域提供，切换时不会硬塞一个表单给用户。
+// 切换页签：地址栏跟着变（replace，不往后退栈里塞两步）。
+// 每个页签的「记一件」由各自的区域提供，切换时不会硬塞一个表单给用户。
 function switchTab(tabId) {
-  if (activeTab.value === tabId) {
+  const normalizedTab = normalizeGrowthBookTab(tabId);
+
+  if (activeTab.value === normalizedTab) {
     return;
   }
 
-  activeTab.value = tabId;
+  activeTab.value = normalizedTab;
   void router.replace({
     name: APP_ROUTE_NAME.GROWTH_BOOK,
-    query: tabId === GROWTH_BOOK_TAB.MILESTONES ? { tab: GROWTH_BOOK_TAB.MILESTONES } : {}
+    query: buildGrowthBookQuery(normalizedTab)
   });
 }
+
+// 「全部」只是翻看：想改哪一条，就跳回它自己那条线去改。
+// 这样聚合页不需要同时维护「删足迹」和「删成长记录」两套确认流程。
+function editRecordFromAll(record) {
+  if (record?.kind === "milestone") {
+    switchTab(GROWTH_BOOK_TAB.MILESTONES);
+    void nextTick(() => milestonePanelRef.value?.openEditForm?.(record));
+    return;
+  }
+
+  switchTab(GROWTH_BOOK_TAB.TOGETHER);
+  void nextTick(() => openEditForm(record));
+}
+
+// 浏览器前进 / 后退时，页签跟着 URL 走。
+watch(
+  () => route.query?.tab,
+  (tab) => {
+    const normalizedTab = normalizeGrowthBookTab(tab);
+
+    if (normalizedTab !== activeTab.value) {
+      activeTab.value = normalizedTab;
+    }
+  }
+);
 
 function formatDayLabel(dateKey) {
   const matched = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
@@ -306,23 +382,20 @@ function formatDayLabel(dateKey) {
   return `${Number.parseInt(matched[3], 10)} 日`;
 }
 
-// 每个月份组只在第一次渲染时被自动展开；之后 open 属性就交给用户自己控制。
-function isMonthAutoExpanded(monthKey) {
-  if (autoExpandedMonthKeys.has(monthKey)) {
-    return true;
-  }
-
-  if (monthGroups.value[0]?.key !== monthKey) {
-    return false;
-  }
-
-  autoExpandedMonthKeys.add(monthKey);
-  return true;
+// 月份组默认展开规则：**只有最新的那个月**。具体是否展开由 BookMonthSection 在挂载时决定一次，
+// 之后交给浏览器和用户（详情见那个组件的注释）。
+function isLatestMonth(monthKey, groups) {
+  return groups[0]?.key === monthKey;
 }
 
 onMounted(async () => {
   abortController = typeof AbortController === "function" ? new AbortController() : null;
-  await load(abortController?.signal);
+  // 两条线都在这里加载：默认页签是「全部」，它需要两边的数据都在。
+  // 「她的成长」面板直接用这份数据，不会再请求一次。
+  await Promise.all([
+    load(abortController?.signal),
+    loadMilestones(abortController?.signal)
+  ]);
 });
 
 onBeforeUnmount(() => {
@@ -346,8 +419,17 @@ onBeforeUnmount(() => {
       </div>
     </header>
 
-    <!-- 两条记录线的切换：合起来仍是一本纪念册，分开放是因为它们记的不是一回事。 -->
-    <div class="growth-book__tabs" role="tablist" aria-label="纪念册的记录线">
+    <!-- 三个页签：全部（按日期混排）是翻看用的，两条线各自保留自己的记录入口。 -->
+    <div class="growth-book__tabs" role="tablist" aria-label="纪念册的页签">
+      <button
+        :class="['growth-book__tab', { 'growth-book__tab--active': isAllTab }]"
+        type="button"
+        role="tab"
+        :aria-selected="isAllTab"
+        @click="switchTab(GROWTH_BOOK_TAB.ALL)"
+      >
+        <span aria-hidden="true">📖</span> 全部
+      </button>
       <button
         :class="['growth-book__tab', { 'growth-book__tab--active': isTogetherTab }]"
         type="button"
@@ -358,18 +440,99 @@ onBeforeUnmount(() => {
         <span aria-hidden="true">👨‍👧</span> 我们一起
       </button>
       <button
-        :class="['growth-book__tab', { 'growth-book__tab--active': !isTogetherTab }]"
+        :class="['growth-book__tab', { 'growth-book__tab--active': isMilestonesTab }]"
         type="button"
         role="tab"
-        :aria-selected="!isTogetherTab"
+        :aria-selected="isMilestonesTab"
         @click="switchTab(GROWTH_BOOK_TAB.MILESTONES)"
       >
         <span aria-hidden="true">🌱</span> 她的成长
       </button>
     </div>
 
-    <!-- 第二条线：她自己的成长记录，自己取数、自己管表单。 -->
-    <GrowthMilestonePanel v-if="!isTogetherTab" ref="milestonePanelRef" />
+    <!-- 「全部」：两条线按真实日期混排，只读翻看；点「改一改」会跳到它自己那条线。 -->
+    <template v-if="isAllTab">
+      <p class="growth-book__count">{{ mergedSummary.countText }}</p>
+
+      <p v-if="isMergedLoading" class="growth-book__state">正在翻开纪念册…</p>
+
+      <section v-else-if="!mergedSummary.hasRecords" class="growth-book__empty">
+        <span class="growth-book__empty-glyph" aria-hidden="true">📖</span>
+        <h2 class="growth-book__empty-title">纪念册还是空的</h2>
+        <p class="growth-book__empty-text">
+          一起做的事记在「我们一起」，她自己的成长记在「她的成长」。两边的记录都会出现在这一页。
+        </p>
+      </section>
+
+      <div v-else class="growth-book__months">
+        <section v-for="(month, monthIndex) in mergedMonthGroups" :key="month.key" class="growth-book__month">
+          <BookMonthSection :label="month.label" :count="month.items.length" :default-open="monthIndex === 0">
+            <ol class="growth-book__entries">
+              <li
+                v-for="item in month.items"
+                :key="`${item.kind}-${item.id}`"
+                :class="['growth-book__entry', `growth-book__entry--${item.kind}`]"
+              >
+                <div class="growth-book__entry-head">
+                  <span class="growth-book__entry-date">{{ formatDayLabel(item.occurredOn) }}</span>
+                  <span class="growth-book__entry-category">{{ item.categoryMeta.displayLabel }}</span>
+                  <!-- 两条线要一眼看出区别：只加一个小小的来源标记，不做第二套排版。 -->
+                  <span
+                    :class="[
+                      'growth-book__entry-origin',
+                      `growth-book__entry-origin--${item.kind === 'milestone' ? 'milestone' : 'together'}`
+                    ]"
+                  >
+                    {{ item.kind === "milestone" ? "🌱 她的成长" : "👨‍👧 我们一起" }}
+                  </span>
+                </div>
+
+                <h3 class="growth-book__entry-title">{{ item.title }}</h3>
+                <p v-if="item.note" class="growth-book__entry-note">{{ item.note }}</p>
+
+                <ul v-if="item.photos.length" class="growth-book__entry-photos">
+                  <li v-for="(photo, photoIndex) in item.photos" :key="photo.id" class="growth-book__entry-photo">
+                    <button
+                      class="growth-book__entry-photo-button"
+                      type="button"
+                      :aria-label="`看大图：${item.title} 的第 ${photoIndex + 1} 张照片`"
+                      @click="openLightbox(item, photoIndex)"
+                    >
+                      <img
+                        class="growth-book__entry-photo-image"
+                        :src="photo.url"
+                        :alt="`${item.title} 的照片`"
+                        loading="lazy"
+                      />
+                    </button>
+                  </li>
+                </ul>
+
+                <div class="growth-book__entry-actions">
+                  <button class="growth-book__link-button" type="button" @click="editRecordFromAll(item)">改一改</button>
+                </div>
+              </li>
+            </ol>
+          </BookMonthSection>
+        </section>
+      </div>
+    </template>
+
+    <!-- 第二条线：她自己的成长记录。数据由本页持有，和「全部」共用同一份。 -->
+    <GrowthMilestonePanel
+      v-else-if="isMilestonesTab"
+      ref="milestonePanelRef"
+      v-bind="milestoneState"
+      :create-milestone="milestonesData.createMilestone"
+      :update-milestone="milestonesData.updateMilestone"
+      :delete-milestone="milestonesData.deleteMilestone"
+      :upload-milestone-photo="milestonesData.uploadMilestonePhoto"
+      :delete-milestone-photo="milestonesData.deleteMilestonePhoto"
+      :validate-draft="milestonesData.validateDraft"
+      :clear-form-errors="milestonesData.clearFormErrors"
+      :clear-error-message="milestonesData.clearErrorMessage"
+      @open-photo="openLightbox"
+    />
 
     <template v-else>
       <p class="growth-book__count">{{ summary.countText }}</p>
@@ -504,15 +667,14 @@ onBeforeUnmount(() => {
     </section>
 
     <div v-else class="growth-book__months">
-      <section v-for="month in monthGroups" :key="month.key" class="growth-book__month">
-        <details class="growth-book__month-details" :open="isMonthAutoExpanded(month.key)">
-          <summary class="growth-book__month-summary">
-            <span class="growth-book__month-label">{{ month.label }}</span>
-            <span class="growth-book__month-count">{{ month.items.length }} 件事</span>
-          </summary>
-
+      <section v-for="(month, monthIndex) in monthGroups" :key="month.key" class="growth-book__month">
+        <BookMonthSection :label="month.label" :count="month.items.length" :default-open="monthIndex === 0">
           <ol class="growth-book__entries">
-            <li v-for="footprint in month.items" :key="footprint.id" class="growth-book__entry">
+            <li
+              v-for="footprint in month.items"
+              :key="footprint.id"
+              class="growth-book__entry growth-book__entry--footprint"
+            >
               <div class="growth-book__entry-head">
                 <span class="growth-book__entry-date">{{ formatDayLabel(footprint.occurredOn) }}</span>
                 <span class="growth-book__entry-category">{{ footprint.categoryMeta.displayLabel }}</span>
@@ -521,15 +683,22 @@ onBeforeUnmount(() => {
               <h3 class="growth-book__entry-title">{{ footprint.title }}</h3>
               <p v-if="footprint.note" class="growth-book__entry-note">{{ footprint.note }}</p>
 
-              <!-- 照片排在正文之后：先读文字，再看那天的样子。 -->
+              <!-- 照片排在正文之后：先读文字，再看那天的样子。点开可以看大图。 -->
               <ul v-if="footprint.photos.length" class="growth-book__entry-photos">
-                <li v-for="photo in footprint.photos" :key="photo.id" class="growth-book__entry-photo">
-                  <img
-                    class="growth-book__entry-photo-image"
-                    :src="photo.url"
-                    :alt="`${footprint.title} 的照片`"
-                    loading="lazy"
-                  />
+                <li v-for="(photo, photoIndex) in footprint.photos" :key="photo.id" class="growth-book__entry-photo">
+                  <button
+                    class="growth-book__entry-photo-button"
+                    type="button"
+                    :aria-label="`看大图：${footprint.title} 的第 ${photoIndex + 1} 张照片`"
+                    @click="openLightbox(footprint, photoIndex)"
+                  >
+                    <img
+                      class="growth-book__entry-photo-image"
+                      :src="photo.url"
+                      :alt="`${footprint.title} 的照片`"
+                      loading="lazy"
+                    />
+                  </button>
                 </li>
               </ul>
 
@@ -545,7 +714,7 @@ onBeforeUnmount(() => {
               </div>
             </li>
           </ol>
-        </details>
+        </BookMonthSection>
       </section>
     </div>
 
@@ -566,6 +735,14 @@ onBeforeUnmount(() => {
       @cancel="cancelDelete"
     />
     </template>
+
+    <!-- 大图浏览：三条页签共用同一个组件；一组照片就是点开那条记录自己的照片。 -->
+    <PhotoLightbox
+      v-model="isLightboxOpen"
+      :photos="lightboxPhotos"
+      :start-index="lightboxStartIndex"
+      :title="lightboxTitle"
+    />
   </section>
 </template>
 
@@ -958,44 +1135,8 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 
-.growth-book__month-details {
-  border: 1.5px solid rgba(36, 50, 74, 0.1);
-  border-radius: 24px;
-  background: linear-gradient(180deg, rgba(255, 253, 248, 0.94) 0%, rgba(255, 255, 255, 0.88) 100%);
-  box-shadow: 0 20px 30px -36px rgba(36, 50, 74, 0.28);
-  overflow: hidden;
-}
-
-.growth-book__month-summary {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 14px 18px;
-  cursor: pointer;
-  list-style: none;
-}
-
-.growth-book__month-summary::-webkit-details-marker {
-  display: none;
-}
-
-.growth-book__month-summary:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px rgba(124, 216, 184, 0.28);
-}
-
-.growth-book__month-label {
-  font-family: "ZCOOL KuaiLe", "Baloo 2", "Trebuchet MS", sans-serif;
-  font-size: 1.1rem;
-}
-
-.growth-book__month-count {
-  color: var(--color-ink-soft);
-  font-size: 0.85rem;
-  font-weight: 700;
-}
+/* 月份组的外框与标题在 BookMonthSection 里（那部分样式跟着组件走，
+   因为它同时被这条线和「她的成长」使用）。 */
 
 .growth-book__entries {
   display: grid;
@@ -1040,6 +1181,34 @@ onBeforeUnmount(() => {
   font-weight: 700;
 }
 
+/* 「全部」页签用来区分两条线的来源标记：只在混排时出现，小到不抢眼。 */
+.growth-book__entry-origin {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 3px 10px;
+  border: 1px solid rgba(36, 50, 74, 0.1);
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.growth-book__entry-origin--together {
+  background: rgba(255, 244, 226, 0.9);
+  color: #8a5b00;
+}
+
+.growth-book__entry-origin--milestone {
+  background: rgba(236, 252, 245, 0.94);
+  color: #1f6b51;
+}
+
+/* 混排时两条线各留一点底色，扫一眼就能分出「我们一起」和「她的成长」。 */
+.growth-book__entry--milestone {
+  border-color: rgba(124, 216, 184, 0.28);
+  background: rgba(249, 255, 252, 0.96);
+}
+
 .growth-book__entry-title {
   margin: 0;
   font-size: 1.08rem;
@@ -1079,6 +1248,26 @@ onBeforeUnmount(() => {
   border-radius: 18px;
   overflow: hidden;
   background: rgba(255, 255, 255, 0.9);
+}
+
+/* 缩略图本身就是按钮：整块可点，点开看大图。 */
+.growth-book__entry-photo-button {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.growth-book__entry-photo-button:hover,
+.growth-book__entry-photo-button:focus-visible {
+  outline: none;
+}
+
+.growth-book__entry-photo-button:focus-visible {
+  box-shadow: inset 0 0 0 3px rgba(124, 216, 184, 0.9);
 }
 
 .growth-book__entry-photo-image {
@@ -1144,10 +1333,10 @@ onBeforeUnmount(() => {
     flex: 1 1 140px;
   }
 
-  /* 窄屏上两条记录线各占一半，一眼能看出是并列的两个入口。 */
+  /* 窄屏上三个页签平分一行，一眼能看出是三页。 */
   .growth-book__tabs {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .growth-book__tab {
