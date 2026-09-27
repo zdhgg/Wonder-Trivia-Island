@@ -3,12 +3,12 @@ const { test, expect } = require("@playwright/test");
 // 场景 6：首页奖励闭环优化（Phase 2B.5）。
 //
 // 覆盖体验审计的 5 条 P1 在浏览器里的真实行为：
-//   1. 3/3 时「宝箱可以打开啦」可点，点一下把宝箱滚进视野（不自动领取）
-//   2. 领取后 ready 提示消失
+//   1. 3/3 时今日宝箱状态条直接提供领取入口，不自动领取
+//   2. 领取后状态更新
 //   3. 领取成功的一次性奖励提示可以点开收藏册（不重复领取）
 //   4. 我的成长印章摘要整行可点，打开同一个收藏册
 //   5. 欢迎区不再出现与「今天的探险」重复的主线建议
-//   6. 1024×800 保持双列；390 单列且 ready 提示可正常点击
+//   6. 1024×800 保持双列；390 单列且领取按钮可见
 //
 // 横向溢出：整页在 390 / 720 / 1024 / 1440 都必须 scrollWidth <= innerWidth，
 // 这里不再给任何组件豁免（装饰气泡的出血已在 .page-shell 上裁掉，
@@ -19,7 +19,6 @@ const TASKS_KEY = "wonder-trivia-island.home.daily-tasks";
 const STUDY_BOOK_KEY = "wonder-trivia-island.study.record-book";
 const LAST_LESSON_KEY = "wonder-trivia-island.study.last-lesson-id";
 const STAGE_IDS = Object.freeze(["stage-1", "stage-2", "stage-3", "stage-4", "stage-5", "stage-6", "stage-7"]);
-const READY_BUTTON = /宝箱可以打开啦/;
 const CLAIM_BUTTON = "领取今日宝箱";
 const COLLECTION_ENTRY = /放进收藏册/;
 const COLLECTION_DIALOG = "我的探险收藏册";
@@ -147,7 +146,7 @@ async function readLayout(page) {
     const growthCard = document.querySelector(".growth-summary").getBoundingClientRect();
     const clipped = [
       ...document.querySelectorAll(
-        ".growth-summary__stat-value, .growth-summary__stat-label, .growth-summary__stamps-text, .daily-tasks__chest-ready, .daily-chest__action"
+        ".growth-summary__stat-value, .growth-summary__stat-label, .growth-summary__stamps-text, .daily-chest__action"
       )
     ].filter((el) => el.scrollWidth > el.clientWidth + 1).length;
     const root = document.documentElement;
@@ -176,27 +175,25 @@ async function readLayout(page) {
 }
 
 test.describe("首页奖励闭环", () => {
-  test("3/3 且未领取：出现「宝箱可以打开啦」，点击把宝箱滚进视野且不自动领取", async ({ page }) => {
+  test("3/3 且未领取：今日宝箱状态条提供领取入口且不会自动领取", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/");
     await seedStorage(page, { [CHALLENGE_KEY]: buildProgress({ clearedStageCount: 2, earnedRewardCount: 2 }), [TASKS_KEY]: buildTasks(3) });
     await gotoHome(page);
 
-    const readyButton = page.getByRole("button", { name: READY_BUTTON });
     const claimButton = page.getByRole("button", { name: CLAIM_BUTTON });
     const chest = page.getByRole("region", { name: "今日宝箱" });
 
-    await expect(readyButton).toBeVisible();
+    await expect(page.getByRole("button", { name: /宝箱可以打开啦/ })).toHaveCount(0);
     await expect(chest).toContainText("可领取");
 
-    // 1440×900 下领取按钮本来就在首屏之外 —— 这正是要修的问题。
+    // 收口后宝箱状态条在「今日小任务」卡里、任务列表上方：
+    // 1440×900 下领取按钮必须已经在首屏内，这是“今天做什么”闭环的一部分。
     const beforeBox = await claimButton.boundingBox();
 
-    expect(beforeBox.y).toBeGreaterThan(900);
+    expect(beforeBox.y + beforeBox.height).toBeLessThanOrEqual(900);
 
-    await readyButton.click();
-
-    // 点了之后宝箱进入视野（平滑滚动），路由不变，也没有自动领取。
+    // 状态条已经直接位于任务标题下方，领取动作无需滚动兜底。
     await expect(chest).toBeInViewport();
     await expect(page).toHaveURL(/#\/$/);
     await expect(claimButton).toBeVisible();
@@ -204,34 +201,19 @@ test.describe("首页奖励闭环", () => {
     expect(await readClaimedStampCount(page)).toBe(0);
   });
 
-  test("reduced motion 下点击 ready 提示同样能把宝箱带进视野", async ({ browser }) => {
-    const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" });
-    const page = await context.newPage();
-
-    await page.goto("/");
-    await seedStorage(page, { [CHALLENGE_KEY]: buildProgress({ clearedStageCount: 2, earnedRewardCount: 2 }), [TASKS_KEY]: buildTasks(3) });
-    await gotoHome(page);
-
-    await page.getByRole("button", { name: READY_BUTTON }).click();
-    await expect(page.getByRole("region", { name: "今日宝箱" })).toBeInViewport();
-
-    await context.close();
-  });
-
-  test("领取成功后 ready 提示消失，一次性奖励提示可以点开收藏册", async ({ page }) => {
+  test("领取成功后状态更新，一次性奖励提示可以点开收藏册", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/");
     await seedStorage(page, { [CHALLENGE_KEY]: buildProgress({ clearedStageCount: 3, earnedRewardCount: 3 }), [TASKS_KEY]: buildTasks(3) });
     await gotoHome(page);
 
-    await page.getByRole("button", { name: READY_BUTTON }).click();
     await page.getByRole("button", { name: CLAIM_BUTTON }).click();
 
     const chest = page.getByRole("region", { name: "今日宝箱" });
 
     // 领取后：状态与一次性奖励提示
     await expect(chest).toContainText("今日已领取");
-    await expect(page.getByRole("button", { name: READY_BUTTON })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /宝箱可以打开啦/ })).toHaveCount(0);
     await expect(chest).toContainText("获得 1 枚探险印章");
 
     // 奖励提示本身是入口，点开的是同一个收藏册
@@ -350,7 +332,7 @@ test.describe("首页奖励闭环", () => {
     expect(taskX).toBeLessThan(growthX);
   });
 
-  test("390 窄屏：单列、ready 提示可点、星星完整换行、整页无横向溢出", async ({ page }) => {
+  test("390 窄屏：单列、宝箱领取按钮可见、星星完整换行、整页无横向溢出", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/");
     await seedStorage(page, { [CHALLENGE_KEY]: buildProgress({ clearedStageCount: 5, earnedRewardCount: 5 }), [TASKS_KEY]: buildTasks(3) });
@@ -384,14 +366,11 @@ test.describe("首页奖励闭环", () => {
     expect(stars.lines).toBeGreaterThanOrEqual(2);
     expect(stars.text).toContain("21");
 
-    // ready 提示在视口宽度内，可以正常点击，点击后宝箱进入视野
-    const readyButton = page.getByRole("button", { name: READY_BUTTON });
-    const readyBox = await readyButton.boundingBox();
+    // 宝箱状态条的直接领取按钮完整位于视口宽度内。
+    await expect(page.getByRole("button", { name: /宝箱可以打开啦/ })).toHaveCount(0);
+    const claimBox = await page.getByRole("button", { name: CLAIM_BUTTON }).boundingBox();
 
-    expect(readyBox.x).toBeGreaterThanOrEqual(0);
-    expect(readyBox.x + readyBox.width).toBeLessThanOrEqual(390);
-
-    await readyButton.click();
-    await expect(page.getByRole("region", { name: "今日宝箱" })).toBeInViewport();
+    expect(claimBox.x).toBeGreaterThanOrEqual(0);
+    expect(claimBox.x + claimBox.width).toBeLessThanOrEqual(390);
   });
 });

@@ -4,6 +4,9 @@
 // 组件只负责显示和转发点击，不做任何判定：
 // “能不能领”由 homeDashboard.buildHomeDailyChest 依据任务完成情况 + 长期成长账本算好，
 // “领取”由 useTriviaApp 调后端接口完成（幂等放在服务端）。
+//
+// 呈现：首页把这张卡放进「今日小任务」卡里（任务列表上方），所以这里是一条紧凑的
+// 奖励状态条——比任务卡轻，读起来是“做完任务之后的奖励状态”，不是第二张主卡。
 import { computed } from "vue";
 
 const props = defineProps({
@@ -34,112 +37,87 @@ const chestGlyph = computed(() => {
 
 <template>
   <section :class="['daily-chest', `daily-chest--${chest.statusTone}`]" aria-label="今日宝箱">
-    <header class="daily-chest__head">
-      <h2 class="daily-chest__title">今日宝箱</h2>
-      <span class="daily-chest__progress">{{ chest.progressText }}</span>
-    </header>
-
-    <div class="daily-chest__body">
+    <div class="daily-chest__main">
       <span class="daily-chest__glyph" aria-hidden="true">{{ chestGlyph }}</span>
-      <div class="daily-chest__copy">
-        <strong class="daily-chest__status">{{ chest.statusLabel }}</strong>
-        <p class="daily-chest__hint">{{ chest.hintText }}</p>
+      <h2 class="daily-chest__title">今日宝箱</h2>
+      <span class="daily-chest__status">{{ chest.statusLabel }}</span>
+      <span class="daily-chest__progress">{{ chest.progressText }}</span>
+      <span class="daily-chest__hint">{{ chest.hintText }}</span>
+    </div>
+
+    <div class="daily-chest__actions">
+      <!-- 一次性奖励提示同时是入口：告诉孩子这枚印章被收进收藏册了，点一下就能去看。
+           外层保留 aria-live，屏幕阅读器仍会在奖励出现时播报。 -->
+      <div v-if="chest.showStampReward" class="daily-chest__reward-line" role="status" aria-live="polite">
+        <button
+          class="daily-chest__reward"
+          type="button"
+          @click="emit('open-collection')"
+        >
+          🧭 {{ chest.stampText }} · 放进收藏册 ›
+        </button>
       </div>
-    </div>
 
-    <!-- 一次性奖励提示同时是入口：告诉孩子这枚印章被收进收藏册了，点一下就能去看。
-         外层保留 aria-live，屏幕阅读器仍会在奖励出现时播报。 -->
-    <div v-if="chest.showStampReward" class="daily-chest__reward-line" role="status" aria-live="polite">
       <button
-        class="daily-chest__reward"
+        v-if="chest.canClaim"
+        class="daily-chest__action"
         type="button"
-        @click="emit('open-collection')"
+        :disabled="isClaiming"
+        @click="emit('claim')"
       >
-        🧭 {{ chest.stampText }} · 放进收藏册 ›
+        {{ isClaiming ? "正在打开宝箱..." : chest.actionLabel }}
       </button>
+
+      <p v-else-if="chest.isClaimed" class="daily-chest__stamp-chip">
+        🧭 已有 {{ chest.stampCount }} 枚探险印章
+      </p>
     </div>
-
-    <button
-      v-if="chest.canClaim"
-      class="daily-chest__action"
-      type="button"
-      :disabled="isClaiming"
-      @click="emit('claim')"
-    >
-      {{ isClaiming ? "正在打开宝箱..." : chest.actionLabel }}
-    </button>
-
-    <p v-else-if="chest.isClaimed" class="daily-chest__stamp-chip">
-      🧭 已有 {{ chest.stampCount }} 枚探险印章
-    </p>
 
     <p v-if="errorMessage" class="daily-chest__error" role="alert">{{ errorMessage }}</p>
   </section>
 </template>
 
 <style scoped>
+/* 一条状态条：横向排布、可换行，底色比任务卡更轻。 */
 .daily-chest {
-  display: grid;
-  gap: 10px;
-  align-content: start;
-  padding: 18px;
-  border: 1.5px solid rgba(36, 50, 74, 0.08);
-  border-radius: 24px;
-  background:
-    radial-gradient(circle at top right, rgba(255, 231, 156, 0.28), transparent 46%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.94) 0%, rgba(255, 250, 240, 0.88) 100%);
-  box-shadow:
-    0 10px 22px -28px rgba(36, 50, 74, 0.28),
-    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 8px 12px;
+  border: 1.5px solid rgba(255, 196, 120, 0.46);
+  border-radius: 14px;
+  background: rgba(255, 250, 238, 0.8);
 }
 
 .daily-chest--ready {
-  border-color: rgba(255, 174, 66, 0.42);
+  border-color: rgba(255, 174, 66, 0.52);
+  background: linear-gradient(135deg, rgba(255, 252, 242, 0.94) 0%, rgba(255, 241, 206, 0.9) 100%);
 }
 
 .daily-chest--claimed {
   border-color: rgba(124, 216, 184, 0.46);
-  background:
-    radial-gradient(circle at top right, rgba(184, 242, 223, 0.32), transparent 46%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.94) 0%, rgba(244, 254, 249, 0.9) 100%);
+  background: rgba(242, 253, 249, 0.86);
 }
 
-.daily-chest__head {
+.daily-chest__main {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.daily-chest__title {
-  margin: 0;
-  color: var(--color-ink);
-  font-family: "ZCOOL KuaiLe", "Baloo 2", "Trebuchet MS", sans-serif;
-  font-size: 1.25rem;
-  line-height: 1.2;
-}
-
-.daily-chest__progress {
-  color: var(--color-ink-soft);
-  font-size: 0.84rem;
-  font-weight: 800;
-}
-
-.daily-chest__body {
-  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 2px 8px;
+  min-width: 0;
 }
 
 .daily-chest__glyph {
   display: grid;
   place-items: center;
   flex-shrink: 0;
-  width: 38px;
-  height: 38px;
-  border-radius: 14px;
+  width: 26px;
+  height: 26px;
+  border-radius: 10px;
   background: rgba(255, 255, 255, 0.9);
-  font-size: 1.2rem;
+  font-size: 0.98rem;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
@@ -147,15 +125,17 @@ const chestGlyph = computed(() => {
   background: linear-gradient(145deg, rgba(255, 255, 255, 0.96) 0%, rgba(255, 231, 156, 0.9) 100%);
 }
 
-.daily-chest__copy {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
+.daily-chest__title {
+  margin: 0;
+  color: var(--color-ink);
+  font-family: "ZCOOL KuaiLe", "Baloo 2", "Trebuchet MS", sans-serif;
+  font-size: 0.98rem;
+  line-height: 1.2;
 }
 
 .daily-chest__status {
   color: var(--color-ink);
-  font-size: 0.96rem;
+  font-size: 0.86rem;
   font-weight: 900;
 }
 
@@ -163,11 +143,24 @@ const chestGlyph = computed(() => {
   color: #1f6b51;
 }
 
-.daily-chest__hint {
-  margin: 0;
+.daily-chest__progress {
   color: var(--color-ink-soft);
-  font-size: 0.82rem;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.daily-chest__hint {
+  min-width: 0;
+  color: var(--color-ink-soft);
+  font-size: 0.76rem;
   font-weight: 700;
+}
+
+.daily-chest__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
 }
 
 .daily-chest__reward-line {
@@ -179,16 +172,15 @@ const chestGlyph = computed(() => {
   align-items: center;
   justify-content: flex-start;
   gap: 4px;
-  width: 100%;
-  min-height: 36px;
+  min-height: 32px;
   margin: 0;
-  padding: 8px 12px;
+  padding: 5px 11px;
   border: 1.5px solid rgba(255, 174, 66, 0.5);
-  border-radius: 14px;
+  border-radius: 999px;
   background: linear-gradient(135deg, rgba(255, 252, 242, 0.98) 0%, rgba(255, 240, 200, 0.98) 100%);
   color: rgba(150, 70, 12, 0.98);
   font-family: inherit;
-  font-size: 0.88rem;
+  font-size: 0.82rem;
   font-weight: 900;
   text-align: left;
   cursor: pointer;
@@ -211,14 +203,14 @@ const chestGlyph = computed(() => {
 
 .daily-chest__action {
   appearance: none;
-  min-height: 40px;
-  padding: 8px 16px;
+  min-height: 32px;
+  padding: 5px 14px;
   border: none;
   border-radius: 999px;
   background: linear-gradient(135deg, rgba(255, 214, 128, 0.98) 0%, rgba(255, 174, 66, 0.98) 100%);
   color: #5a3208;
   font-family: inherit;
-  font-size: 0.92rem;
+  font-size: 0.84rem;
   font-weight: 900;
   cursor: pointer;
   transition:
@@ -243,21 +235,22 @@ const chestGlyph = computed(() => {
 
 .daily-chest__stamp-chip {
   margin: 0;
-  padding: 8px 12px;
-  border-radius: 14px;
+  padding: 5px 10px;
+  border-radius: 999px;
   background: rgba(184, 242, 223, 0.4);
   color: var(--color-ink);
-  font-size: 0.86rem;
+  font-size: 0.78rem;
   font-weight: 800;
 }
 
 .daily-chest__error {
+  flex-basis: 100%;
   margin: 0;
-  padding: 8px 12px;
-  border-radius: 14px;
+  padding: 6px 10px;
+  border-radius: 12px;
   background: rgba(255, 226, 226, 0.8);
   color: #9b2c2c;
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   font-weight: 700;
 }
 

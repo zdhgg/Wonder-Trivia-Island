@@ -40,7 +40,6 @@ const STAGE_IDS = Object.freeze(["stage-1", "stage-2", "stage-3", "stage-4", "st
 const CELEBRATION_TITLE = "小岛有新变化啦！";
 const CELEBRATION_DIALOG = "小岛有新变化啦！";
 const CLAIM_BUTTON = "领取今日宝箱";
-const READY_BUTTON = /宝箱可以打开啦/;
 // 种子账本最多写几条 dailyClaims（与生产端 MAX_DAILY_CLAIMS 同一量级，测试不需要写满）。
 const MAX_SEEDED_DAILY_CLAIMS = 5;
 
@@ -209,14 +208,8 @@ async function seedHomeDailyTasks(page) {
   );
 }
 
-// 真实领取路径：点首页「宝箱可以打开啦」（若需要先滚进视野）→ 点「领取今日宝箱」。
+// 真实领取路径：直接点击首页“今日宝箱”状态条上的领取按钮。
 async function claimTodayChestFromHome(page) {
-  const readyButton = page.getByRole("button", { name: READY_BUTTON });
-
-  if (await readyButton.count()) {
-    await readyButton.click();
-  }
-
   await page.getByRole("button", { name: CLAIM_BUTTON }).click();
   await expect(page.getByRole("region", { name: "今日宝箱" })).toContainText("今日已领取");
 }

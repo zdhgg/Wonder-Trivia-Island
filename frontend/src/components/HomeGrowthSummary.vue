@@ -125,26 +125,16 @@ const growthEntries = computed(() => [
       <span class="growth-summary__entry-more" aria-hidden="true">›</span>
     </button>
 
+    <!-- 下一成就压成一行：名称 + 进度文字 + “还差多少”。
+         进度数字已经在 progressText / goalText 里，不再重复画第二条进度条。 -->
     <div v-if="growth.nextAchievement" class="growth-summary__next">
       <span class="growth-summary__next-label">下一成就</span>
-      <div class="growth-summary__next-body">
-        <span class="growth-summary__next-glyph" aria-hidden="true">{{ growth.nextAchievement.glyph }}</span>
-        <div class="growth-summary__next-copy">
-          <strong class="growth-summary__next-name">{{ growth.nextAchievement.name }}</strong>
-          <span v-if="growth.nextAchievement.progressText" class="growth-summary__next-progress">
-            {{ growth.nextAchievement.progressText }}
-          </span>
-          <span class="growth-summary__next-goal">{{ growth.nextAchievement.goalText }}</span>
-        </div>
-      </div>
-      <div v-if="growth.nextAchievement.progressTarget > 0" class="growth-summary__next-track" aria-hidden="true">
-        <span
-          class="growth-summary__next-fill"
-          :style="{
-            width: `${Math.min(100, Math.round((growth.nextAchievement.progressValue / growth.nextAchievement.progressTarget) * 100))}%`
-          }"
-        ></span>
-      </div>
+      <span class="growth-summary__next-glyph" aria-hidden="true">{{ growth.nextAchievement.glyph }}</span>
+      <strong class="growth-summary__next-name">{{ growth.nextAchievement.name }}</strong>
+      <span v-if="growth.nextAchievement.progressText" class="growth-summary__next-progress">
+        {{ growth.nextAchievement.progressText }}
+      </span>
+      <span class="growth-summary__next-goal">{{ growth.nextAchievement.goalText }}</span>
     </div>
 
     <p v-else-if="growth.allAchievementsDone" class="growth-summary__done">
@@ -156,9 +146,11 @@ const growthEntries = computed(() => [
 <style scoped>
 .growth-summary {
   display: grid;
-  gap: 12px;
+  /* 三列网格只服务于“三条成长入口并成一行”；其余子元素都跨满整行。 */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
   align-content: start;
-  padding: 18px;
+  padding: 16px 18px;
   border: 1.5px solid rgba(36, 50, 74, 0.08);
   border-radius: 24px;
   background:
@@ -167,6 +159,14 @@ const growthEntries = computed(() => [
   box-shadow:
     0 10px 22px -28px rgba(36, 50, 74, 0.3),
     inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.growth-summary__head,
+.growth-summary__stats,
+.growth-summary__stamps,
+.growth-summary__next,
+.growth-summary__done {
+  grid-column: 1 / -1;
 }
 
 .growth-summary__head {
@@ -217,17 +217,23 @@ const growthEntries = computed(() => [
 .growth-summary__stats {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
+/* 指标改成“图标 + 数值”同一行、标签在下一行，纵向从 82px 收到 50px 左右。 */
 .growth-summary__stat {
   display: grid;
-  gap: 2px;
-  justify-items: center;
-  padding: 10px 6px;
+  grid-template-columns: auto auto;
+  grid-template-areas:
+    "icon value"
+    "label label";
+  align-items: center;
+  justify-content: center;
+  gap: 1px 5px;
+  padding: 7px 6px;
   border: 1px solid rgba(36, 50, 74, 0.06);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.78);
@@ -236,13 +242,15 @@ const growthEntries = computed(() => [
 }
 
 .growth-summary__stat-icon {
-  font-size: 1.16rem;
+  grid-area: icon;
+  font-size: 0.98rem;
   line-height: 1;
 }
 
 .growth-summary__stat-value {
+  grid-area: value;
   color: var(--color-ink);
-  font-size: 1.12rem;
+  font-size: 1.04rem;
   font-weight: 900;
   line-height: 1.1;
 }
@@ -252,9 +260,11 @@ const growthEntries = computed(() => [
 }
 
 .growth-summary__stat-label {
+  grid-area: label;
   color: var(--color-ink-soft);
-  font-size: 0.74rem;
+  font-size: 0.72rem;
   font-weight: 700;
+  line-height: 1.2;
 }
 
 /* 长期成长的一条轻量信息：不做第四个指标卡，只写“知识岛现在到哪一步了”，整行可点进收藏册。 */
@@ -332,21 +342,22 @@ const growthEntries = computed(() => [
 }
 
 /* 成长的几个入口：和知识岛摘要一样是整行可点的轻量入口，
-   但换一套纸张色，和「印章 / 收藏 / 成就」这些有分母的指标区分开。 */
+   但换一套纸张色，和「印章 / 收藏 / 成就」这些有分母的指标区分开。
+   三条入口在宽屏并成一行（卡片的三列网格），窄屏仍落回单列。 */
 .growth-summary__entry {
   appearance: none;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   width: 100%;
   margin: 0;
-  padding: 8px 12px;
+  padding: 7px 9px;
   border: 1.5px solid rgba(255, 214, 160, 0.72);
   border-radius: 14px;
   background: rgba(255, 244, 226, 0.72);
   color: var(--color-ink-soft);
   font-family: inherit;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 800;
   text-align: left;
   cursor: pointer;
@@ -382,7 +393,7 @@ const growthEntries = computed(() => [
 
 .growth-summary__entry-glyph {
   flex-shrink: 0;
-  font-size: 1.2rem;
+  font-size: 1.05rem;
   line-height: 1;
 }
 
@@ -395,98 +406,76 @@ const growthEntries = computed(() => [
 
 .growth-summary__entry-title {
   color: var(--color-ink);
-  font-size: 0.86rem;
+  font-size: 0.8rem;
   font-weight: 900;
+  line-height: 1.25;
 }
 
 .growth-summary__entry-hint {
   min-width: 0;
   color: var(--color-ink-soft);
-  font-size: 0.78rem;
+  font-size: 0.7rem;
   font-weight: 800;
+  line-height: 1.32;
 }
 
 .growth-summary__entry-more {
   flex-shrink: 0;
-  font-size: 1rem;
+  font-size: 0.9rem;
   font-weight: 900;
 }
 
+/* 下一成就：一行说完“还差什么”，不再画进度条（134px → 50px 左右）。 */
 .growth-summary__next {
-  display: grid;
-  gap: 8px;
-  padding: 12px 14px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 8px 12px;
   border: 1px solid rgba(255, 174, 66, 0.28);
-  border-radius: 18px;
+  border-radius: 16px;
   background: rgba(255, 248, 226, 0.72);
 }
 
 .growth-summary__next-label {
+  flex-shrink: 0;
   color: rgba(176, 84, 22, 0.98);
-  font-size: 0.74rem;
+  font-size: 0.7rem;
   font-weight: 900;
-  letter-spacing: 0.06em;
-}
-
-.growth-summary__next-body {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
+  letter-spacing: 0.04em;
 }
 
 .growth-summary__next-glyph {
   display: grid;
   place-items: center;
   flex-shrink: 0;
-  width: 38px;
-  height: 38px;
-  border-radius: 14px;
+  width: 28px;
+  height: 28px;
+  border-radius: 11px;
   background: linear-gradient(145deg, rgba(255, 255, 255, 0.96) 0%, rgba(255, 231, 156, 0.9) 100%);
   color: var(--color-ink);
-  font-size: 1.1rem;
+  font-size: 0.98rem;
   font-weight: 900;
   box-shadow: 0 10px 18px -16px rgba(36, 50, 74, 0.4);
 }
 
-.growth-summary__next-copy {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-
 .growth-summary__next-name {
   color: var(--color-ink);
-  font-size: 1rem;
+  font-size: 0.88rem;
   font-weight: 900;
   line-height: 1.3;
 }
 
 .growth-summary__next-progress {
   color: var(--color-ink-soft);
-  font-size: 0.82rem;
+  font-size: 0.76rem;
   font-weight: 700;
 }
 
 .growth-summary__next-goal {
   color: var(--color-ink);
-  font-size: 0.86rem;
+  font-size: 0.78rem;
   font-weight: 800;
-}
-
-.growth-summary__next-track {
-  position: relative;
-  overflow: hidden;
-  height: 9px;
-  border-radius: 999px;
-  background: rgba(36, 50, 74, 0.1);
-}
-
-.growth-summary__next-fill {
-  display: block;
-  height: 100%;
-  border-radius: 999px;
-  background: linear-gradient(90deg, rgba(255, 214, 128, 0.96) 0%, rgba(255, 174, 66, 0.96) 100%);
-  transition: width 260ms ease;
 }
 
 .growth-summary__done {
@@ -507,14 +496,18 @@ const growthEntries = computed(() => [
   .growth-summary__stat-value {
     font-size: 1rem;
   }
+
+  /* 手机上一行三格会把入口文案挤成很多行，仍落回单列。 */
+  .growth-summary__entry {
+    grid-column: 1 / -1;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .growth-summary__more,
   .growth-summary__more:hover,
   .growth-summary__stamps,
-  .growth-summary__entry,
-  .growth-summary__next-fill {
+  .growth-summary__entry {
     transition: none;
     transform: none;
   }
