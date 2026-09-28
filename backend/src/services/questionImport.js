@@ -528,7 +528,13 @@ function validateRawRow(rawRow, rowNumber) {
       type,
       content,
       imageUrl,
+      // 审核页需要「选项 + 答案 + 解析」才能核对语义，只给一个答案字母没有核对价值。
+      options: OPTION_KEYS.map((optionKey, index) => ({
+        key: optionKey,
+        text: optionTexts[index]
+      })),
       answer,
+      explanation,
       difficulty: Number.isNaN(difficulty) ? "" : difficulty
     },
     issues,

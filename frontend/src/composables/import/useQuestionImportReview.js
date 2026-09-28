@@ -1,4 +1,4 @@
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import {
   confirmPendingImport,
   discardPendingImportBatch,
@@ -7,7 +7,10 @@ import {
 } from "../../services/questionsApi";
 
 const POLL_INTERVAL_MS = 20000;
-const PREVIEW_ROW_LIMIT = 12;
+// 核对页必须能真正翻完全批；一次多给一点，避免频繁点加载更多。
+const PREVIEW_PAGE_SIZE = 20;
+const ANSWER_PREVIEW_MAX_LENGTH = 14;
+const ROW_FILTERS = new Set(["all", "warning", "error"]);
 const STALE_BATCH_CODE = "IMPORT_STALE_BATCH";
 const MISSING_BATCH_CODE = "IMPORT_BATCH_MISSING";
 
@@ -33,6 +36,60 @@ function formatClock(date) {
   return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
+function toText(value) {
+  return String(value ?? "").trim();
+}
+
+function truncateText(value, maxLength) {
+  return value.length > maxLength ? `${value.slice(0, maxLength)}...` : value;
+}
+
+// 旧批次落盘时 preview 里没有 options，这里必须容错，不能假设字段一定在。
+// 导出是为了让「旧批次优雅降级」这条回归能真正被测到。
+export function rowOptionList(row) {
+  if (!Array.isArray(row?.options)) {
+    return [];
+  }
+
+  return row.options.filter((option) => toText(option?.text));
+}
+
+export function rowAnswerLabel(row) {
+  const letter = toText(row?.answer);
+
+  if (!letter) {
+    return "—";
+  }
+
+  const matched = rowOptionList(row).find(
+    (option) => toText(option?.key).toUpperCase() === letter.toUpperCase()
+  );
+
+  return matched ? `${letter} · ${truncateText(toText(matched.text), ANSWER_PREVIEW_MAX_LENGTH)}` : letter;
+}
+
+export function rowMetaList(row) {
+  const list = [];
+
+  if (toText(row?.type)) {
+    list.push(toText(row.type));
+  }
+
+  if (toText(row?.knowledgeTag)) {
+    list.push(`标签 ${toText(row.knowledgeTag)}`);
+  }
+
+  if (row?.difficulty !== "" && row?.difficulty !== null && row?.difficulty !== undefined) {
+    list.push(`难度 ${row.difficulty}`);
+  }
+
+  return list;
+}
+
+export function rowHasDetails(row) {
+  return Boolean(toText(row?.explanation) || rowOptionList(row).length > 0 || toText(row?.imageUrl));
+}
+
 /**
  * 导入页现在只做"审核台"：不解析文件、不决定导入模式，
  * 只读取 harness 暂存的批次、展示预检结果，并把人的确认/丢弃回传。
@@ -49,6 +106,9 @@ export function useQuestionImportReview({ props, emit }) {
   const isDiscarding = ref(false);
   const isReplaceConfirmOpen = ref(false);
   const lastRefreshedAt = ref(null);
+  const expandedRowNumbers = ref(new Set());
+  const rowFilter = ref("all");
+  const visibleRowCount = ref(PREVIEW_PAGE_SIZE);
 
   let batchController = null;
   let confirmController = null;
@@ -64,9 +124,31 @@ export function useQuestionImportReview({ props, emit }) {
   const batchModeLabel = computed(() => (batchMode.value === "replace" ? "覆盖导入" : "追加导入"));
   const batchSummary = computed(() => pendingBatch.value?.summary || null);
   const previewRows = computed(() => pendingBatch.value?.rows || []);
-  const previewRowsToShow = computed(() => previewRows.value.slice(0, PREVIEW_ROW_LIMIT));
   const warningRows = computed(() => previewRows.value.filter((row) => row.status === "warning"));
   const errorRows = computed(() => previewRows.value.filter((row) => row.status === "error"));
+  const filteredPreviewRows = computed(() => {
+    if (rowFilter.value === "warning") {
+      return previewRows.value.filter((row) => row.status === "warning");
+    }
+
+    if (rowFilter.value === "error") {
+      return previewRows.value.filter((row) => row.status === "error");
+    }
+
+    return previewRows.value;
+  });
+  const previewRowsToShow = computed(() => filteredPreviewRows.value.slice(0, visibleRowCount.value));
+  const hasMorePreviewRows = computed(
+    () => previewRowsToShow.value.length < filteredPreviewRows.value.length
+  );
+  const hiddenPreviewRowCount = computed(
+    () => filteredPreviewRows.value.length - previewRowsToShow.value.length
+  );
+  const rowFilterTabs = computed(() => [
+    { key: "all", label: `全部 ${previewRows.value.length}` },
+    { key: "warning", label: `警告 ${warningRows.value.length}` },
+    { key: "error", label: `错误 ${errorRows.value.length}` }
+  ]);
   const hasBlockingErrors = computed(() => errorRows.value.length > 0);
   const hasWarnings = computed(() => warningRows.value.length > 0);
   const canConfirm = computed(
@@ -269,6 +351,43 @@ export function useQuestionImportReview({ props, emit }) {
     return "运行 npm run questions:import <文件> --stage 即可提交一个新批次。";
   });
 
+  watch(
+    () => pendingBatch.value?.batchId,
+    () => {
+      visibleRowCount.value = PREVIEW_PAGE_SIZE;
+      expandedRowNumbers.value = new Set();
+      rowFilter.value = "all";
+    }
+  );
+
+  watch(rowFilter, () => {
+    visibleRowCount.value = PREVIEW_PAGE_SIZE;
+  });
+
+  function isRowExpanded(rowNumber) {
+    return expandedRowNumbers.value.has(rowNumber);
+  }
+
+  function toggleRowDetails(rowNumber) {
+    const next = new Set(expandedRowNumbers.value);
+
+    if (next.has(rowNumber)) {
+      next.delete(rowNumber);
+    } else {
+      next.add(rowNumber);
+    }
+
+    expandedRowNumbers.value = next;
+  }
+
+  function setRowFilter(value) {
+    rowFilter.value = ROW_FILTERS.has(value) ? value : "all";
+  }
+
+  function loadMorePreviewRows() {
+    visibleRowCount.value += PREVIEW_PAGE_SIZE;
+  }
+
   function clearMessages() {
     errorMessage.value = "";
     confirmErrorMessage.value = "";
@@ -460,6 +579,10 @@ export function useQuestionImportReview({ props, emit }) {
     batchCreatedAtLabel,
     previewRows,
     previewRowsToShow,
+    rowFilter,
+    rowFilterTabs,
+    hasMorePreviewRows,
+    hiddenPreviewRowCount,
     warningCountLabel,
     hasBlockingErrors,
     hasWarnings,
@@ -480,6 +603,14 @@ export function useQuestionImportReview({ props, emit }) {
     handleConfirm,
     handleConfirmReplace,
     closeReplaceConfirm,
-    handleDiscard
+    handleDiscard,
+    isRowExpanded,
+    toggleRowDetails,
+    setRowFilter,
+    loadMorePreviewRows,
+    rowAnswerLabel,
+    rowOptionList,
+    rowMetaList,
+    rowHasDetails
   };
 }

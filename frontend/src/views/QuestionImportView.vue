@@ -28,6 +28,10 @@ const {
   batchCreatedAtLabel,
   previewRows,
   previewRowsToShow,
+  rowFilter,
+  rowFilterTabs,
+  hasMorePreviewRows,
+  hiddenPreviewRowCount,
   warningCountLabel,
   canConfirm,
   canDiscard,
@@ -47,7 +51,15 @@ const {
   handleConfirm,
   handleConfirmReplace,
   closeReplaceConfirm,
-  handleDiscard
+  handleDiscard,
+  isRowExpanded,
+  toggleRowDetails,
+  setRowFilter,
+  loadMorePreviewRows,
+  rowAnswerLabel,
+  rowOptionList,
+  rowMetaList,
+  rowHasDetails
 } = useQuestionImportReview({ props, emit });
 </script>
 
@@ -162,6 +174,25 @@ const {
               {{ reviewStatusText }}
             </p>
 
+            <div class="preview-toolbar">
+              <div class="preview-filter" role="tablist" aria-label="预检结果筛选">
+                <button
+                  v-for="tab in rowFilterTabs"
+                  :key="tab.key"
+                  class="preview-filter__tab"
+                  :class="{ 'preview-filter__tab--active': rowFilter === tab.key }"
+                  type="button"
+                  role="tab"
+                  :aria-selected="rowFilter === tab.key"
+                  @click="setRowFilter(tab.key)"
+                >
+                  {{ tab.label }}
+                </button>
+              </div>
+
+              <p class="preview-toolbar__hint">点击任意一行可展开选项与解析</p>
+            </div>
+
             <div class="preview-table">
               <div class="preview-table__head">
                 <span>行号</span>
@@ -169,56 +200,116 @@ const {
                 <span>年级</span>
                 <span>学期</span>
                 <span>题目</span>
+                <span>答案</span>
                 <span>状态</span>
                 <span>问题说明</span>
               </div>
 
-              <div v-for="row in previewRowsToShow" :key="row.rowNumber" class="preview-table__row">
-                <span>{{ row.rowNumber }}</span>
-                <span>{{ row.subject || "-" }}</span>
-                <span>{{ row.grade || "-" }}</span>
-                <span>{{ row.semester || "-" }}</span>
-                <span class="preview-table__content">{{ row.content || "-" }}</span>
-                <span class="status-chip" :class="`status-chip--${row.status}`">
-                  {{
-                    row.status === "valid"
-                      ? "通过"
-                      : row.status === "warning"
-                        ? "警告"
-                      : "错误"
-                  }}
-                </span>
-                <div class="preview-table__issues">
-                  <template v-if="row.issues.length">
-                    <div
-                      v-for="(issue, issueIndex) in row.issues"
-                      :key="`${row.rowNumber}-issue-${issueIndex}`"
-                      class="preview-issue"
+              <div v-for="row in previewRowsToShow" :key="row.rowNumber" class="preview-entry">
+                <div
+                  class="preview-table__row"
+                  :class="{ 'preview-table__row--expanded': isRowExpanded(row.rowNumber) }"
+                  role="button"
+                  tabindex="0"
+                  :aria-expanded="isRowExpanded(row.rowNumber)"
+                  @click="toggleRowDetails(row.rowNumber)"
+                  @keydown.enter.prevent="toggleRowDetails(row.rowNumber)"
+                  @keydown.space.prevent="toggleRowDetails(row.rowNumber)"
+                >
+                  <span class="preview-table__index">
+                    <span
+                      class="preview-table__caret"
+                      :class="{ 'preview-table__caret--open': isRowExpanded(row.rowNumber) }"
+                      aria-hidden="true"
+                      >▸</span
                     >
-                      <p class="preview-issue__text">{{ issue.message }}</p>
+                    {{ row.rowNumber }}
+                  </span>
+                  <span>{{ row.subject || "-" }}</span>
+                  <span>{{ row.grade || "-" }}</span>
+                  <span>{{ row.semester || "-" }}</span>
+                  <span class="preview-table__content">{{ row.content || "-" }}</span>
+                  <span class="preview-table__answer" :title="rowAnswerLabel(row)">
+                    {{ rowAnswerLabel(row) }}
+                  </span>
+                  <span class="status-chip" :class="`status-chip--${row.status}`">
+                    {{
+                      row.status === "valid"
+                        ? "通过"
+                        : row.status === "warning"
+                          ? "警告"
+                        : "错误"
+                    }}
+                  </span>
+                  <div class="preview-table__issues">
+                    <template v-if="row.issues.length">
+                      <div
+                        v-for="(issue, issueIndex) in row.issues"
+                        :key="`${row.rowNumber}-issue-${issueIndex}`"
+                        class="preview-issue"
+                      >
+                        <p class="preview-issue__text">{{ issue.message }}</p>
 
-                      <div v-if="issue.comparison" class="preview-comparison">
-                        <div class="preview-comparison__meta">
-                          <span class="preview-comparison__badge">{{ issue.comparison.title }}</span>
-                          <span class="preview-comparison__target">{{ issue.comparison.targetLabel }}</span>
-                          <span v-if="issue.comparison.similarityPercent !== null" class="preview-comparison__score">
-                            相似度 {{ issue.comparison.similarityPercent }}%
-                          </span>
-                        </div>
-                        <p class="preview-comparison__content">{{ issue.comparison.contentPreview }}</p>
-                        <div v-if="issue.comparison.recommendation" class="preview-comparison__recommendation">
-                          <span
-                            class="preview-comparison__action"
-                            :class="`preview-comparison__action--${issue.comparison.recommendation.tone}`"
-                          >
-                            {{ issue.comparison.recommendation.label }}
-                          </span>
-                          <p class="preview-comparison__reason">{{ issue.comparison.recommendation.reason }}</p>
+                        <div v-if="issue.comparison" class="preview-comparison">
+                          <div class="preview-comparison__meta">
+                            <span class="preview-comparison__badge">{{ issue.comparison.title }}</span>
+                            <span class="preview-comparison__target">{{ issue.comparison.targetLabel }}</span>
+                            <span v-if="issue.comparison.similarityPercent !== null" class="preview-comparison__score">
+                              相似度 {{ issue.comparison.similarityPercent }}%
+                            </span>
+                          </div>
+                          <p class="preview-comparison__content">{{ issue.comparison.contentPreview }}</p>
+                          <div v-if="issue.comparison.recommendation" class="preview-comparison__recommendation">
+                            <span
+                              class="preview-comparison__action"
+                              :class="`preview-comparison__action--${issue.comparison.recommendation.tone}`"
+                            >
+                              {{ issue.comparison.recommendation.label }}
+                            </span>
+                            <p class="preview-comparison__reason">{{ issue.comparison.recommendation.reason }}</p>
+                          </div>
                         </div>
                       </div>
+                    </template>
+                    <span v-else>无</span>
+                  </div>
+                </div>
+
+                <div v-if="isRowExpanded(row.rowNumber)" class="preview-details">
+                  <template v-if="rowHasDetails(row)">
+                    <div v-if="rowOptionList(row).length" class="preview-details__options">
+                      <div
+                        v-for="option in rowOptionList(row)"
+                        :key="option.key"
+                        class="preview-option"
+                        :class="{ 'preview-option--correct': option.key === row.answer }"
+                      >
+                        <span class="preview-option__key">{{ option.key }}</span>
+                        <span class="preview-option__text">{{ option.text }}</span>
+                        <span v-if="option.key === row.answer" class="preview-option__badge">正确答案</span>
+                      </div>
+                    </div>
+
+                    <div v-if="rowMetaList(row).length" class="preview-details__meta">
+                      <span v-for="meta in rowMetaList(row)" :key="meta" class="preview-details__chip">
+                        {{ meta }}
+                      </span>
+                    </div>
+
+                    <div v-if="row.explanation" class="preview-details__block">
+                      <p class="preview-details__label">解析</p>
+                      <p class="preview-details__text">{{ row.explanation }}</p>
+                    </div>
+
+                    <div v-if="row.imageUrl" class="preview-details__block">
+                      <p class="preview-details__label">配图</p>
+                      <p class="preview-details__text preview-details__text--mono">{{ row.imageUrl }}</p>
                     </div>
                   </template>
-                  <span v-else>无</span>
+
+                  <p v-else class="preview-details__text preview-details__text--muted">
+                    这个批次没有携带选项和解析数据，重新提交一次批次后就能在这里核对。
+                  </p>
                 </div>
               </div>
             </div>
@@ -228,12 +319,24 @@ const {
             </p>
 
             <div class="import-card__footer">
-              <p v-if="previewRows.length > previewRowsToShow.length" class="import-card__hint">
-                仅展示前 {{ previewRowsToShow.length }} 行，完整校验已覆盖全部数据。
-              </p>
-              <p v-else class="import-card__hint">
-                批次由 harness 提交，这里只负责核对与放行。
-              </p>
+              <div class="import-card__footer-copy">
+                <p v-if="hasMorePreviewRows" class="import-card__hint import-card__hint--warn">
+                  已显示 {{ previewRowsToShow.length }} / {{ previewRows.length }} 行，还有
+                  {{ hiddenPreviewRowCount }} 行未经人工核对。
+                </p>
+                <p v-else class="import-card__hint">
+                  已显示全部 {{ previewRows.length }} 行，批次由 harness 提交，这里只负责核对与放行。
+                </p>
+
+                <button
+                  v-if="hasMorePreviewRows"
+                  class="btn-cartoon"
+                  type="button"
+                  @click="loadMorePreviewRows"
+                >
+                  再加载 20 行
+                </button>
+              </div>
 
               <div class="import-card__actions">
                 <button class="btn-cartoon" type="button" :disabled="!canDiscard" @click="handleDiscard">
@@ -824,7 +927,7 @@ const {
 .preview-table__head,
 .preview-table__row {
   display: grid;
-  grid-template-columns: 56px 76px 76px 76px minmax(0, 2fr) 64px minmax(0, 1.8fr);
+  grid-template-columns: 56px 72px 72px 72px minmax(0, 1.9fr) 104px 64px minmax(0, 1.7fr);
   gap: 12px;
   align-items: start;
   padding: 14px 14px;
@@ -833,11 +936,15 @@ const {
 /* 表格列是固定语义宽度，窄屏时改为横向滚动，避免题干被压成一字一行。 */
 .preview-table__head,
 .preview-table__row {
-  min-width: 880px;
+  min-width: 1000px;
 }
 
+/* 行一多往下滚就会忘记每列是什么，表头必须跟着走。 */
 .preview-table__head {
-  background: rgba(242, 253, 249, 0.92);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: rgba(242, 253, 249, 0.96);
   color: var(--color-ink-soft);
   font-size: 0.88rem;
 }
@@ -847,6 +954,18 @@ const {
   border-top: 1px solid rgba(36, 50, 74, 0.06);
   color: var(--color-ink);
   font-size: 0.94rem;
+  cursor: pointer;
+  transition: background-color 140ms ease;
+}
+
+.preview-table__row:hover,
+.preview-table__row:focus-visible {
+  background: rgba(242, 253, 249, 0.9);
+  outline: none;
+}
+
+.preview-table__row--expanded {
+  background: rgba(242, 253, 249, 0.9);
 }
 
 .preview-table__content,
@@ -854,6 +973,42 @@ const {
   min-width: 0;
   white-space: normal;
   word-break: break-word;
+}
+
+.preview-table__index {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.preview-table__caret {
+  display: inline-block;
+  color: var(--color-ink-soft);
+  font-size: 0.78rem;
+  transition: transform 160ms ease;
+}
+
+.preview-table__caret--open {
+  transform: rotate(90deg);
+}
+
+.preview-table__answer {
+  display: inline-block;
+  min-width: 0;
+  padding: 3px 8px;
+  border-radius: 12px;
+  background: rgba(240, 247, 255, 0.92);
+  color: var(--color-ink);
+  font-size: 0.86rem;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+/* 折叠指示用 aria-expanded 表达语义，这里只补装饰。 */
+.preview-entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .preview-table__issues {
@@ -958,6 +1113,183 @@ const {
   margin: 0;
   color: var(--color-ink-soft);
   line-height: 1.55;
+}
+
+.preview-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.preview-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.preview-filter__tab {
+  min-height: 34px;
+  padding: 6px 14px;
+  border: 1.5px solid rgba(36, 50, 74, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--color-ink-soft);
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition:
+    background-color 140ms ease,
+    color 140ms ease,
+    border-color 140ms ease;
+}
+
+.preview-filter__tab:hover:not(.preview-filter__tab--active) {
+  border-color: rgba(124, 216, 184, 0.6);
+  color: var(--color-ink);
+}
+
+.preview-filter__tab--active {
+  border-color: rgba(124, 216, 184, 0.9);
+  background: rgba(232, 252, 243, 0.95);
+  color: #1f6b51;
+}
+
+.preview-toolbar__hint {
+  margin: 0;
+  color: var(--color-ink-soft);
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+.preview-details {
+  display: grid;
+  gap: 12px;
+  min-width: 1000px;
+  padding: 14px 18px 16px;
+  border-top: 1px dashed rgba(36, 50, 74, 0.12);
+  background: rgba(248, 251, 253, 0.86);
+}
+
+.preview-details__options {
+  display: grid;
+  gap: 6px;
+}
+
+.preview-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 8px 12px;
+  border: 1px solid rgba(36, 50, 74, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.preview-option--correct {
+  border-color: rgba(124, 216, 184, 0.8);
+  background: rgba(232, 252, 243, 0.95);
+}
+
+.preview-option__key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border: 1px solid rgba(36, 50, 74, 0.14);
+  border-radius: 50%;
+  color: var(--color-ink-soft);
+  font-size: 0.8rem;
+}
+
+.preview-option--correct .preview-option__key {
+  border-color: transparent;
+  background: #1f6b51;
+  color: #ffffff;
+}
+
+.preview-option__text {
+  min-width: 0;
+  color: var(--color-ink);
+  font-size: 0.94rem;
+  line-height: 1.55;
+  word-break: break-word;
+}
+
+.preview-option__badge {
+  margin-left: auto;
+  flex-shrink: 0;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(232, 252, 243, 0.95);
+  color: #1f6b51;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.preview-details__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.preview-details__chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px 12px;
+  border: 1px solid rgba(36, 50, 74, 0.1);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--color-ink-soft);
+  font-size: 0.8rem;
+}
+
+.preview-details__block {
+  display: grid;
+  gap: 6px;
+}
+
+.preview-details__label {
+  margin: 0;
+  color: var(--color-ink-soft);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+}
+
+.preview-details__text {
+  margin: 0;
+  color: var(--color-ink);
+  font-size: 0.92rem;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.preview-details__text--mono {
+  font-family: "SFMono-Regular", "Consolas", "Menlo", monospace;
+  font-size: 0.86rem;
+}
+
+.preview-details__text--muted {
+  color: var(--color-ink-soft);
+}
+
+.import-card__footer-copy {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+  min-width: 0;
+}
+
+.import-card__hint--warn {
+  padding: 8px 12px;
+  border-radius: 14px;
+  background: rgba(255, 245, 214, 0.86);
+  color: #8a5b00;
 }
 
 .status-chip {
