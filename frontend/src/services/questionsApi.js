@@ -242,9 +242,6 @@ export async function generateQuizSessionSummary({
   accuracyPercent = 0,
   playMode = "free",
   stageTitle = "",
-  model = "",
-  reviewLength = "",
-  aiRuntime = null,
   signal
 } = {}) {
   const response = await fetch("/api/questions/review/summary", {
@@ -260,10 +257,7 @@ export async function generateQuizSessionSummary({
       totalQuestions,
       accuracyPercent,
       playMode,
-      stageTitle,
-      model,
-      reviewLength,
-      aiRuntime
+      stageTitle
     }),
     signal
   });
@@ -278,44 +272,6 @@ export async function generateQuizSessionSummary({
 
   if (!payload?.data || typeof payload?.data?.speechText !== "string") {
     throw new Error("AI 学习总结结果格式不正确。");
-  }
-
-  return payload;
-}
-
-export async function generateHomeWelcomeMessage({
-  context = {},
-  model = "",
-  aiRuntime = null,
-  signal
-} = {}) {
-  const response = await fetch("/api/questions/review/home-welcome", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      context,
-      model,
-      aiRuntime
-    }),
-    signal
-  });
-
-  const payload = await response.json().catch(() => null);
-
-  if (!response.ok) {
-    const error = new Error(payload?.message || `AI 首页欢迎语生成失败：${response.status}`);
-    error.details = payload?.details || [];
-    throw error;
-  }
-
-  if (
-    !payload?.data ||
-    typeof payload?.data?.bubbleText !== "string" ||
-    (payload?.data?.title != null && typeof payload.data.title !== "string")
-  ) {
-    throw new Error("AI 首页欢迎语结果格式不正确。");
   }
 
   return payload;

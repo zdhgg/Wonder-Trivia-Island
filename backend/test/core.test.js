@@ -27,7 +27,6 @@ const {
   stageQuestionImport
 } = require("../src/services/questionImport");
 const { pendingBatchPath } = require("../src/services/questionImportStaging");
-const { setOpenAIHomeWelcomeClientFactoryForTesting } = require("../src/services/homeWelcomeMessage");
 const { setOpenAIReviewClientFactoryForTesting } = require("../src/services/questionReview");
 const { setOpenAIProbeClientFactoryForTesting } = require("../src/services/aiRuntimeProbe");
 
@@ -200,13 +199,11 @@ test.after(async () => {
 
 test.beforeEach(() => {
   resetDatabase();
-  setOpenAIHomeWelcomeClientFactoryForTesting(null);
   setOpenAIReviewClientFactoryForTesting(null);
   setOpenAIProbeClientFactoryForTesting(null);
 });
 
 test.after(() => {
-  setOpenAIHomeWelcomeClientFactoryForTesting(null);
   setOpenAIReviewClientFactoryForTesting(null);
   setOpenAIProbeClientFactoryForTesting(null);
 });
@@ -1528,35 +1525,8 @@ test("question review speech can use Xiaomi MiMo chat completions audio mode", a
   assert.equal(speechBuffer.toString(), "fake-mimo-review-wav");
 });
 
-test("question routes separate the welcome title, action hint, and spoken time cue", async () => {
-  const homeWelcomeParseCalls = [];
-
-  setOpenAIHomeWelcomeClientFactoryForTesting(() => ({
-    responses: {
-      parse: async (request) => {
-        homeWelcomeParseCalls.push(request);
-        return {
-          id: "resp_test_home_welcome",
-          model: "gpt-5.4-mini",
-          output_parsed: {
-            tone: "warm",
-            title: "傍晚快来挑战吧！",
-            bubbleText: "傍晚了，小岛还亮着呢。",
-            speechText: "猫头鹰把路线图准备好了，今天想去哪座岛看看？"
-          }
-        };
-      }
-    },
-    chat: {
-      completions: {
-        create: async () => {
-          throw new Error("Home welcome route should use responses.parse in this test");
-        }
-      }
-    }
-  }));
-
-  const response = await fetch(`${baseUrl}/api/questions/review/home-welcome`, {
+test("home welcome route is removed and the homepage copy is generated locally", async () => {
+  const homeWelcomeResponse = await fetch(`${baseUrl}/api/questions/review/home-welcome`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
@@ -1564,87 +1534,23 @@ test("question routes separate the welcome title, action hint, and spoken time c
     body: JSON.stringify({
       context: {
         displayName: "小心心",
-        grade: "一年级",
-        semester: "上册",
-        timeBand: "evening",
-        timeContextKey: "dusk",
-        timeCueLabel: "傍晚",
-        timeGreetingLabel: "傍晚了",
-        monthLabel: "五月",
-        monthVibe: "初夏微风",
-        seasonLabel: "初夏",
-        schoolYearPhase: "学期过半",
         isFirstHomeVisitToday: true
       }
     })
   });
 
-  assert.equal(response.status, 200);
-
-  const payload = await readJson(response);
-  assert.equal(payload.data.tone, "warm");
-  assert.equal(payload.data.title, "小心心，欢迎回来");
-  assert.ok(!payload.data.bubbleText.includes("傍晚"));
-  assert.ok(payload.data.speechText.includes("傍晚"));
-  assert.notEqual(payload.data.title, payload.data.bubbleText);
-  assert.equal(payload.meta.model, "gpt-5.4-mini");
-  assert.equal(homeWelcomeParseCalls.length, 1);
-  assert.ok(homeWelcomeParseCalls[0].instructions.includes("三者必须各司其职"));
-  assert.ok(homeWelcomeParseCalls[0].instructions.includes("时段只在 speechText 中自然出现一次"));
-  assert.ok(homeWelcomeParseCalls[0].instructions.includes("speechText 可用的时段问候是：傍晚了"));
-  assert.ok(homeWelcomeParseCalls[0].input.includes("时段关键词：傍晚"));
+  // 首页欢迎语已完全本地化：模型生成 endpoint 删除后必须 404，前端不再调用。
+  assert.equal(homeWelcomeResponse.status, 404);
 });
 
-test("question routes can generate AI session summary for a completed round", async () => {
-  const summaryParseCalls = [];
+test("session summary is built by local deterministic rules without any model call", async () => {
+  // 回归：即使注入一个会抛错的模型 client 工厂，summary 也绝不创建/调用模型客户端。
+  let clientFactoryCalls = 0;
 
-  setOpenAIReviewClientFactoryForTesting(() => ({
-    responses: {
-      parse: async (request) => {
-        summaryParseCalls.push(request);
-        return {
-          id: "resp_test_session_summary",
-          model: "gpt-5.4-mini",
-          output_parsed: {
-            tone: "repair",
-            title: "先把条件看全",
-            overview: "本轮 2 题里答对了 1 题，当前最适合先把审题顺序稳住。",
-            strengths: "已经能在加法情景里看懂主要场景。",
-            focusPoint: "容易漏看表示数量变化的词，所以会把该相加的题看成别的关系。",
-            nextPlan: "建议先回看错题，再围绕数量变化词多练 3 题，每题先圈“又、多、还剩”。",
-            parentTip: "家长可以先让孩子口头说出题里数量怎么变，再让他自己决定用什么运算。",
-            bubbleText: "先复盘数量变化词，再决定该用什么运算。",
-            speechText: "这轮先把审题顺序稳住。你已经能看懂场景了，下一步先圈出数量变化词，再决定用什么运算。"
-          }
-        };
-      }
-    },
-    chat: {
-      completions: {
-        create: async (request) => ({
-          id: "chatcmpl_test_session_summary",
-          model: request.model,
-          choices: [
-            {
-              message: {
-                content: JSON.stringify({
-                  tone: "repair",
-                  title: "先把条件看全",
-                  overview: "本轮 2 题里答对了 1 题，当前最适合先把审题顺序稳住。",
-                  strengths: "已经能在加法情景里看懂主要场景。",
-                  focusPoint: "容易漏看表示数量变化的词，所以会把该相加的题看成别的关系。",
-                  nextPlan: "建议先回看错题，再围绕数量变化词多练 3 题，每题先圈“又、多、还剩”。",
-                  parentTip: "家长可以先让孩子口头说出题里数量怎么变，再让他自己决定用什么运算。",
-                  bubbleText: "先复盘数量变化词，再决定该用什么运算。",
-                  speechText: "这轮先把审题顺序稳住。你已经能看懂场景了，下一步先圈出数量变化词，再决定用什么运算。"
-                })
-              }
-            }
-          ]
-        })
-      }
-    }
-  }));
+  setOpenAIReviewClientFactoryForTesting(() => {
+    clientFactoryCalls += 1;
+    throw new Error("session summary must not create a model client");
+  });
 
   const summaryResponse = await fetch(`${baseUrl}/api/questions/review/summary`, {
     method: "POST",
@@ -1658,7 +1564,6 @@ test("question routes can generate AI session summary for a completed round", as
       totalQuestions: 2,
       accuracyPercent: 50,
       playMode: "free",
-      reviewLength: "standard",
       attempts: [
         {
           question: {
@@ -1701,16 +1606,31 @@ test("question routes can generate AI session summary for a completed round", as
   assert.equal(summaryResponse.status, 200);
 
   const summaryPayload = await readJson(summaryResponse);
-  assert.equal(summaryPayload.data.title, "先把条件看全");
   assert.equal(summaryPayload.data.tone, "repair");
-  assert.equal(summaryPayload.data.bubbleText, "先复盘数量变化词，再决定该用什么运算");
+  assert.equal(summaryPayload.data.title, "先抓住一个关键点");
+  assert.ok(summaryPayload.data.overview.includes("答对 1 题"));
+  assert.ok(summaryPayload.data.strengths.includes("加法应用"));
+  assert.ok(summaryPayload.data.focusPoint.includes("加法应用"));
+  assert.ok(summaryPayload.data.nextPlan.includes("加法应用"));
   assert.ok(summaryPayload.data.parentTip.includes("家长"));
-  assert.equal(summaryPayload.meta.model, "gpt-5.4-mini");
-  assert.equal(summaryParseCalls.length, 1);
-  assert.equal(summaryParseCalls[0].text.format.name, "elementary_session_summary");
-  assert.ok(summaryParseCalls[0].instructions.includes("课后复盘老师"));
-  assert.ok(summaryParseCalls[0].instructions.includes("家长"));
-  assert.ok(summaryParseCalls[0].instructions.includes("bubbleText"));
+  assert.ok(summaryPayload.data.speechText.length > 0);
+  // response shape 与现有前端兼容：summary 字段齐全，meta 不含模型信息。
+  assert.equal(summaryPayload.meta.model, "");
+  assert.equal(summaryPayload.meta.responseId, "");
+  assert.equal(summaryPayload.meta.source, "fallback");
+  assert.equal(clientFactoryCalls, 0);
+});
+
+test("session summary route rejects empty attempts", async () => {
+  const emptyResponse = await fetch(`${baseUrl}/api/questions/review/summary`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ attempts: [] })
+  });
+
+  assert.equal(emptyResponse.status, 400);
 });
 
 test("study record book route stores and reloads normalized records for the same profile", async () => {

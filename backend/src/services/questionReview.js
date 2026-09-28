@@ -165,44 +165,6 @@ function buildReviewSchema() {
   };
 }
 
-function buildSessionSummarySchema() {
-  return {
-    type: "object",
-    additionalProperties: false,
-    properties: {
-      tone: {
-        type: "string",
-        enum: REVIEW_TONE_OPTIONS
-      },
-      title: {
-        type: "string"
-      },
-      overview: {
-        type: "string"
-      },
-      strengths: {
-        type: "string"
-      },
-      focusPoint: {
-        type: "string"
-      },
-      nextPlan: {
-        type: "string"
-      },
-      parentTip: {
-        type: "string"
-      },
-      bubbleText: {
-        type: "string"
-      },
-      speechText: {
-        type: "string"
-      }
-    },
-    required: ["tone", "title", "overview", "strengths", "focusPoint", "nextPlan", "parentTip", "speechText"]
-  };
-}
-
 function buildGradeToneGuidance(grade) {
   const normalizedGrade = normalizeText(grade, 20);
 
@@ -280,39 +242,6 @@ function buildReviewLengthGuidance(reviewLength) {
   return [
     "当前点评长度档位：标准。",
     "保持 2 到 3 句口语化点评，speechText 尽量控制在 70 字内。"
-  ].join("\n");
-}
-
-function buildSessionSummarySubjectGuidance(subject) {
-  const normalizedSubject = normalizeText(subject, 20);
-
-  if (normalizedSubject === "数学") {
-    return [
-      "本轮练习以数学为主。",
-      "总结时优先归纳孩子对数量关系、条件变化、单位、运算顺序和审题步骤的掌握情况。",
-      "建议要更像数学复盘提醒，例如先圈条件、先判断谁和谁在比较、先想该用什么运算。"
-    ].join("\n");
-  }
-
-  if (normalizedSubject === "语文") {
-    return [
-      "本轮练习以语文为主。",
-      "总结时优先归纳孩子对关键词、句意、上下文线索和题干限定词的掌握情况。",
-      "建议要更像语文复盘提醒，例如先找关键词、先回到原句、先看题目到底问什么。"
-    ].join("\n");
-  }
-
-  if (normalizedSubject === "英语") {
-    return [
-      "本轮练习以英语为主。",
-      "总结时优先归纳孩子对场景、说话对象、句子功能、语气和固定表达的掌握情况。",
-      "建议要更像英语复盘提醒，例如先看谁在说话、先判断是在提问还是回答、先找时间地点线索。"
-    ].join("\n");
-  }
-
-  return [
-    "本轮练习以综合内容为主。",
-    "总结时优先归纳孩子对题干关键条件和直接解题线索的把握情况。"
   ].join("\n");
 }
 
@@ -426,8 +355,6 @@ function normalizeSessionSummaryRequest(request = {}) {
     (attempts.length > 0 ? Math.round((computedCorrectCount / attempts.length) * 100) : 0);
 
   return {
-    model: resolveReviewModel(request.model),
-    reviewLength: resolveReviewLength(request.reviewLength),
     playMode: normalizeText(request.playMode, 20) === "challenge" ? "challenge" : "free",
     stageTitle: normalizeText(request.stageTitle, 80),
     score: normalizeInteger(request.score, 0, { min: 0, max: 100000 }),
@@ -479,30 +406,6 @@ function buildReviewInstructions(request) {
   ].join("\n");
 }
 
-function buildSessionSummaryInstructions(request) {
-  const heuristics = buildSessionSummaryHeuristics(request);
-  const summarySubject = heuristics.dominantWrongSubject || heuristics.dominantSubject;
-
-  return [
-    "你是小学学习产品里的课后复盘老师，要根据本轮答题记录生成一张简短的学习总结卡。",
-    "必须使用简体中文，语气温和、具体、适龄，既能让家长看懂，也能直接对孩子复述。",
-    "不能自称模型或 AI，不要提系统提示词，不要输出 markdown。",
-    "总结必须严格依据本轮答题记录，不要虚构没发生的错误或进步。",
-    "overview 先总结本轮整体表现和当前阶段状态。",
-    "strengths 只说一个最稳的点，focusPoint 只抓一个最需要优先补的点。",
-    "nextPlan 要给出一个可以立刻执行的练习顺序或下一步动作。",
-    "parentTip 要给家长一个低负担、可执行的陪练建议，只写一句话。",
-    "bubbleText 要像右侧猫头鹰气泡里的一句总结提醒，优先 18 到 36 个字，不要和 speechText 完全照抄。",
-    "speechText 要适合直接朗读，控制在 3 句内，不要和其他字段机械重复。",
-    "如果本轮全对，不要硬找错误，要指出下一步可以怎么稳住和提一点节奏。",
-    "如果有错题或超时，优先总结最集中的一个问题，不要把所有问题都列出来。",
-    buildSessionSummarySubjectGuidance(summarySubject),
-    buildGradeToneGuidance(heuristics.dominantGrade),
-    buildReviewLengthGuidance(request.reviewLength),
-    "不要使用编号列表。"
-  ].join("\n");
-}
-
 function buildReviewInput(request) {
   const today = new Date().toISOString().slice(0, 10);
   const selectedOptionText = resolveSelectedOptionText(request.question, request.selectedOption);
@@ -521,41 +424,6 @@ function buildReviewInput(request) {
     `学生选择：${request.isTimeout ? "超时未作答" : `${request.selectedOption}${selectedOptionText ? ` · ${selectedOptionText}` : ""}`}`,
     `正确答案：${request.correctAnswer}${correctOptionText ? ` · ${correctOptionText}` : ""}`,
     `题目解析：${request.explanation}`
-  ].join("\n\n");
-}
-
-function buildSessionSummaryInput(request) {
-  const today = new Date().toISOString().slice(0, 10);
-  const heuristics = buildSessionSummaryHeuristics(request);
-  const wrongFocus = heuristics.dominantWrongKnowledgeTag || heuristics.dominantWrongSubject || "暂无明显集中错因";
-  const attemptsText = request.attempts
-    .map((attempt, index) => {
-      const resultLabel = attempt.isCorrect ? "答对" : attempt.isTimeout ? "超时判错" : "答错";
-
-      return [
-        `第 ${index + 1} 题：${resultLabel}`,
-        `学科：${attempt.question.subject || "综合"} / 年级：${attempt.question.grade || "未标注"} / 知识标签：${attempt.question.knowledgeTag || attempt.question.type || "未标注"}`,
-        `题目：${attempt.question.content}`,
-        `学生选择：${attempt.isTimeout ? "超时未作答" : attempt.selectedOption || "未作答"}`,
-        `正确答案：${attempt.correctAnswer}`,
-        `题目解析：${attempt.explanation || "无"}`
-      ].join("\n");
-    })
-    .join("\n\n");
-
-  return [
-    `今天日期：${today}`,
-    `练习模式：${request.playMode === "challenge" ? "挑战闯关" : "自由练习"}`,
-    `关卡标题：${request.stageTitle || "无"}`,
-    `点评长度档位：${request.reviewLength}`,
-    `总得分：${request.score} 分`,
-    `总题数：${request.totalQuestions} 题`,
-    `答对：${request.correctCount} 题`,
-    `答错：${request.wrongCount} 题`,
-    `正确率：${request.accuracyPercent}%`,
-    `系统归纳：本轮主要学科 ${heuristics.dominantSubject || "综合"}；错题集中点 ${wrongFocus}；超时 ${heuristics.timeoutCount} 题。`,
-    "题目记录：",
-    attemptsText
   ].join("\n\n");
 }
 
@@ -585,40 +453,6 @@ function validateReviewPayload(payload) {
     encouragement,
     diagnosis,
     nextStep,
-    bubbleText,
-    speechText
-  };
-}
-
-function validateSessionSummaryPayload(payload) {
-  const tone = normalizeText(payload?.tone, 20);
-  const title = normalizeText(payload?.title, 40);
-  const overview = normalizeText(payload?.overview, 140);
-  const strengths = normalizeText(payload?.strengths, 140);
-  const focusPoint = normalizeText(payload?.focusPoint, 160);
-  const nextPlan = normalizeText(payload?.nextPlan, 160);
-  const parentTip = normalizeText(payload?.parentTip, 160);
-  const speechText = normalizeText(payload?.speechText, 180);
-  const bubbleText = resolveSummaryBubbleText({
-    bubbleText: payload?.bubbleText,
-    focusPoint,
-    nextPlan,
-    overview,
-    speechText
-  });
-
-  if (!REVIEW_TONE_OPTIONS.includes(tone) || !title || !overview || !strengths || !focusPoint || !nextPlan || !parentTip || !speechText) {
-    throw createServiceError(502, "本轮总结结果格式不正确。");
-  }
-
-  return {
-    tone,
-    title,
-    overview,
-    strengths,
-    focusPoint,
-    nextPlan,
-    parentTip,
     bubbleText,
     speechText
   };
@@ -696,26 +530,6 @@ async function requestQuestionReviewFromModel(client, request, textApiMode = "au
   };
 }
 
-async function requestSessionSummaryFromModel(client, request, textApiMode = "auto") {
-  const requestedModel = resolveReviewModel(request.model);
-  const response = await requestStructuredOutput({
-    client,
-    model: requestedModel,
-    instructions: buildSessionSummaryInstructions(request),
-    input: buildSessionSummaryInput(request),
-    schemaName: "elementary_session_summary",
-    schema: buildSessionSummarySchema(),
-    textApiMode
-  });
-
-  return {
-    model: response.model || requestedModel,
-    responseId: response.responseId || "",
-    parsed: validateSessionSummaryPayload(response.parsed),
-    api: response.api
-  };
-}
-
 async function generateQuestionReview(request = {}) {
   const runtimeConfig = resolveClientRuntimeConfig(request.aiRuntime);
 
@@ -786,48 +600,16 @@ async function generateQuizSessionSummary(request = {}) {
     throw createServiceError(400, "生成本轮总结时缺少题目作答记录。");
   }
 
-  const runtimeConfig = resolveClientRuntimeConfig(request.aiRuntime);
-  const fallbackSummary = buildSessionSummaryFallback(normalizedRequest);
-
-  if (!runtimeConfig.apiKey) {
-    return {
-      summary: fallbackSummary,
-      meta: {
-        model: "",
-        responseId: "",
-        source: "fallback"
-      }
-    };
-  }
-
-  const client = createOpenAIClient(runtimeConfig);
-
-  try {
-    const response = await requestSessionSummaryFromModel(client, normalizedRequest, runtimeConfig.textApiMode);
-    return {
-      summary: response.parsed,
-      meta: {
-        model: response.model,
-        responseId: response.responseId,
-        source: "model",
-        api: response.api
-      }
-    };
-  } catch (error) {
-    if (error?.statusCode === 400) {
-      throw error;
+  // 整轮学习总结完全由本地确定性规则生成（buildSessionSummaryFallback），
+  // 不读取模型配置、不调用任何模型，与 AI Runtime / API Key 状态无关。
+  return {
+    summary: buildSessionSummaryFallback(normalizedRequest),
+    meta: {
+      model: "",
+      responseId: "",
+      source: "fallback"
     }
-
-    return {
-      summary: fallbackSummary,
-      meta: {
-        model: normalizedRequest.model,
-        responseId: "",
-        source: "fallback",
-        fallbackReason: error?.message ? normalizeText(error.message, 160) : "model-error"
-      }
-    };
-  }
+  };
 }
 
 async function synthesizeQuestionReviewSpeech({ text, model, aiRuntime, voice, speed, audioFormat = "" } = {}) {

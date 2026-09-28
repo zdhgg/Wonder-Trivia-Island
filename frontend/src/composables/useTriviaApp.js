@@ -6,8 +6,7 @@ import { APP_ROUTE_NAME, GROWTH_BOOK_TAB } from "../router/routes";
 import {
   fetchQuestionCoverage,
   fetchQuestionStats,
-  fetchRandomQuestions,
-  generateHomeWelcomeMessage
+  fetchRandomQuestions
 } from "../services/questionsApi";
 import {
   claimDailyChest as requestDailyChestClaim,
@@ -20,7 +19,6 @@ import { useQuizStore } from "../stores/useQuizStore";
 import { DEFAULT_PROFILE, useSettingsStore } from "../stores/useSettingsStore";
 import {
   buildHomeWelcomeEyebrow,
-  buildHomeWelcomeContextHash,
   buildHomeWelcomeFallbackLine,
   buildHomeWelcomeFallbackSpeechText,
   buildHomeWelcomeTitle,
@@ -29,10 +27,7 @@ import {
   HOME_WELCOME_MAX_LINE_LENGTH,
   markHomeWelcomeVisited,
   normalizeHomeWelcomeLine,
-  normalizeHomeWelcomeSpeechText,
-  readHomeWelcomeCache,
-  readHomeWelcomeVisitDate,
-  writeHomeWelcomeCache
+  readHomeWelcomeVisitDate
 } from "../utils/homeWelcomeMessage";
 import {
   buildChapterGrowthSource,
@@ -763,11 +758,7 @@ export function useTriviaApp() {
   const homeWelcomeVariantIndex = ref(0);
   const homeWelcomeFallbackLine = ref("");
   const homeWelcomeFallbackSpeechText = ref("");
-  const homeWelcomeDynamicLine = ref("");
-  const homeWelcomeDynamicSpeechText = ref("");
   const isHomeWelcomeProfileJustSaved = ref(false);
-  const homeWelcomeLastFailedContextKey = ref("");
-  let homeWelcomeRequestController = null;
   const homeWelcomeDisplayName = computed(() => {
     const normalizedName = String(settingsStore.profile.displayName || "").trim();
     return normalizedName || DEFAULT_PROFILE.displayName;
@@ -1089,15 +1080,13 @@ export function useTriviaApp() {
   }));
   const homeWelcomeEyebrow = computed(() => buildHomeWelcomeEyebrow(homeWelcomeContext.value));
   const homeWelcomeSummary = computed(() =>
-    homeWelcomeDynamicLine.value ||
     homeWelcomeFallbackLine.value ||
     buildHomeWelcomeFallbackLine(homeWelcomeContext.value)
   );
-  // 首页欢迎区要显示的就这一行，所以这里先按气泡长度收敛，避免 AI 长句把欢迎区撑开。
+  // 首页欢迎区要显示的就这一行，所以这里先按气泡长度收敛，避免长句把欢迎区撑开。
   const homeWelcomeSummaryLine = computed(() =>
     normalizeHomeWelcomeLine(homeWelcomeSummary.value, HOME_WELCOME_MAX_LINE_LENGTH) || homeWelcomeSummary.value
   );
-  const homeWelcomeSummarySource = computed(() => (homeWelcomeDynamicLine.value ? "ai" : "fallback"));
   const homeWelcomeTitle = computed(() =>
     buildHomeWelcomeTitle(homeWelcomeContext.value, {
       displayName: homeWelcomeDisplayName.value,
@@ -1110,7 +1099,7 @@ export function useTriviaApp() {
     profileChip: homeWelcomeProfileChip.value,
     themeTone: homeWelcomeContext.value.timeBand,
     summary: homeWelcomeSummaryLine.value,
-    summarySource: homeWelcomeSummarySource.value
+    summarySource: "fallback"
   }));
 
   // ---------------------------------------------------------------------------
@@ -2020,20 +2009,12 @@ export function useTriviaApp() {
 
   // 资料变更后只更新首页欢迎区的本地状态。
   //
-  // AI welcome 目前暂停自动生成：首页“今天先做什么”已经由 homeDashboard.advice
-  // 确定性给出，AI 文案没有消费者，自动请求只会白花模型调用。以后要把它作为
-  // “不影响行动推荐的猫头鹰陪伴语”重新接回来时，在这里改回 refreshHomeWelcomeCopy 即可。
+  // 首页欢迎语完全由本地规则生成（frontend/src/utils/homeWelcomeMessage.js + shared 规则），
+  // 不调用任何模型；“今天先做什么”则由 homeDashboard.advice 确定性给出。
   function refreshHomeWelcomeAfterProfileChange() {
     isHomeWelcomeProfileJustSaved.value = true;
     advanceHomeWelcomeVariant();
     refreshHomeWelcomeLocalState();
-  }
-
-  function clearHomeWelcomeRequest() {
-    if (homeWelcomeRequestController) {
-      homeWelcomeRequestController.abort();
-      homeWelcomeRequestController = null;
-    }
   }
 
   function markHomeWelcomeVisitedToday() {
@@ -2048,8 +2029,7 @@ export function useTriviaApp() {
     homeWelcomeNow.value = new Date();
   }
 
-  // 只做本地状态更新：刷新时间上下文、重建 fallback 文案、记录今天已访问。
-  // 不发任何模型请求（AI 生成的入口仍然是 refreshHomeWelcomeCopy）。
+  // 只做本地状态更新：刷新时间上下文、重建 fallback 文案、记录今天已访问。不发任何网络请求。
   function refreshHomeWelcomeLocalState() {
     refreshHomeWelcomeTemporalContext();
     const context = homeWelcomeContext.value;
@@ -2058,75 +2038,6 @@ export function useTriviaApp() {
     homeWelcomeFallbackSpeechText.value = buildHomeWelcomeFallbackSpeechText(context);
     markHomeWelcomeVisitedToday();
     isHomeWelcomeProfileJustSaved.value = false;
-  }
-
-  // 保留完整的 AI 欢迎能力（生成 + 缓存 + 动态文案 + ai 分支），当前没有自动调用方。
-  async function refreshHomeWelcomeCopy({ force = false } = {}) {
-    refreshHomeWelcomeTemporalContext();
-    const context = homeWelcomeContext.value;
-    const contextKey = `${getHomeWelcomeDateKey(homeWelcomeNow.value)}|${buildHomeWelcomeContextHash(context)}`;
-
-    homeWelcomeDynamicLine.value = "";
-    homeWelcomeDynamicSpeechText.value = "";
-    homeWelcomeFallbackLine.value = buildHomeWelcomeFallbackLine(context);
-    homeWelcomeFallbackSpeechText.value = buildHomeWelcomeFallbackSpeechText(context);
-
-    if (!force && homeWelcomeLastFailedContextKey.value === contextKey) {
-      markHomeWelcomeVisitedToday();
-      isHomeWelcomeProfileJustSaved.value = false;
-      return;
-    }
-
-    const cachedLine = !force ? readHomeWelcomeCache(context) : null;
-
-    if (cachedLine?.text) {
-      homeWelcomeDynamicLine.value = cachedLine.text;
-      homeWelcomeDynamicSpeechText.value = normalizeHomeWelcomeSpeechText(cachedLine.speechText || cachedLine.text);
-      homeWelcomeLastFailedContextKey.value = "";
-      markHomeWelcomeVisitedToday();
-      isHomeWelcomeProfileJustSaved.value = false;
-      return;
-    }
-
-    clearHomeWelcomeRequest();
-    const requestController = new AbortController();
-    homeWelcomeRequestController = requestController;
-
-    try {
-      const payload = await generateHomeWelcomeMessage({
-        context,
-        model: settingsStore.effectiveReviewModel || "",
-        aiRuntime: settingsStore.effectiveReviewRuntimeConfig,
-        signal: requestController.signal
-      });
-      const resolvedLine = normalizeHomeWelcomeLine(payload?.data?.bubbleText || payload?.data?.speechText);
-      const resolvedSpeechText = normalizeHomeWelcomeSpeechText(payload?.data?.speechText || payload?.data?.bubbleText);
-
-      if (resolvedLine) {
-        homeWelcomeDynamicLine.value = resolvedLine;
-        homeWelcomeDynamicSpeechText.value = resolvedSpeechText || resolvedLine;
-        homeWelcomeLastFailedContextKey.value = "";
-        writeHomeWelcomeCache(context, resolvedLine, {
-          title: homeWelcomeTitle.value,
-          speechText: resolvedSpeechText || resolvedLine,
-          source: payload?.meta?.source || payload?.meta?.api || "ai"
-        });
-      }
-    } catch (error) {
-      if (error?.name === "AbortError" || requestController.signal.aborted) {
-        return;
-      }
-
-      homeWelcomeLastFailedContextKey.value = contextKey;
-    } finally {
-      if (homeWelcomeRequestController !== requestController) {
-        return;
-      }
-
-      homeWelcomeRequestController = null;
-      markHomeWelcomeVisitedToday();
-      isHomeWelcomeProfileJustSaved.value = false;
-    }
   }
 
   function openChallengeWorld() {
@@ -2625,7 +2536,7 @@ export function useTriviaApp() {
     hydrateGrowthProgress();
     advanceHomeWelcomeVariant();
     refreshHomeDailyTasks();
-    // 首次进首页只更新本地欢迎状态：AI welcome 暂停自动生成（无 UI 消费者）。
+    // 首次进首页只更新本地欢迎状态，欢迎语完全由本地规则生成。
     refreshHomeWelcomeLocalState();
     void ensureKnowledgeStudyRuntime();
     void loadChallengeCoverage();
@@ -2733,11 +2644,10 @@ export function useTriviaApp() {
 
   watch(currentView, (nextView) => {
     if (nextView !== VIEW_MODE.HOME) {
-      clearHomeWelcomeRequest();
       return;
     }
 
-    // 回到首页同样只刷新本地欢迎状态，不再触发 AI welcome 请求。
+    // 回到首页同样只刷新本地欢迎状态。
     advanceHomeWelcomeVariant();
     refreshHomeWelcomeLocalState();
   });
@@ -2764,7 +2674,6 @@ export function useTriviaApp() {
   );
 
   onBeforeUnmount(() => {
-    clearHomeWelcomeRequest();
     growthProgressRequestController?.abort();
     growthProgressRequestController = null;
     disposeQuizSession();

@@ -1,8 +1,6 @@
 import homeWelcomeRulesModule from "../../../shared/homeWelcomeRules.browser.mjs";
 
-export const HOME_WELCOME_CACHE_KEY = "wonder-trivia-island.home-welcome.cache";
 export const HOME_WELCOME_VISIT_DATE_KEY = "wonder-trivia-island.home-welcome.visit-date";
-export const HOME_WELCOME_CACHE_VERSION = 5;
 const HOME_WELCOME_SHARED_RULES =
   homeWelcomeRulesModule && typeof homeWelcomeRulesModule === "object" ? homeWelcomeRulesModule : {};
 const HOME_WELCOME_STYLE_CONFIG =
@@ -556,71 +554,4 @@ export function markHomeWelcomeVisited(date = new Date()) {
   const dateKey = getHomeWelcomeDateKey(date);
   safeWriteLocalStorage(HOME_WELCOME_VISIT_DATE_KEY, dateKey);
   return dateKey;
-}
-
-export function readHomeWelcomeCache(context = {}, date = new Date()) {
-  const rawCache = safeReadLocalStorage(HOME_WELCOME_CACHE_KEY);
-
-  if (!rawCache) {
-    return null;
-  }
-
-  try {
-    const parsedCache = JSON.parse(rawCache);
-    const normalizedTitle = normalizeHomeWelcomeTitle(parsedCache?.title);
-    const normalizedText = normalizeHomeWelcomeLine(parsedCache?.text);
-    const normalizedSpeechText = normalizeHomeWelcomeSpeechText(parsedCache?.speechText || parsedCache?.text);
-
-    if (
-      parsedCache?.version !== HOME_WELCOME_CACHE_VERSION ||
-      normalizeText(parsedCache?.date, 20) !== getHomeWelcomeDateKey(date) ||
-      normalizeText(parsedCache?.contextHash, 200) !== buildHomeWelcomeContextHash(context) ||
-      !normalizedText ||
-      !normalizedSpeechText
-    ) {
-      return null;
-    }
-
-    return {
-      ...parsedCache,
-      title: normalizedTitle,
-      text: normalizedText,
-      speechText: normalizedSpeechText
-    };
-  } catch {
-    return null;
-  }
-}
-
-export function writeHomeWelcomeCache(
-  context = {},
-  text = "",
-  {
-    title = "",
-    speechText = "",
-    source = "ai",
-    date = new Date()
-  } = {}
-) {
-  const normalizedTitle = normalizeHomeWelcomeTitle(title);
-  const normalizedText = normalizeHomeWelcomeLine(text);
-  const normalizedSpeechText = normalizeHomeWelcomeSpeechText(speechText || normalizedText);
-
-  if (!normalizedText || !normalizedSpeechText) {
-    return null;
-  }
-
-  const snapshot = {
-    version: HOME_WELCOME_CACHE_VERSION,
-    date: getHomeWelcomeDateKey(date),
-    contextHash: buildHomeWelcomeContextHash(context),
-    title: normalizedTitle,
-    text: normalizedText,
-    speechText: normalizedSpeechText,
-    source: normalizeText(source, 20) || "ai",
-    createdAt: new Date().toISOString()
-  };
-
-  safeWriteLocalStorage(HOME_WELCOME_CACHE_KEY, JSON.stringify(snapshot));
-  return snapshot;
 }

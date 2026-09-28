@@ -1,5 +1,4 @@
 const express = require("express");
-const { generateHomeWelcomeMessage } = require("../../services/homeWelcomeMessage");
 const {
   generateQuestionReview,
   generateQuizSessionSummary,
@@ -112,12 +111,11 @@ router.post("/review", async (req, res, next) => {
   }
 });
 
+// 整轮学习总结走本地确定性规则（buildSessionSummaryFallback），
+// 与模型配置无关；单题点评 /review 和语音 /review/speech 仍走模型。
 router.post("/review/summary", async (req, res, next) => {
   try {
-    const model = normalizeRequestText(req.body?.model, 120);
-    const reviewLength = normalizeRequestText(req.body?.reviewLength, 20);
     const attempts = Array.isArray(req.body?.attempts) ? req.body.attempts : [];
-    const aiRuntime = parseAiRuntime(req.body?.aiRuntime);
 
     if (attempts.length === 0) {
       res.status(400).json({
@@ -126,18 +124,7 @@ router.post("/review/summary", async (req, res, next) => {
       return;
     }
 
-    if (aiRuntime.issues.length > 0) {
-      res.status(400).json({
-        message: "AI 运行时配置无效。",
-        details: aiRuntime.issues
-      });
-      return;
-    }
-
     const result = await generateQuizSessionSummary({
-      aiRuntime: aiRuntime.config,
-      model,
-      reviewLength,
       playMode: normalizeRequestText(req.body?.playMode, 20),
       stageTitle: normalizeRequestText(req.body?.stageTitle, 80),
       score: Number(req.body?.score),
@@ -151,46 +138,6 @@ router.post("/review/summary", async (req, res, next) => {
     res.json({
       message: "本轮 AI 学习总结已生成。",
       data: result.summary,
-      meta: result.meta
-    });
-  } catch (error) {
-    if (error?.statusCode) {
-      res.status(error.statusCode).json({
-        message: error.message,
-        details: error.details || []
-      });
-      return;
-    }
-
-    next(error);
-  }
-});
-
-router.post("/review/home-welcome", async (req, res, next) => {
-  try {
-    const model = normalizeRequestText(req.body?.model, 120);
-    const aiRuntime = parseAiRuntime(req.body?.aiRuntime);
-    const context = req.body?.context && typeof req.body.context === "object" && !Array.isArray(req.body.context)
-      ? req.body.context
-      : {};
-
-    if (aiRuntime.issues.length > 0) {
-      res.status(400).json({
-        message: "AI 运行时配置无效。",
-        details: aiRuntime.issues
-      });
-      return;
-    }
-
-    const result = await generateHomeWelcomeMessage({
-      model,
-      aiRuntime: aiRuntime.config,
-      context
-    });
-
-    res.json({
-      message: "首页欢迎语已生成。",
-      data: result.message,
       meta: result.meta
     });
   } catch (error) {

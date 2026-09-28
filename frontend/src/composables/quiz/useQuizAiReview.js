@@ -303,6 +303,7 @@ export function createQuizAiReview({
     quizSummaryController = controller;
 
     try {
+      // 整轮总结由后端本地确定性规则生成，不再传模型配置。
       const payload = await generateQuizSessionSummary({
         attempts,
         score: getCurrentScore(),
@@ -312,9 +313,6 @@ export function createQuizAiReview({
         accuracyPercent: getAccuracyPercent(),
         playMode: getPlayMode(),
         stageTitle: getStageTitle(),
-        model: settingsStore.effectiveReviewModel || "",
-        reviewLength: coachingPreferences.value?.aiReviewLength || "standard",
-        aiRuntime: settingsStore.effectiveReviewRuntimeConfig,
         signal: controller.signal
       });
 

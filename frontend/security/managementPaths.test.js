@@ -122,7 +122,6 @@ describe("isManagementRequest —— A 类必须放行", () => {
       "/api/questions/submit",
       "/api/questions/review",
       "/api/questions/review/summary",
-      "/api/questions/review/home-welcome",
       "/api/questions/review/speech",
       "/api/health"
     ];

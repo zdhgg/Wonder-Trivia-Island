@@ -16,7 +16,7 @@
 |   |   |-- db/              # SQLite 连接与事务辅助
 |   |   |-- questions/       # 题目仓储、类型、知识标签别名
 |   |   |-- routes/          # questions / challenge / study record API
-|   |   `-- services/        # 导入校验、AI 点评、TTS、首页欢迎语、AI 连接探针
+|   |   `-- services/        # 导入校验、AI 点评、TTS、AI 连接探针
 |   `-- test/
 |-- frontend/
 |   |-- src/
@@ -146,7 +146,7 @@ npm run backend:start
 
 如果未配置 `ADMIN_IMPORT_KEY`，导入接口默认只允许本机访问。
 External AI Gateway 是 **localhost-only 的本机进程间接口**：只供 DSH / External Harness 直连 `http://127.0.0.1:8008/api/external-ai/...` 使用。它只认真实 socket loopback，**不需要也不接受任何凭证**——既没有网关专用密钥，也不接受 `ADMIN_IMPORT_KEY`。它不经过 Vite，也不应通过任何远程代理或浏览器暴露给局域网。它只提供白名单查询、proposal 提交和 proposal 状态读取，不提供题库或学习记录写入。
-如果未配置 `OPENAI_API_KEY`，AI 点评、首页欢迎语和语音播报会返回不可用提示；题目生成不依赖该 Key（由外部 Harness 完成），现有题库查看、导入、答题、学习和闯关功能也不受影响。
+如果未配置 `OPENAI_API_KEY`，AI 点评和语音播报会返回不可用提示；首页欢迎语（本地规则）和整轮学习总结（本地确定性逻辑）不依赖任何模型 Key。题目生成不依赖该 Key（由外部 Harness 完成），现有题库查看、导入、答题、学习和闯关功能也不受影响。
 教学演示（Teaching Demo）不依赖任何模型 Key：系统只登记“待外部生成”请求，demo 由外部 Harness 通过 External AI Gateway 提交，未配置 `OPENAI_API_KEY` 时该流程依然完整可用。
 如果你在前端设置里为某条模型填写了自定义 `Base URL`，需要同时填写该模型自己的 `API Key`；服务端不会再把默认密钥转发到任意自定义网关。
 
@@ -156,8 +156,7 @@ External AI Gateway 是 **localhost-only 的本机进程间接口**：只供 DSH
 - `POST /api/questions/submit`：提交答案并返回判题结果
 - `POST /api/questions/review`：为单题生成 AI 点评
 - `POST /api/questions/review/speech`：把点评文案转成语音
-- `POST /api/questions/review/summary`：为整轮练习生成 AI 学习总结
-- `POST /api/questions/review/home-welcome`：生成首页欢迎语
+- `POST /api/questions/review/summary`：为整轮练习生成学习总结（本地确定性逻辑，不调用模型）
 - `GET /api/questions/stats`：返回当前题库总数
 - `POST /api/questions/coverage`：返回多个目标条件下的题量盘点
 - `GET /api/questions`：按分页 / 学科 / 年级 / 学期 / 难度 / 关键词查看当前题库
@@ -270,8 +269,7 @@ Harness 的覆盖规则（服务端强制）：一次成功的提交会把 `teac
 - 初始化脚本当前会写入 `2146` 道示例题
 - 答题页支持独立的出题设置面板，可设置每轮题数、每题限时、每题分值和抽题难度
 - 出题设置会自动记住上次选择
-- 支持 AI 单题点评、整轮总结、首页欢迎语和点评语音
-- 首页欢迎语支持标题 / 欢迎短句 / 播报三段式生成，并按时段自动调整文案
+- 支持 AI 单题点评和点评语音；整轮总结由本地确定性规则生成，首页欢迎语由本地规则按时段生成（均不调用模型）
 - 支持错题温习与学习记录持久化
 - 支持按年级 / 学期组织的闯关进度持久化
 - 支持闯关世界大地图，按分册岛屿展示星星收集和章节进度
@@ -397,7 +395,7 @@ npm run questions:import -- --from-seed --limit 20
 
 边界约定：
 
-- 系统不调用任何模型出题；保留的 AI 能力只有单题点评、学习总结、首页欢迎语、TTS 和 runtime-check；
+- 系统不调用任何模型出题；保留的 AI 能力只有单题点评、TTS 和 runtime-check（整轮总结与首页欢迎语已本地化，不调用模型）；
 - Harness 不直接写 `questions`，唯一写库入口是人工 confirm；
 - 不存在 Question Draft / Request / Queue 这类中间态；
 - 正式入库必须经人在导入页确认，`confirm` 之外没有第二条写题库路径。
