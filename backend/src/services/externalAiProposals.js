@@ -12,8 +12,15 @@ const PROPOSAL_TYPES = Object.freeze([
   "question_type_advice"
 ]);
 const PROPOSAL_STATUSES = Object.freeze(["pending", "accepted", "rejected"]);
+const TEACHING_INTERVENTION_TYPES = Object.freeze([
+  "micro_animation",
+  "comparison_demo",
+  "guided_example",
+  "practice"
+]);
 const PROPOSAL_TYPE_SET = new Set(PROPOSAL_TYPES);
 const PROPOSAL_STATUS_SET = new Set(PROPOSAL_STATUSES);
+const TEACHING_INTERVENTION_TYPE_SET = new Set(TEACHING_INTERVENTION_TYPES);
 const MAX_JSON_LENGTH = 64 * 1024;
 const MAX_REVIEW_NOTE_LENGTH = 2000;
 const createTableSql = `
@@ -90,6 +97,65 @@ function normalizeScope(value) {
   return { value: normalized, text };
 }
 
+function normalizeTeachingIntervention(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("suggestion.teachingIntervention 必须是对象。");
+  }
+
+  const problemType = normalizeText(value.problemType, 160);
+  const recommendedIntervention = normalizeText(value.recommendedIntervention, 40);
+  const reason = normalizeText(value.reason, 1000);
+
+  if (!problemType || !reason || !TEACHING_INTERVENTION_TYPE_SET.has(recommendedIntervention)) {
+    throw new Error(
+      `suggestion.teachingIntervention 必须包含 problemType、reason，以及受支持的 recommendedIntervention（${TEACHING_INTERVENTION_TYPES.join("、")}）。`
+    );
+  }
+
+  if (!Object.hasOwn(value, "suggestedDemo") || value.suggestedDemo === undefined || value.suggestedDemo === null) {
+    throw new Error("suggestion.teachingIntervention.suggestedDemo 不能为空。");
+  }
+
+  if (
+    typeof value.suggestedDemo !== "string" &&
+    (typeof value.suggestedDemo !== "object" || value.suggestedDemo === null || Array.isArray(value.suggestedDemo))
+  ) {
+    throw new Error("suggestion.teachingIntervention.suggestedDemo 必须是文本或对象。");
+  }
+
+  const suggestedDemo = typeof value.suggestedDemo === "string"
+    ? normalizeText(value.suggestedDemo, 2000)
+    : value.suggestedDemo;
+  const suggestedDemoText = JSON.stringify(suggestedDemo);
+
+  if (!suggestedDemoText || suggestedDemoText.length > 12 * 1024 || (typeof suggestedDemo === "string" && !suggestedDemo)) {
+    throw new Error("suggestion.teachingIntervention.suggestedDemo 内容无效或过大。");
+  }
+
+  return {
+    problemType,
+    recommendedIntervention,
+    reason,
+    suggestedDemo
+  };
+}
+
+function getTeachingIntervention(suggestion) {
+  if (!suggestion || typeof suggestion !== "object" || Array.isArray(suggestion)) {
+    return null;
+  }
+
+  if (!Object.hasOwn(suggestion, "teachingIntervention")) {
+    return null;
+  }
+
+  try {
+    return normalizeTeachingIntervention(suggestion.teachingIntervention);
+  } catch {
+    return null;
+  }
+}
+
 function getSourceKey(source) {
   if (typeof source === "string") {
     return normalizeText(source, 120);
@@ -122,6 +188,17 @@ function normalizeProposalInput(input = {}) {
   const scope = normalizeScope(input.scope);
   const suggestion = serializeJsonValue(input.suggestion, "suggestion");
   const evidence = serializeJsonValue(input.evidence, "evidence");
+
+  if (suggestion.value && typeof suggestion.value === "object" && !Array.isArray(suggestion.value)) {
+    if (Object.hasOwn(suggestion.value, "teachingIntervention")) {
+      const teachingIntervention = normalizeTeachingIntervention(suggestion.value.teachingIntervention);
+      suggestion.value = {
+        ...suggestion.value,
+        teachingIntervention
+      };
+      suggestion.text = JSON.stringify(suggestion.value);
+    }
+  }
 
   return {
     proposalType,
@@ -479,8 +556,11 @@ function buildLearningEvidence(db, filters = {}) {
 module.exports = {
   PROPOSAL_TYPES,
   PROPOSAL_STATUSES,
+  TEACHING_INTERVENTION_TYPES,
   ensureExternalAiProposalsTable,
   normalizeProposalInput,
+  normalizeTeachingIntervention,
+  getTeachingIntervention,
   createProposal,
   parseProposalId,
   getProposal,

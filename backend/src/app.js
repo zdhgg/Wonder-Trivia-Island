@@ -4,6 +4,7 @@ const morgan = require("morgan");
 const { closeDatabaseConnection, createDatabaseConnection, initializeDatabase } = require("./db/database");
 const { ensureQuestionsTable } = require("./questions/repository");
 const { ensureExternalAiProposalsTable } = require("./services/externalAiProposals");
+const { ensureTeachingDemoDraftsTable } = require("./services/teachingDemoDrafts");
 const challengeProgressRouter = require("./routes/challengeProgress");
 const growthFootprintsRouter = require("./routes/growthFootprints");
 const growthMilestonesRouter = require("./routes/growthMilestones");
@@ -17,6 +18,7 @@ const studyRecordBookRouter = require("./routes/studyRecordBook");
 initializeDatabase((db) => {
   ensureQuestionsTable(db);
   ensureExternalAiProposalsTable(db);
+  ensureTeachingDemoDraftsTable(db);
 });
 
 const app = express();

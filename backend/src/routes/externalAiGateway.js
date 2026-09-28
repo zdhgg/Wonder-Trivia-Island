@@ -20,10 +20,17 @@ const {
   createProposal,
   buildLearningEvidence,
   getProposal,
+  getTeachingIntervention,
   listProposals,
   parseProposalId,
   PROPOSAL_STATUSES
 } = require("../services/externalAiProposals");
+const {
+  DEFAULT_REQUEST_LIMIT,
+  MAX_REQUEST_LIMIT,
+  listRequestedTeachingDemoRequests,
+  saveTeachingDemoDraft
+} = require("../services/teachingDemoDrafts");
 
 const router = express.Router();
 const QUESTION_CONTEXT_FIELDS = [
@@ -292,6 +299,165 @@ router.post("/proposals", (req, res, next) => {
     res.status(400).json({
       message: error.message || "proposal 数据不合法。"
     });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 教学演示（Teaching Demo）外部生成闭环
+//
+// Wonder-Trivia-Island 不调用任何模型：
+//   1. 用户在管理页点击“制作教学演示草稿”，系统只登记待生成请求；
+//   2. 外部 Harness 用下面第一个接口拉取请求，自行用任意模型生成受控 spec；
+//   3. Harness 用第二个接口提交 draft，服务端强制校验后保存为待审核草稿。
+// Harness 不能 approve/reject proposal 或 demo，也不能修改题库、学习记录。
+// ---------------------------------------------------------------------------
+
+// 只返回「已 accepted 且用户明确请求过、且尚未提交草稿」的最小必要数据。
+router.get("/teaching-demo-requests", (req, res, next) => {
+  const limit = parseIntegerParam(req.query?.limit, DEFAULT_REQUEST_LIMIT, {
+    min: 1,
+    max: MAX_REQUEST_LIMIT
+  });
+
+  if (limit === null) {
+    res.status(400).json({
+      message: `limit 仅支持 1 到 ${MAX_REQUEST_LIMIT}。`
+    });
+    return;
+  }
+
+  try {
+    const requests = listRequestedTeachingDemoRequests(req.db, { limit });
+
+    res.json({
+      // 只暴露外部 Harness 真正需要的数据：不含管理员字段、数据库结构或完整学习档案。
+      data: requests.map((item) => ({
+        proposalId: item.proposalId,
+        proposalType: item.proposalType,
+        interventionType: item.interventionType,
+        scope: item.scope,
+        suggestion: item.suggestion,
+        teachingIntervention: getTeachingIntervention(item.suggestion),
+        source: item.source,
+        evidence: item.evidence,
+        requestedAt: item.requestedAt
+      })),
+      limit
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// 提交候选 demo spec。服务端检查 proposal 状态、用户请求记录、类型一致性，
+// 并通过 teachingDemoSpec 白名单归一化后才落库为 draft。
+router.post("/teaching-demo-drafts", (req, res, next) => {
+  const proposalId = parseProposalId(req.body?.proposalId);
+  const interventionType = normalizeQueryText(req.body?.interventionType, 40);
+
+  if (!proposalId) {
+    res.status(400).json({ message: "proposalId 必须是正整数。" });
+    return;
+  }
+
+  if (!interventionType) {
+    res.status(400).json({ message: "interventionType 必须提供。" });
+    return;
+  }
+
+  try {
+    const proposal = getProposal(req.db, proposalId);
+
+    if (!proposal) {
+      res.status(404).json({ message: "proposal 不存在。" });
+      return;
+    }
+
+    if (proposal.status !== "accepted") {
+      res.status(409).json({ message: "只有 accepted proposal 才能提交教学演示草稿。" });
+      return;
+    }
+
+    const intervention = getTeachingIntervention(proposal.suggestion);
+
+    if (!intervention) {
+      res.status(409).json({ message: "该 proposal 没有合法的 teachingIntervention。" });
+      return;
+    }
+
+    if (intervention.recommendedIntervention !== interventionType) {
+      res.status(409).json({
+        message: `interventionType 必须与 proposal 推荐的教学方式一致：${intervention.recommendedIntervention}。`
+      });
+      return;
+    }
+
+    let saved;
+
+    try {
+      saved = saveTeachingDemoDraft(req.db, {
+        proposalId,
+        interventionType,
+        spec: req.body?.spec
+      });
+    } catch (error) {
+      if (Number(error?.statusCode) === 422) {
+        res.status(422).json({
+          message: error.message || "教学演示规格未通过系统白名单校验。",
+          details: Array.isArray(error.details) ? error.details : []
+        });
+        return;
+      }
+
+      throw error;
+    }
+
+    if (saved.kind === "requestMissing") {
+      res.status(409).json({
+        message: "该 proposal 尚未由用户在系统内请求制作教学演示草稿，Harness 不能主动提交 demo。"
+      });
+      return;
+    }
+
+    if (saved.kind === "unsupported") {
+      res.status(409).json({ message: "教学演示类型不受支持，只允许 comparison_demo 或 micro_animation。" });
+      return;
+    }
+
+    if (saved.kind === "interventionMismatch") {
+      res.status(409).json({
+        message: `interventionType 与请求记录不一致：${saved.expectedInterventionType}。`
+      });
+      return;
+    }
+
+    if (saved.kind === "draftApproved") {
+      res.status(409).json({ message: "教学演示草稿已经确认可用，不能覆盖。" });
+      return;
+    }
+
+    if (saved.kind === "draftAwaitingReview") {
+      res.status(409).json({
+        message: "该教学演示草稿正在等待人工审核，Harness 不能重复提交覆盖。"
+      });
+      return;
+    }
+
+    if (saved.kind === "requestNotPending") {
+      res.status(409).json({
+        message: "当前没有待处理的生成请求；已不采用的草稿需要用户在系统内重新登记请求后才能再次提交。"
+      });
+      return;
+    }
+
+    if (saved.kind !== "saved") {
+      res.status(400).json({ message: "教学演示草稿保存失败。" });
+      return;
+    }
+
+    res.status(201).json({ data: saved.draft });
+  } catch (error) {
+    next(error);
   }
 });
 

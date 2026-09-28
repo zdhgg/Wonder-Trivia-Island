@@ -148,6 +148,7 @@ npm run backend:start
 External AI Proposal Gateway 使用独立的 `EXTERNAL_AI_GATEWAY_KEY`，不会接受 `ADMIN_IMPORT_KEY`。
 未配置该密钥时 Gateway 默认关闭；它只提供白名单查询、proposal 提交和 proposal 状态读取，不提供题库或学习记录写入。
 如果未配置 `OPENAI_API_KEY`，AI 出题、AI 点评、首页欢迎语和语音播报会返回不可用提示，但现有题库查看、导入、答题、学习和闯关功能不受影响。
+教学演示（Teaching Demo）不依赖任何模型 Key：系统只登记“待外部生成”请求，demo 由外部 Harness 通过 External AI Gateway 提交，未配置 `OPENAI_API_KEY` 时该流程依然完整可用。
 如果你在前端设置里为某条模型填写了自定义 `Base URL`，需要同时填写该模型自己的 `API Key`；服务端不会再把默认密钥转发到任意自定义网关。
 
 启动后访问：
@@ -180,8 +181,13 @@ External AI Proposal Gateway 使用独立的 `EXTERNAL_AI_GATEWAY_KEY`，不会�
 - `GET /api/external-ai/learning-evidence?profileId=...`：按必填 profileId 查询聚合后的学习证据，不返回 profile 列表、profile ID 或完整学习记录 JSON（需要 `x-external-ai-key`）
 - `GET/POST /api/external-ai/proposals`：读取 accepted、或按 `sourceId` 筛选 pending/rejected proposal，或提交 pending proposal（需要 `x-external-ai-key`）
 - `GET /api/external-ai/proposals/:id`：查询 accepted，或按 `sourceId` 筛选单条 pending/rejected proposal（需要 `x-external-ai-key`）
+- `GET /api/external-ai/teaching-demo-requests`：查询“已 accepted 且用户明确请求制作”的教学演示待生成请求（需要 `x-external-ai-key`）
+- `POST /api/external-ai/teaching-demo-drafts`：提交外部 Harness 生成的受控 demo spec，校验后保存为 draft（需要 `x-external-ai-key`）
 - `GET /api/proposals?status=pending|accepted|rejected`：后台审核页读取 proposal（复用 `ADMIN_IMPORT_KEY` / 本机规则）
 - `POST /api/proposals/:id/accept`、`POST /api/proposals/:id/reject`：后台审核 proposal（复用 `ADMIN_IMPORT_KEY` / 本机规则）
+- `GET /api/proposals/:id/teaching-demo`：后台读取教学演示的请求状态与草稿（复用 `ADMIN_IMPORT_KEY` / 本机规则）
+- `POST /api/proposals/:id/teaching-demo/request`：用户点击“制作教学演示草稿”，只登记待外部生成请求，不调用任何模型（复用 `ADMIN_IMPORT_KEY` / 本机规则）
+- `POST /api/proposals/:id/teaching-demo/approve`、`POST /api/proposals/:id/teaching-demo/reject`：人工审核教学演示草稿，只有内部管理接口能改状态（复用 `ADMIN_IMPORT_KEY` / 本机规则）
 - `GET /health`：服务健康检查
 
 ### External AI Proposal Gateway MVP
@@ -207,6 +213,49 @@ curl -X POST http://localhost:8008/api/external-ai/proposals `
 审核入口在“工具台 → 知识提案”。审核接受后，后续 Harness 可通过 `GET /api/external-ai/proposals?status=accepted` 查询动态补充。
 
 `source.harnessId` / `sourceId` 目前只是 proposal 的来源筛选值，不是 Harness 身份认证或安全隔离。`learning-evidence` 的 `profileId` 是必填的 opaque 精确筛选值；缺少时返回 400，不提供跨 profile 的默认聚合模式。接口不会返回 profile 列表、profile ID 或原始 `study_record_book` JSON。
+
+### 教学演示（Teaching Demo）外部生成
+
+所有 AI 推理与生成都在外部 Harness 完成，Wonder-Trivia-Island 只做：提供受控数据 → 接收候选结果 → 人工审核 → 校验 → 保存 → 安全渲染。系统不需要 `OPENAI_API_KEY`，不绑定任何模型供应商，也不存在 `OPENAI_TEACHING_DEMO_MODEL`。
+
+1. 用户在“工具台 → 知识提案”里接受 proposal。proposal 的 `suggestion.teachingIntervention`（`problemType` / `recommendedIntervention` / `reason` / `suggestedDemo`）由外部 Harness 提交，旧 proposal 没有该字段时继续兼容。
+2. 只有已 accepted 且 `recommendedIntervention` 为 `comparison_demo` / `micro_animation` 的 proposal，才显示“制作教学演示草稿”。点击只登记请求（`teaching_demo_requests` 表，状态 `requested`），**不调用任何模型**，页面上显示“已请求生成，等待外部 AI 提交草稿”。
+3. Harness 轮询 `GET /api/external-ai/teaching-demo-requests` 取回待生成请求；请求只包含 `proposalId`、`proposalType`、`interventionType`、`scope`、`suggestion`、`teachingIntervention`、`source`、`evidence`、`requestedAt`。
+4. Harness 用自己的模型（DeepSeek / Codex / 其他）生成受控 spec，再提交：
+
+```bash
+curl -X POST http://localhost:8008/api/external-ai/teaching-demo-drafts `
+  -H "x-external-ai-key: your-gateway-key" `
+  -H "Content-Type: application/json" `
+  -d '{
+    "proposalId": 12,
+    "interventionType": "comparison_demo",
+    "spec": {
+      "template": "comparison_demo",
+      "title": "乘法口诀和乘法算式",
+      "summary": "两种写法相关，但形式和题目要求不同。",
+      "scene": {
+        "left": {"label": "乘法口诀", "value": "三六十八", "description": "用语言记住乘法关系。"},
+        "right": {"label": "乘法算式", "value": "3×6=18", "description": "用数字和运算符表示计算关系。"}
+      },
+      "steps": [
+        {"title": "先看题目要求", "text": "题目要求填写乘法口诀。", "focus": "both"},
+        {"title": "区分表达形式", "text": "三六十八是口诀，3×6=18 是算式。", "focus": "left"},
+        {"title": "记住关系", "text": "两种写法相关，但不能互相替代。", "focus": "takeaway"}
+      ],
+      "labels": ["口诀", "算式"],
+      "takeaway": "3×6=18 是正确的算式，只是没有按题目要求写成口诀。",
+      "question": "题目要求写乘法口诀，应该选择哪一种？"
+    }
+  }'
+```
+
+5. 服务端强制检查：proposal 存在且 accepted、用户确实请求过制作、`interventionType` 与 recommendation 一致、只允许 `comparison_demo` / `micro_animation`、spec 通过白名单校验（拒绝未知字段、HTML/JS/Vue、SVG path、组件名、越界数值）。通过后保存为 `draft`，并写回 `teaching_demo_requests.status = 'submitted'`。
+6. 用户在审核页用现有 Renderer 预览草稿，再“确认可用”或“不采用”。Harness 无法 approve/reject proposal 或 demo，也不能修改题库、学习记录，更不能绕过“制作”按钮主动塞 demo。
+
+Harness 的覆盖规则（服务端强制）：一次成功的提交会把 `teaching_demo_requests.status` 从 `requested` 变为 `submitted`；此后等待人工审核中的 draft、以及已 `approved` 的 draft 都不允许 Harness 再次提交（409）。draft 被判为 `rejected` 后，必须先由用户在系统内重新登记请求（request 恢复为 `requested`，不新增第三个 request 状态），Harness 才能再次提交并得到一个新的 `draft`。`teaching_demo_requests.status` 只有 `requested` / `submitted`；`teaching_demo_drafts.status` 只有 `draft` / `approved` / `rejected`。draft 落库与 request → `submitted` 在同一个 savepoint 中完成，不会出现只有一个成功的脏状态。
+
+`practice` 不生成演示，`guided_example` 第一版只展示推荐，均保持原有边界。草稿只停留在后台，尚未接入孩子端。
 
 ## 题库导入
 

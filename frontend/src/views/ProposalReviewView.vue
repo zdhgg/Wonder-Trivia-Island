@@ -1,6 +1,13 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from "vue";
-import { fetchProposalReviewList, reviewProposal } from "../services/proposalsApi";
+import {
+  fetchProposalReviewList,
+  fetchTeachingDemoState,
+  requestTeachingDemoDraft,
+  reviewProposal,
+  reviewTeachingDemoDraft
+} from "../services/proposalsApi";
+import TeachingDemoRenderer from "../components/teaching/TeachingDemoRenderer.vue";
 
 const props = defineProps({
   adminKey: {
@@ -22,6 +29,18 @@ const TYPE_LABELS = Object.freeze({
   knowledge_update: "知识补充 / 修正",
   question_type_advice: "题型 / 出题建议"
 });
+const INTERVENTION_LABELS = Object.freeze({
+  micro_animation: "动态关系演示",
+  comparison_demo: "对比演示",
+  guided_example: "分步骤示范",
+  practice: "专项练习"
+});
+const SUPPORTED_DEMO_TYPES = new Set(["comparison_demo", "micro_animation"]);
+const DRAFT_STATUS_LABELS = Object.freeze({
+  draft: "待审核",
+  approved: "已确认可用",
+  rejected: "不采用"
+});
 
 const activeStatus = ref("pending");
 const proposals = ref([]);
@@ -30,6 +49,9 @@ const isReviewing = ref(0);
 const errorMessage = ref("");
 const actionMessage = ref("");
 const reviewNotes = reactive({});
+const demoStates = reactive({});
+const draftNotes = reactive({});
+const draftActionKey = ref("");
 
 const adminKeyModel = computed({
   get: () => props.adminKey,
@@ -67,6 +89,87 @@ function statusLabel(status) {
   return STATUS_TABS.find((tab) => tab.value === status)?.label || status;
 }
 
+function getTeachingIntervention(proposal) {
+  const teachingIntervention = proposal?.suggestion?.teachingIntervention;
+
+  if (!teachingIntervention || typeof teachingIntervention !== "object" || Array.isArray(teachingIntervention)) {
+    return null;
+  }
+
+  if (
+    !INTERVENTION_LABELS[teachingIntervention.recommendedIntervention] ||
+    typeof teachingIntervention.problemType !== "string" ||
+    typeof teachingIntervention.reason !== "string" ||
+    teachingIntervention.suggestedDemo === undefined ||
+    teachingIntervention.suggestedDemo === null
+  ) {
+    return null;
+  }
+
+  return teachingIntervention;
+}
+
+function interventionLabel(type) {
+  return INTERVENTION_LABELS[type] || type || "未识别";
+}
+
+function demoStateFor(proposal) {
+  return demoStates[proposal.id] || null;
+}
+
+function draftFor(proposal) {
+  return demoStateFor(proposal)?.draft || null;
+}
+
+function requestFor(proposal) {
+  return demoStateFor(proposal)?.request || null;
+}
+
+// 请求已登记、但外部 Harness 还没提交草稿：这是「等待外部生成」的可见状态。
+function isAwaitingExternalGeneration(proposal) {
+  return requestFor(proposal)?.status === "requested" && !draftFor(proposal);
+}
+
+function draftStatusLabel(status) {
+  return DRAFT_STATUS_LABELS[status] || status;
+}
+
+function suggestedDemoSummary(value) {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (value && typeof value === "object") {
+    return value.summary || value.title || value.description || formatJson(value);
+  }
+
+  return "—";
+}
+
+function isSupportedDemoType(type) {
+  return SUPPORTED_DEMO_TYPES.has(type);
+}
+
+async function loadTeachingDemoStates(nextProposals) {
+  Object.keys(demoStates).forEach((key) => delete demoStates[key]);
+
+  const supportedAccepted = nextProposals.filter((proposal) => {
+    const intervention = getTeachingIntervention(proposal);
+    return proposal.status === "accepted" && intervention && isSupportedDemoType(intervention.recommendedIntervention);
+  });
+
+  const loaded = await Promise.all(
+    supportedAccepted.map(async (proposal) => ({
+      proposalId: proposal.id,
+      state: await fetchTeachingDemoState({ proposalId: proposal.id, adminKey: props.adminKey })
+    }))
+  );
+
+  loaded.forEach(({ proposalId, state }) => {
+    demoStates[proposalId] = state;
+  });
+}
+
 async function loadProposals() {
   isLoading.value = true;
   errorMessage.value = "";
@@ -77,10 +180,52 @@ async function loadProposals() {
       adminKey: props.adminKey
     });
     proposals.value = payload.data;
+    await loadTeachingDemoStates(payload.data);
   } catch (error) {
     errorMessage.value = error.message || "加载 proposal 失败。";
   } finally {
     isLoading.value = false;
+  }
+}
+
+// 点击「制作教学演示草稿」只登记待外部生成请求：不调用任何模型，也不假装后台会自动生成。
+async function handleRequestDraft(proposal) {
+  const actionKey = `${proposal.id}:request`;
+  draftActionKey.value = actionKey;
+  errorMessage.value = "";
+  actionMessage.value = "";
+
+  try {
+    demoStates[proposal.id] = await requestTeachingDemoDraft({
+      proposalId: proposal.id,
+      adminKey: props.adminKey
+    });
+    actionMessage.value = "已请求生成，等待外部 AI 提交草稿。草稿提交后刷新本页即可预览。";
+  } catch (error) {
+    errorMessage.value = error.message || "登记教学演示生成请求失败。";
+  } finally {
+    draftActionKey.value = "";
+  }
+}
+
+async function handleDraftReview(proposal, decision) {
+  const actionKey = `${proposal.id}:${decision}`;
+  draftActionKey.value = actionKey;
+  errorMessage.value = "";
+  actionMessage.value = "";
+
+  try {
+    demoStates[proposal.id] = await reviewTeachingDemoDraft({
+      proposalId: proposal.id,
+      decision,
+      reviewNote: draftNotes[proposal.id] || "",
+      adminKey: props.adminKey
+    });
+    actionMessage.value = decision === "approved" ? "教学演示草稿已确认可用。" : "教学演示草稿已标记为不采用。";
+  } catch (error) {
+    errorMessage.value = error.message || "审核教学演示草稿失败。";
+  } finally {
+    draftActionKey.value = "";
   }
 }
 
@@ -212,6 +357,141 @@ onMounted(loadProposals);
                 </section>
               </div>
 
+              <section v-if="getTeachingIntervention(proposal)" class="teaching-intervention-card">
+                <header class="teaching-intervention-card__header">
+                  <div>
+                    <span class="proposal-card__label">教学干预建议</span>
+                    <h5>AI 对问题的教学判断</h5>
+                  </div>
+                  <span class="teaching-intervention-card__type">
+                    {{ interventionLabel(getTeachingIntervention(proposal).recommendedIntervention) }}
+                  </span>
+                </header>
+                <div class="teaching-intervention-card__grid">
+                  <div>
+                    <span class="proposal-card__label">问题类型</span>
+                    <p>{{ getTeachingIntervention(proposal).problemType }}</p>
+                  </div>
+                  <div>
+                    <span class="proposal-card__label">推荐教学方式</span>
+                    <p>{{ interventionLabel(getTeachingIntervention(proposal).recommendedIntervention) }}</p>
+                  </div>
+                  <div>
+                    <span class="proposal-card__label">推荐理由</span>
+                    <p>{{ getTeachingIntervention(proposal).reason }}</p>
+                  </div>
+                  <div>
+                    <span class="proposal-card__label">演示概要</span>
+                    <p>{{ suggestedDemoSummary(getTeachingIntervention(proposal).suggestedDemo) }}</p>
+                  </div>
+                </div>
+              </section>
+
+              <section v-if="proposal.status === 'accepted' && getTeachingIntervention(proposal)" class="teaching-draft-card">
+                <template v-if="getTeachingIntervention(proposal).recommendedIntervention === 'practice'">
+                  <p class="teaching-draft-card__notice">该建议是专项练习，第一版不制作教学演示草稿。</p>
+                </template>
+                <template v-else-if="getTeachingIntervention(proposal).recommendedIntervention === 'guided_example'">
+                  <p class="teaching-draft-card__notice">分步骤示范目前只展示 AI 推荐，暂未支持制作演示。</p>
+                </template>
+                <template v-else-if="isSupportedDemoType(getTeachingIntervention(proposal).recommendedIntervention)">
+                  <div v-if="!draftFor(proposal) && isAwaitingExternalGeneration(proposal)" class="teaching-draft-card__empty">
+                    <div>
+                      <span class="proposal-card__label">教学演示草稿</span>
+                      <p>已请求生成，等待外部 AI 提交草稿。系统不会自己调用模型；外部 Harness 提交后刷新本页即可预览。</p>
+                    </div>
+                    <button
+                      class="proposal-card__secondary-action"
+                      type="button"
+                      :disabled="isLoading"
+                      @click="loadProposals"
+                    >
+                      {{ isLoading ? "刷新中..." : "刷新状态" }}
+                    </button>
+                  </div>
+
+                  <div v-else-if="!draftFor(proposal)" class="teaching-draft-card__empty">
+                    <div>
+                      <span class="proposal-card__label">教学演示草稿</span>
+                      <p>接受 Proposal 不会自动生成演示，本系统也不会自己调用模型。点击按钮只登记「待外部生成」请求，由外部 Harness 生成受控草稿。</p>
+                    </div>
+                    <button
+                      class="btn-cartoon btn-cartoon--pink"
+                      type="button"
+                      :disabled="draftActionKey === `${proposal.id}:request`"
+                      @click="handleRequestDraft(proposal)"
+                    >
+                      {{ draftActionKey === `${proposal.id}:request` ? "登记中..." : "制作教学演示草稿" }}
+                    </button>
+                  </div>
+
+                  <div v-else class="teaching-draft-card__content">
+                    <header class="teaching-draft-card__header">
+                      <div>
+                        <span class="proposal-card__label">教学演示草稿</span>
+                        <h5>{{ draftFor(proposal).spec?.title || "受控演示规格" }}</h5>
+                      </div>
+                      <span :class="['teaching-draft-status', `teaching-draft-status--${draftFor(proposal).status}`]">
+                        {{ draftStatusLabel(draftFor(proposal).status) }}
+                      </span>
+                    </header>
+
+                    <TeachingDemoRenderer :spec="draftFor(proposal).spec" />
+
+                    <details class="teaching-draft-card__spec">
+                      <summary>查看受控结构化规格</summary>
+                      <pre>{{ formatJson(draftFor(proposal).spec) }}</pre>
+                    </details>
+
+                    <p v-if="draftFor(proposal).status === 'approved'" class="teaching-draft-card__notice teaching-draft-card__notice--success">
+                      已确认可用；本轮仍只保留在后台，尚未接入孩子端。
+                    </p>
+                    <p v-else-if="draftFor(proposal).status === 'rejected'" class="teaching-draft-card__notice teaching-draft-card__notice--muted">
+                      已标记为不采用；如需重新生成，可重新登记请求，不建立版本历史。
+                    </p>
+
+                    <div v-if="draftFor(proposal).status === 'draft'" class="teaching-draft-card__review">
+                      <label class="proposal-card__label" :for="`draft-note-${proposal.id}`">草稿审核备注（可选）</label>
+                      <textarea
+                        :id="`draft-note-${proposal.id}`"
+                        v-model="draftNotes[proposal.id]"
+                        class="proposal-card__note"
+                        rows="2"
+                        placeholder="记录这份演示草稿是否清楚、是否适合后续使用。"
+                      ></textarea>
+                      <div class="proposal-card__actions">
+                        <button
+                          class="btn-cartoon btn-cartoon--pink"
+                          type="button"
+                          :disabled="draftActionKey === `${proposal.id}:approved`"
+                          @click="handleDraftReview(proposal, 'approved')"
+                        >
+                          {{ draftActionKey === `${proposal.id}:approved` ? "处理中..." : "确认可用" }}
+                        </button>
+                        <button
+                          class="btn-cartoon"
+                          type="button"
+                          :disabled="draftActionKey === `${proposal.id}:rejected`"
+                          @click="handleDraftReview(proposal, 'rejected')"
+                        >
+                          {{ draftActionKey === `${proposal.id}:rejected` ? "处理中..." : "不采用" }}
+                        </button>
+                      </div>
+                    </div>
+
+                    <button
+                      v-else-if="draftFor(proposal).status === 'rejected'"
+                      class="proposal-card__secondary-action"
+                      type="button"
+                      :disabled="draftActionKey === `${proposal.id}:request`"
+                      @click="handleRequestDraft(proposal)"
+                    >
+                      {{ draftActionKey === `${proposal.id}:request` ? "登记中..." : "重新制作草稿" }}
+                    </button>
+                  </div>
+                </template>
+              </section>
+
               <div v-if="proposal.status === 'pending'" class="proposal-card__review">
                 <label class="proposal-card__label" :for="`proposal-note-${proposal.id}`">审核备注（可选）</label>
                 <textarea
@@ -283,6 +563,7 @@ onMounted(loadProposals);
             <li>接受后作为动态知识补充供 Gateway 查询。</li>
             <li>不会自动改题库、错题、复习计划或静态知识目录。</li>
             <li>题型建议只保留建议，不会创建新题型。</li>
+            <li>教学演示由外部 Harness 提交受控规格，系统只负责校验、保存和渲染。</li>
           </ul>
         </article>
       </aside>
@@ -612,6 +893,165 @@ onMounted(loadProposals);
   white-space: pre-wrap;
 }
 
+.teaching-intervention-card,
+.teaching-draft-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(82, 151, 132, 0.2);
+  border-radius: 15px;
+  background: linear-gradient(145deg, rgba(245, 253, 249, 0.96), rgba(247, 251, 253, 0.94));
+}
+
+.teaching-draft-card {
+  border-color: rgba(89, 135, 180, 0.22);
+  background: linear-gradient(145deg, rgba(247, 251, 255, 0.98), rgba(247, 251, 253, 0.94));
+}
+
+.teaching-intervention-card__header,
+.teaching-draft-card__header,
+.teaching-draft-card__empty {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.teaching-intervention-card h5,
+.teaching-draft-card h5 {
+  margin: 4px 0 0;
+  color: var(--color-ink, #24324a);
+  font-size: 0.94rem;
+}
+
+.teaching-intervention-card__type,
+.teaching-draft-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(220, 243, 235, 0.92);
+  color: #39715f;
+  font-size: 0.72rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.teaching-intervention-card__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.teaching-intervention-card__grid > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 9px 10px;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.teaching-intervention-card p,
+.teaching-draft-card__empty p {
+  margin: 0;
+  color: var(--color-ink, #24324a);
+  font-size: 0.83rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.teaching-draft-card__empty {
+  align-items: center;
+}
+
+.teaching-draft-card__empty > div {
+  display: grid;
+  gap: 5px;
+}
+
+.teaching-draft-card__content {
+  display: grid;
+  gap: 12px;
+}
+
+.teaching-draft-status--draft {
+  background: rgba(255, 239, 196, 0.92);
+  color: #8b6514;
+}
+
+.teaching-draft-status--approved {
+  background: rgba(216, 247, 231, 0.94);
+  color: #267351;
+}
+
+.teaching-draft-status--rejected {
+  background: rgba(255, 226, 230, 0.94);
+  color: #a23f4c;
+}
+
+.teaching-draft-card__spec {
+  border-top: 1px solid rgba(36, 50, 74, 0.08);
+  padding-top: 9px;
+}
+
+.teaching-draft-card__spec summary {
+  color: var(--color-ink-soft, #5b6984);
+  font-size: 0.78rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.teaching-draft-card__spec pre {
+  max-height: 220px;
+  margin: 9px 0 0;
+}
+
+.teaching-draft-card__notice {
+  padding: 9px 10px;
+  border-radius: 10px;
+  background: rgba(255, 244, 209, 0.72);
+  color: #6e5a2a !important;
+}
+
+.teaching-draft-card__notice--success {
+  background: rgba(220, 249, 236, 0.78);
+  color: #277450 !important;
+}
+
+.teaching-draft-card__notice--muted {
+  background: rgba(235, 240, 244, 0.82);
+  color: var(--color-ink-soft, #5b6984) !important;
+}
+
+.teaching-draft-card__review {
+  display: grid;
+  gap: 8px;
+  padding-top: 2px;
+  border-top: 1px solid rgba(36, 50, 74, 0.08);
+}
+
+.proposal-card__secondary-action {
+  justify-self: start;
+  min-height: 34px;
+  padding: 6px 11px;
+  border: 1px solid rgba(36, 50, 74, 0.14);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--color-ink, #24324a);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.proposal-card__secondary-action:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
 .proposal-review-guide {
   display: grid;
   gap: 9px;
@@ -634,12 +1074,19 @@ onMounted(loadProposals);
 
 @media (max-width: 640px) {
   .proposal-review-sidebar,
-  .proposal-card__content-grid {
+  .proposal-card__content-grid,
+  .teaching-intervention-card__grid {
     grid-template-columns: minmax(0, 1fr);
   }
 
   .proposal-card__content-grid .proposal-card__evidence {
     grid-column: auto;
+  }
+
+  .teaching-intervention-card__header,
+  .teaching-draft-card__header,
+  .teaching-draft-card__empty {
+    display: grid;
   }
 }
 </style>
