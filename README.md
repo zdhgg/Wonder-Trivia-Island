@@ -145,6 +145,8 @@ npm run backend:start
 ```
 
 如果未配置 `ADMIN_IMPORT_KEY`，导入接口默认只允许本机访问。
+External AI Proposal Gateway 使用独立的 `EXTERNAL_AI_GATEWAY_KEY`，不会接受 `ADMIN_IMPORT_KEY`。
+未配置该密钥时 Gateway 默认关闭；它只提供白名单查询、proposal 提交和 proposal 状态读取，不提供题库或学习记录写入。
 如果未配置 `OPENAI_API_KEY`，AI 出题、AI 点评、首页欢迎语和语音播报会返回不可用提示，但现有题库查看、导入、答题、学习和闯关功能不受影响。
 如果你在前端设置里为某条模型填写了自定义 `Base URL`，需要同时填写该模型自己的 `API Key`；服务端不会再把默认密钥转发到任意自定义网关。
 
@@ -173,7 +175,38 @@ npm run backend:start
 - `POST /api/questions/import/commit`：直接提交已预检的题目（保留兼容，页面已不再使用）
 - `GET /api/challenge-progress` / `PUT /api/challenge-progress`：读取或保存闯关进度
 - `GET /api/study-record-book` / `PUT /api/study-record-book`：读取或保存错题温习档案
+- `GET /api/external-ai/question-stats`：External AI Gateway 查询题库统计（需要 `x-external-ai-key`）
+- `GET /api/external-ai/questions`：External AI Gateway 查询白名单题目上下文（需要 `x-external-ai-key`）
+- `GET /api/external-ai/learning-evidence?profileId=...`：按必填 profileId 查询聚合后的学习证据，不返回 profile 列表、profile ID 或完整学习记录 JSON（需要 `x-external-ai-key`）
+- `GET/POST /api/external-ai/proposals`：读取 accepted、或按 `sourceId` 筛选 pending/rejected proposal，或提交 pending proposal（需要 `x-external-ai-key`）
+- `GET /api/external-ai/proposals/:id`：查询 accepted，或按 `sourceId` 筛选单条 pending/rejected proposal（需要 `x-external-ai-key`）
+- `GET /api/proposals?status=pending|accepted|rejected`：后台审核页读取 proposal（复用 `ADMIN_IMPORT_KEY` / 本机规则）
+- `POST /api/proposals/:id/accept`、`POST /api/proposals/:id/reject`：后台审核 proposal（复用 `ADMIN_IMPORT_KEY` / 本机规则）
 - `GET /health`：服务健康检查
+
+### External AI Proposal Gateway MVP
+
+Gateway 支持 `focus_mark`、`common_mistake`、`knowledge_update` 和 `question_type_advice` 四种类型。
+proposal 只在 `pending`、`accepted`、`rejected` 三种状态之间停留；accepted 是已确认的动态知识补充，不会自动写入题库、错题记录、复习计划、题型枚举或 `henanGrade*Knowledge.js` / `studyWeakPoints.js`。
+
+请求示例：
+
+```bash
+curl -X POST http://localhost:8008/api/external-ai/proposals `
+  -H "x-external-ai-key: your-gateway-key" `
+  -H "Content-Type: application/json" `
+  -d '{
+    "type": "focus_mark",
+    "scope": {"grade": "二年级", "subject": "数学", "semester": "上册", "knowledgeTag": "两步连推"},
+    "suggestion": {"label": "近期教学重点", "reason": "课堂练习连续出现理解断点"},
+    "source": {"harnessId": "teacher-ai-runner", "runId": "2026-09-28-001"},
+    "evidence": {"questionIds": [123, 456], "wrongCount": 8, "note": "来自课堂错题汇总"}
+  }'
+```
+
+审核入口在“工具台 → 知识提案”。审核接受后，后续 Harness 可通过 `GET /api/external-ai/proposals?status=accepted` 查询动态补充。
+
+`source.harnessId` / `sourceId` 目前只是 proposal 的来源筛选值，不是 Harness 身份认证或安全隔离。`learning-evidence` 的 `profileId` 是必填的 opaque 精确筛选值；缺少时返回 400，不提供跨 profile 的默认聚合模式。接口不会返回 profile 列表、profile ID 或原始 `study_record_book` JSON。
 
 ## 题库导入
 

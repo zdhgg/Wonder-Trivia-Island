@@ -3,16 +3,20 @@ const express = require("express");
 const morgan = require("morgan");
 const { closeDatabaseConnection, createDatabaseConnection, initializeDatabase } = require("./db/database");
 const { ensureQuestionsTable } = require("./questions/repository");
+const { ensureExternalAiProposalsTable } = require("./services/externalAiProposals");
 const challengeProgressRouter = require("./routes/challengeProgress");
 const growthFootprintsRouter = require("./routes/growthFootprints");
 const growthMilestonesRouter = require("./routes/growthMilestones");
 const growthPlansRouter = require("./routes/growthPlans");
 const growthProgressRouter = require("./routes/growthProgress");
 const questionsRouter = require("./routes/questions");
+const externalAiGateway = require("./routes/externalAiGateway");
+const proposalReviewRouter = require("./routes/proposalReview");
 const studyRecordBookRouter = require("./routes/studyRecordBook");
 
 initializeDatabase((db) => {
   ensureQuestionsTable(db);
+  ensureExternalAiProposalsTable(db);
 });
 
 const app = express();
@@ -88,6 +92,8 @@ app.get("/api/health", (req, res) => {
 });
 
 app.use("/api/questions", attachDatabaseConnection, questionsRouter);
+app.use("/api/external-ai", attachDatabaseConnection, externalAiGateway.router);
+app.use("/api/proposals", attachDatabaseConnection, proposalReviewRouter);
 app.use("/api/challenge-progress", challengeProgressRouter);
 app.use("/api/growth-progress", growthProgressRouter);
 // 照片取图入口按记录线分开：两条线的照片 id 是各表独立自增的，会重复，

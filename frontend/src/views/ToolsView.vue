@@ -4,6 +4,7 @@ import StudyNarrationPackPanel from "../components/StudyNarrationPackPanel.vue";
 import { TOOL_DEFAULT_SECTION_ID, TOOL_SECTION_ID, TOOL_SECTIONS, getToolSectionById } from "../components/tools/toolSections";
 import QuestionCatalogView from "./QuestionCatalogView.vue";
 import QuestionImportView from "./QuestionImportView.vue";
+import ProposalReviewView from "./ProposalReviewView.vue";
 
 const props = defineProps({
   adminKey: {
@@ -45,6 +46,8 @@ const activeSectionComponent = computed(() => {
   switch (activeSectionModel.value) {
     case TOOL_SECTION_ID.IMPORT:
       return QuestionImportView;
+    case TOOL_SECTION_ID.PROPOSALS:
+      return ProposalReviewView;
     case TOOL_SECTION_ID.CACHE:
       return StudyNarrationPackPanel;
     case TOOL_SECTION_ID.CATALOG:
@@ -55,6 +58,10 @@ const activeSectionComponent = computed(() => {
 const activeSectionProps = computed(() => {
   switch (activeSectionModel.value) {
     case TOOL_SECTION_ID.IMPORT:
+      return {
+        adminKey: props.adminKey
+      };
+    case TOOL_SECTION_ID.PROPOSALS:
       return {
         adminKey: props.adminKey
       };
@@ -77,6 +84,10 @@ const activeSectionListeners = computed(() => {
     case TOOL_SECTION_ID.IMPORT:
       return {
         imported: handleImported,
+        "update:adminKey": handleAdminKeyUpdate
+      };
+    case TOOL_SECTION_ID.PROPOSALS:
+      return {
         "update:adminKey": handleAdminKeyUpdate
       };
     case TOOL_SECTION_ID.CATALOG:

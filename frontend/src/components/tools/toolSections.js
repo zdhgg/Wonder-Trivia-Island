@@ -1,6 +1,7 @@
 export const TOOL_SECTION_ID = Object.freeze({
   CATALOG: "tools-catalog",
   IMPORT: "tools-import",
+  PROPOSALS: "tools-proposals",
   CACHE: "tools-cache"
 });
 
@@ -20,6 +21,14 @@ export const TOOL_SECTIONS = Object.freeze([
     navLabel: "导入",
     sectionTitle: "导入",
     description: "核对外部 harness 提交的批次，确认后写入题库。"
+  },
+  {
+    id: TOOL_SECTION_ID.PROPOSALS,
+    href: "#tools-proposals",
+    routeSlug: "proposals",
+    navLabel: "知识提案",
+    sectionTitle: "知识提案",
+    description: "审核外部 AI 提交的动态知识补充。"
   },
   {
     id: TOOL_SECTION_ID.CACHE,
