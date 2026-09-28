@@ -84,9 +84,12 @@ describe("isManagementRequest —— B 类必须命中", () => {
     expect(isManagementRequest("DELETE", "/api/questions/import/pending")).toBe(true);
   });
 
-  it("AI 出题与 runtime-check（后者会触发后端出站模型调用）", () => {
-    expect(isManagementRequest("POST", "/api/questions/generate")).toBe(true);
+  it("runtime-check（会触发后端出站模型调用）", () => {
     expect(isManagementRequest("POST", "/api/questions/ai/runtime-check")).toBe(true);
+  });
+
+  it("旧 AI 出题入口已删除：/api/questions/generate 不在路径表，重新加路由时必须重新归类", () => {
+    expect(isManagementRequest("POST", "/api/questions/generate")).toBe(false);
   });
 
   it("proposal 与 teaching demo 的全部入口", () => {

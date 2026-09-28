@@ -521,33 +521,6 @@ export async function createQuestion({ question, adminKey = "", signal }) {
   return payload;
 }
 
-export async function generateQuestionDraft({
-  request,
-  adminKey = "",
-  signal
-} = {}) {
-  const response = await fetch("/api/questions/generate", {
-    method: "POST",
-    headers: buildAdminHeaders(adminKey, true),
-    body: JSON.stringify(request || {}),
-    signal
-  });
-
-  const payload = await response.json().catch(() => null);
-
-  if (!response.ok) {
-    const error = new Error(payload?.message || `AI 出题失败：${response.status}`);
-    error.details = payload?.details || [];
-    throw error;
-  }
-
-  if (!payload?.data || !Array.isArray(payload?.drafts)) {
-    throw new Error("AI 出题结果格式不正确。");
-  }
-
-  return payload;
-}
-
 export async function updateQuestion({ questionId, question, adminKey = "", signal }) {
   const response = await fetch(`/api/questions/${questionId}`, {
     method: "PATCH",

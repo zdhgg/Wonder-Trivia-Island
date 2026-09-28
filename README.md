@@ -1,7 +1,7 @@
 # Wonder Trivia Island
 
 面向小学生的趣味答题系统，前端使用 Vite + Vue 3，后端使用 Node.js + Express + SQLite。
-当前正式版本为 `v1.5.0`，已经覆盖答题冒险、闯关世界地图、讲堂地图、弱项专项练习、题库管理、AI 草稿出题、AI 点评与语音、首页欢迎语、错题温习、知识学习、闯关进度和设置中心。
+当前正式版本为 `v1.5.0`，已经覆盖答题冒险、闯关世界地图、讲堂地图、弱项专项练习、题库管理、外部 Harness 出题导入、AI 点评与语音、首页欢迎语、错题温习、知识学习、闯关进度和设置中心。
 
 当前实现使用 Node.js 24+ 自带的 `node:sqlite` 访问 SQLite 数据库，避免额外安装原生驱动带来的兼容问题。
 
@@ -16,7 +16,7 @@
 |   |   |-- db/              # SQLite 连接与事务辅助
 |   |   |-- questions/       # 题目仓储、类型、知识标签别名
 |   |   |-- routes/          # questions / challenge / study record API
-|   |   `-- services/        # 导入、AI 出题、AI 点评、TTS、首页欢迎语
+|   |   `-- services/        # 导入校验、AI 点评、TTS、首页欢迎语、AI 连接探针
 |   `-- test/
 |-- frontend/
 |   |-- src/
@@ -146,7 +146,7 @@ npm run backend:start
 
 如果未配置 `ADMIN_IMPORT_KEY`，导入接口默认只允许本机访问。
 External AI Gateway 是 **localhost-only 的本机进程间接口**：只供 DSH / External Harness 直连 `http://127.0.0.1:8008/api/external-ai/...` 使用。它只认真实 socket loopback，**不需要也不接受任何凭证**——既没有网关专用密钥，也不接受 `ADMIN_IMPORT_KEY`。它不经过 Vite，也不应通过任何远程代理或浏览器暴露给局域网。它只提供白名单查询、proposal 提交和 proposal 状态读取，不提供题库或学习记录写入。
-如果未配置 `OPENAI_API_KEY`，AI 出题、AI 点评、首页欢迎语和语音播报会返回不可用提示，但现有题库查看、导入、答题、学习和闯关功能不受影响。
+如果未配置 `OPENAI_API_KEY`，AI 点评、首页欢迎语和语音播报会返回不可用提示；题目生成不依赖该 Key（由外部 Harness 完成），现有题库查看、导入、答题、学习和闯关功能也不受影响。
 教学演示（Teaching Demo）不依赖任何模型 Key：系统只登记“待外部生成”请求，demo 由外部 Harness 通过 External AI Gateway 提交，未配置 `OPENAI_API_KEY` 时该流程依然完整可用。
 如果你在前端设置里为某条模型填写了自定义 `Base URL`，需要同时填写该模型自己的 `API Key`；服务端不会再把默认密钥转发到任意自定义网关。
 
@@ -161,7 +161,6 @@ External AI Gateway 是 **localhost-only 的本机进程间接口**：只供 DSH
 - `GET /api/questions/stats`：返回当前题库总数
 - `POST /api/questions/coverage`：返回多个目标条件下的题量盘点
 - `GET /api/questions`：按分页 / 学科 / 年级 / 学期 / 难度 / 关键词查看当前题库
-- `POST /api/questions/generate`：根据学科 / 年级 / 学期 / 难度生成 AI 题目草稿
 - `POST /api/questions/ai/runtime-check`：测试当前 AI 运行时连接
 - `PATCH /api/questions/batch/update`：批量更新题目的学科 / 年级 / 学期 / 难度
 - `POST /api/questions/batch/delete`：批量删除题目
@@ -295,7 +294,7 @@ Harness 的覆盖规则（服务端强制）：一次成功的提交会把 `teac
 - 按关键词搜索题目 / 题型 / 解析 / 答案
 - 直接在题库列表里编辑题目
 - 直接在题库列表里删除题目
-- 在“新增题目”面板里使用 AI 生成草稿，再人工确认保存
+- 手工新增题目（表单填写，保存前走后端校验）
 - 支持多选后批量修改学科 / 年级 / 学期 / 难度
 - 支持多选后批量删除题目
 - 预检并展示错误 / 警告
@@ -307,7 +306,6 @@ Harness 的覆盖规则（服务端强制）：一次成功的提交会把 `teac
 
 `replace` 模式会先自动备份现有数据库，再用新题目整体替换。
 `GET /api/questions` 与导入接口、题库写接口共用同一套管理访问规则（见下一节）。
-`POST /api/questions/generate` 也沿用同一套管理访问规则，并且只会生成草稿，不会直接写入题库。
 `POST /api/questions/ai/runtime-check` 可以测试服务端默认 AI 配置，或测试“自带 API Key 的自定义运行时”；仅提供 `Base URL` 而不提供 `API Key` 的请求会被拒绝。
 
 ### 管理面 / External Harness 面的本机边界
@@ -317,7 +315,7 @@ Harness 的覆盖规则（服务端强制）：一次成功的提交会把 `teac
 | 面 | 例子 | 谁能用 |
 | --- | --- | --- |
 | A 学习面 | `random` / `stats` / `coverage` / `submit` / `review*`、`study-record-book`、`challenge-progress`、`growth-*` | 本机 + 手机 / 局域网都正常使用（即使里面是 PUT / POST / PATCH / DELETE） |
-| B 管理面 | `proposals`、`questions/import`、`questions/batch`、`questions/generate`、`questions/ai/runtime-check`、裸 `questions`、数字 id 的 PATCH / DELETE | 本机浏览器；非本机必须带 `x-admin-key` |
+| B 管理面 | `proposals`、`questions/import`、`questions/batch`、`questions/ai/runtime-check`、裸 `questions`、数字 id 的 PATCH / DELETE | 本机浏览器；非本机必须带 `x-admin-key` |
 | C External Harness 面 | `/api/external-ai/**` | 只有本机的 DSH 直连 `http://127.0.0.1:8008`，任何浏览器都不经 Vite 代理它 |
 
 管理面的后端语义是：
@@ -381,22 +379,28 @@ npm run questions:import -- --from-seed --limit 20
 
 `backend/scripts/sync-*-image-questions.js` 这类脚本仍然直接写库，会绕过预检和人工确认，使用时需要自行承担风险。
 
-### AI 出题草稿
+### 题目从哪里来：External Harness 出题，系统只做校验与人工放行
 
-当前接入方式不是“答题页实时联网出题”，而是“管理员先生成草稿，再人工确认保存”。这样可以复用现有校验规则，降低不适龄、重复项、结构错误直接进入题库的风险。
+系统自身**不调用模型生成题目**。补题的真实链路是：
 
-AI 草稿支持补充：
+```
+用户向 External Harness / Agent 提出补题需求
+→ Harness 从 localhost External Gateway 查询题库上下文（/api/external-ai/*，只读）
+→ Harness 自己生成现有 import row（学科/年级/学期/题型/题干/A-D/答案/解析/难度）
+→ POST /api/questions/import/stage
+→ 系统预检：字段校验、查重、相似度检测
+→ 批次落盘 pending，等待人工
+→ 用户在「工具台 → 导入」逐题核对（题干/选项/答案/解析）
+→ 用户本人点 confirm
+→ 写入正式 questions 表
+```
 
-- 主题
-- 补充要求
-- 参考材料
+边界约定：
 
-其中：
-
-- 题库查看页更适合生成单题草稿，再人工微调后保存
-- 批量生成建议先通过 `POST /api/questions/generate` 拿到草稿，再走 harness 的预检与暂存流程入库
-
-如果你想做节日、校园活动、热点阅读等更强调时效性的题目，建议把原始材料粘贴进“参考材料”后再生成。这样模型会优先依据你提供的内容出题，而不是自行猜测最新事实。
+- 系统不调用任何模型出题；保留的 AI 能力只有单题点评、学习总结、首页欢迎语、TTS 和 runtime-check；
+- Harness 不直接写 `questions`，唯一写库入口是人工 confirm；
+- 不存在 Question Draft / Request / Queue 这类中间态；
+- 正式入库必须经人在导入页确认，`confirm` 之外没有第二条写题库路径。
 
 ### 表格字段
 

@@ -27,7 +27,6 @@ const {
   stageQuestionImport
 } = require("../src/services/questionImport");
 const { pendingBatchPath } = require("../src/services/questionImportStaging");
-const { setOpenAIClientFactoryForTesting } = require("../src/services/questionGeneration");
 const { setOpenAIHomeWelcomeClientFactoryForTesting } = require("../src/services/homeWelcomeMessage");
 const { setOpenAIReviewClientFactoryForTesting } = require("../src/services/questionReview");
 const { setOpenAIProbeClientFactoryForTesting } = require("../src/services/aiRuntimeProbe");
@@ -201,14 +200,12 @@ test.after(async () => {
 
 test.beforeEach(() => {
   resetDatabase();
-  setOpenAIClientFactoryForTesting(null);
   setOpenAIHomeWelcomeClientFactoryForTesting(null);
   setOpenAIReviewClientFactoryForTesting(null);
   setOpenAIProbeClientFactoryForTesting(null);
 });
 
 test.after(() => {
-  setOpenAIClientFactoryForTesting(null);
   setOpenAIHomeWelcomeClientFactoryForTesting(null);
   setOpenAIReviewClientFactoryForTesting(null);
   setOpenAIProbeClientFactoryForTesting(null);
@@ -990,123 +987,23 @@ test("question routes match systematic knowledge tags against aliased type label
   assert.ok(statsPayload.topKnowledgeTags.some((item) => item.label === "小数认识" && item.count === 1));
 });
 
-test("question routes can generate a validated AI draft without auto-saving it", async () => {
-  const generationRuntimeCalls = [];
-  const generatedQuestions = [
-    {
-      subject: "数学",
-      grade: "三年级",
-      semester: "通用",
-      type: "情景计算",
-      content: "环保角今天回收了 14 个塑料瓶，后来又收到 6 个，现在一共有多少个？",
-      options: [
-        { key: "A", text: "18 个" },
-        { key: "B", text: "20 个" },
-        { key: "C", text: "22 个" },
-        { key: "D", text: "24 个" }
-      ],
-      answer: "B",
-      explanation: "14 + 6 = 20，所以现在一共有 20 个。",
-      difficulty: 1
-    },
-    {
-      subject: "数学",
-      grade: "三年级",
-      semester: "通用",
-      type: "情景计算",
-      content: "节水宣传角上午贴了 9 张海报，下午又贴了 7 张，一共贴了多少张？",
-      options: [
-        { key: "A", text: "14 张" },
-        { key: "B", text: "15 张" },
-        { key: "C", text: "16 张" },
-        { key: "D", text: "17 张" }
-      ],
-      answer: "C",
-      explanation: "9 + 7 = 16，所以一共贴了 16 张。",
-      difficulty: 1
-    },
-    {
-      subject: "数学",
-      grade: "三年级",
-      semester: "通用",
-      type: "情景计算",
-      content: "回收箱里原来有 12 节旧电池，又放进 5 节，现在共有多少节？",
-      options: [
-        { key: "A", text: "15 节" },
-        { key: "B", text: "16 节" },
-        { key: "C", text: "17 节" },
-        { key: "D", text: "18 节" }
-      ],
-      answer: "C",
-      explanation: "12 + 5 = 17，所以现在共有 17 节。",
-      difficulty: 1
-    }
-  ];
-
-  setOpenAIClientFactoryForTesting((runtimeConfig) => {
-    generationRuntimeCalls.push(runtimeConfig);
-    return {
-      responses: {
-        parse: async () => ({
-          id: "resp_test_generate_question",
-          model: "gpt-5.4-mini",
-          output_parsed: {
-            questions: generatedQuestions
-          }
-        })
-      },
-      chat: {
-        completions: {
-          create: async () => ({
-            id: "chatcmpl_test_generate_question",
-            model: "gpt-5.4-mini",
-            choices: [
-              {
-                message: {
-                  content: JSON.stringify({ questions: generatedQuestions })
-                }
-              }
-            ]
-          })
-        }
-      }
-    };
-  });
-
+// 旧「系统内部 AI 出题」链已删除（Phase B 收口）：题库生成只走
+// External Harness → /api/questions/import/stage → 人工 confirm。
+// 这里保留一条否定式回归：生成入口必须彻底 404，且不写库。
+test("legacy AI draft generation endpoint is gone and writes nothing", async () => {
   const response = await fetch(`${baseUrl}/api/questions/generate`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       subject: "数学",
       grade: "三年级",
       semester: "通用",
-      count: 3,
       difficulty: 1,
-      topic: "环保回收",
-      guidance: "请写得生活化一些。",
-      referenceText: "三年级同学在校园环保角开展塑料瓶回收活动。",
-      aiRuntime: {
-        providerLabel: "OpenAI Compatible",
-        baseUrl: "https://example.com/v1",
-        apiKey: "test-provider-key"
-      }
+      count: 1
     })
   });
 
-  assert.equal(response.status, 200);
-
-  const payload = await readJson(response);
-  assert.equal(generationRuntimeCalls.length, 1);
-  assert.equal(generationRuntimeCalls[0].baseUrl, "https://example.com/v1");
-  assert.equal(generationRuntimeCalls[0].apiKey, "test-provider-key");
-  assert.equal(payload.data.subject, "数学");
-  assert.equal(payload.data.grade, "三年级");
-  assert.equal(payload.data.answer, "B");
-  assert.equal(payload.drafts.length, 3);
-  assert.equal(payload.drafts[2].content, generatedQuestions[2].content);
-  assert.equal(payload.meta.sourceMode, "reference");
+  assert.equal(response.status, 404);
 
   const db = createDatabaseConnection();
 

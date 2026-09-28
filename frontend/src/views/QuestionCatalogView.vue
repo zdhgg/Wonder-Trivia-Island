@@ -254,22 +254,17 @@ export default {
       />
 
       <QuestionCreatePanel
-        v-if="isCreatePanelOpen && createDraft && aiDraft"
+        v-if="isCreatePanelOpen && createDraft"
         :draft="createDraft"
-        :ai-draft="aiDraft"
         :knowledge-tag-suggestions="knowledgeTagSuggestions"
         :error-message="createErrorMessage"
-        :ai-error-message="aiGenerationErrorMessage"
-        :ai-status-message="aiGenerationStatusMessage"
         :is-saving="isCreatingQuestion"
-        :is-generating-ai="isGeneratingQuestionDraft"
         :answer-options="ANSWER_OPTIONS"
         :subject-options="EDIT_SUBJECT_OPTIONS"
         :grade-options="EDIT_GRADE_OPTIONS"
         :semester-options="EDIT_SEMESTER_OPTIONS"
         :difficulty-options="EDIT_DIFFICULTY_OPTIONS"
         @save="handleCreateQuestion"
-        @generate-ai="handleGenerateQuestionDraft"
         @cancel="closeCreatePanel"
       />
 

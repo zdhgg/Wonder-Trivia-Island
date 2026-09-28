@@ -14,7 +14,6 @@ const PROPOSALS_PREFIX = "/api/proposals";
 const QUESTION_IMPORT_PREFIX = "/api/questions/import";
 const QUESTION_BATCH_PREFIX = "/api/questions/batch";
 const QUESTION_RUNTIME_CHECK_PATH = "/api/questions/ai/runtime-check";
-const QUESTION_GENERATE_PATH = "/api/questions/generate";
 const QUESTIONS_COLLECTION_PATTERN = /^\/api\/questions\/?$/;
 // 只接受纯数字 question id：/api/questions/random 绝不能被当成 :id。
 const QUESTIONS_ITEM_PATTERN = /^\/api\/questions\/\d+\/?$/;
@@ -76,11 +75,8 @@ function isManagementRequest(method, url) {
     return true;
   }
 
-  if (path === QUESTION_GENERATE_PATH) {
-    return true;
-  }
-
   // runtime-check 不写库，但会让后端发起出站模型调用，按管理面拦掉。
+  // 旧 POST /api/questions/generate 已随内部 AI 出题链删除，不再进路径表。
   if (path === QUESTION_RUNTIME_CHECK_PATH) {
     return true;
   }

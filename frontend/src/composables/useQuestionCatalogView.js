@@ -5,7 +5,6 @@ import {
   deleteQuestionsBatch,
   fetchQuestionCatalog,
   fetchQuestionStats,
-  generateQuestionDraft,
   updateQuestion,
   updateQuestionsBatch
 } from "../services/questionsApi";
@@ -102,13 +101,7 @@ export function useQuestionCatalogView(props, emit) {
 
   const createDraft = ref(null);
 
-  const aiDraft = ref(null);
-
   const createErrorMessage = ref("");
-
-  const aiGenerationErrorMessage = ref("");
-
-  const aiGenerationStatusMessage = ref("");
 
   const editorErrorMessage = ref("");
 
@@ -526,8 +519,6 @@ export function useQuestionCatalogView(props, emit) {
 
   const isCreatingQuestion = computed(() => activeMutation.value.type === "create");
 
-  const isGeneratingQuestionDraft = computed(() => activeMutation.value.type === "generate-draft");
-
   const catalogChallengeAssist = computed(() => normalizeExternalFilters(props.initialFilters));
 
   const catalogChallengeAssistChips = computed(() => {
@@ -650,14 +641,6 @@ export function useQuestionCatalogView(props, emit) {
     };
   }
 
-  function createEmptyAiDraft() {
-    return {
-      topic: "",
-      guidance: "",
-      referenceText: ""
-    };
-  }
-
   function createEditingDraft(question) {
     const optionMap = Object.fromEntries(question.options.map((option) => [option.key, option.text]));
 
@@ -727,10 +710,7 @@ export function useQuestionCatalogView(props, emit) {
   function closeCreatePanel() {
     isCreatePanelOpen.value = false;
     createDraft.value = null;
-    aiDraft.value = null;
     createErrorMessage.value = "";
-    aiGenerationErrorMessage.value = "";
-    aiGenerationStatusMessage.value = "";
   }
 
   function resetBatchDraft() {
@@ -991,10 +971,7 @@ export function useQuestionCatalogView(props, emit) {
     }
 
     createDraft.value = nextDraft;
-    aiDraft.value = createEmptyAiDraft();
     createErrorMessage.value = "";
-    aiGenerationErrorMessage.value = "";
-    aiGenerationStatusMessage.value = "";
   }
 
   function handleEditStart(question) {
@@ -1179,57 +1156,6 @@ export function useQuestionCatalogView(props, emit) {
     }
   }
 
-  async function handleGenerateQuestionDraft() {
-    if (!createDraft.value) {
-      return;
-    }
-
-    clearActionFeedback();
-    createErrorMessage.value = "";
-    aiGenerationErrorMessage.value = "";
-    aiGenerationStatusMessage.value = "";
-    const controller = beginMutation(0, "generate-draft");
-
-    try {
-      const payload = await generateQuestionDraft({
-        request: {
-          subject: createDraft.value.subject,
-          grade: createDraft.value.grade,
-          semester: createDraft.value.semester,
-          knowledgeTag: createDraft.value.knowledgeTag,
-          difficulty: createDraft.value.difficulty,
-          count: 1,
-          topic: aiDraft.value?.topic || "",
-          guidance: aiDraft.value?.guidance || "",
-          referenceText: aiDraft.value?.referenceText || "",
-          ...(settingsStore.effectiveQuestionModel ? { model: settingsStore.effectiveQuestionModel } : {}),
-          ...(settingsStore.effectiveQuestionRuntimeConfig ? { aiRuntime: settingsStore.effectiveQuestionRuntimeConfig } : {})
-        },
-        adminKey: adminKeyModel.value,
-        signal: controller.signal
-      });
-
-      const preservedKnowledgeTag = createDraft.value.knowledgeTag;
-
-      createDraft.value = createEditingDraft(payload.data);
-      createDraft.value.knowledgeTag = createDraft.value.knowledgeTag || preservedKnowledgeTag;
-      aiGenerationStatusMessage.value =
-        payload.meta?.sourceMode === "reference"
-          ? "AI 已根据参考材料生成草稿，请继续人工确认。"
-          : "AI 草稿已填入表单，请继续人工确认。";
-      setActionFeedback("success", "AI 草稿已生成。");
-    } catch (error) {
-      if (error.name === "AbortError") {
-        return;
-      }
-
-      const details = Array.isArray(error.details) && error.details.length > 0 ? ` ${error.details[0]}` : "";
-      aiGenerationErrorMessage.value = `${error.message || "AI 出题失败。"}${details}`;
-    } finally {
-      endMutation();
-    }
-  }
-
   async function performDeleteQuestion(question) {
     if (!question) {
       return false;
@@ -1346,10 +1272,7 @@ export function useQuestionCatalogView(props, emit) {
     editingDraft,
     isCreatePanelOpen,
     createDraft,
-    aiDraft,
     createErrorMessage,
-    aiGenerationErrorMessage,
-    aiGenerationStatusMessage,
     editorErrorMessage,
     actionFeedback,
     activeMutation,
@@ -1398,9 +1321,7 @@ export function useQuestionCatalogView(props, emit) {
     catalogEmptyStateStats,
     catalogEmptyStateHint,
     isCreatingQuestion,
-    isGeneratingQuestionDraft,
     createEmptyQuestionDraft,
-    createEmptyAiDraft,
     createEditingDraft,
     buildQuestionPayloadFromDraft,
     setActionFeedback,
@@ -1440,7 +1361,6 @@ export function useQuestionCatalogView(props, emit) {
     performBatchDelete,
     handleSaveQuestion,
     handleCreateQuestion,
-    handleGenerateQuestionDraft,
     performDeleteQuestion,
     handleDeleteConfirm,
   };

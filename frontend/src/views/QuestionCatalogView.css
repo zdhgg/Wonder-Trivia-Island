@@ -379,10 +379,6 @@
   resize: vertical;
 }
 
-.question-editor__textarea--compact {
-  min-height: 72px;
-}
-
 .catalog-card__input:hover,
 .question-editor__input:hover,
 .question-editor__textarea:hover {
@@ -1082,15 +1078,6 @@
 .question-editor__intro {
   display: grid;
   gap: 8px;
-}
-
-.question-editor__ai-panel {
-  display: grid;
-  gap: 14px;
-  padding: 16px;
-  border: 1px solid rgba(36, 50, 74, 0.08);
-  border-radius: 18px;
-  background: linear-gradient(180deg, rgba(255, 248, 220, 0.86) 0%, rgba(255, 255, 255, 0.94) 100%);
 }
 
 .question-editor__heading {
