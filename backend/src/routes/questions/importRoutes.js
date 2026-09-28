@@ -4,7 +4,6 @@ const {
   IMPORT_ERROR_STALE_BATCH,
   IMPORT_ERROR_STAGE_BLOCKED,
   commitPendingImport,
-  commitQuestionImport,
   discardPendingImportBatch,
   getPendingImportBatch,
   previewQuestionImport,
@@ -118,13 +117,10 @@ router.delete("/import/pending", requireImportAccess, (req, res, next) => {
   }
 });
 
-router.post("/import/commit", requireImportAccess, (req, res, next) => {
-  try {
-    const result = commitQuestionImport(req.body?.questions, req.body?.mode, req.db);
-    res.json(result);
-  } catch (error) {
-    respondImportError(error, res, next);
-  }
-});
+// 曾经这里还有一个 POST /import/commit：它直接调用 commitQuestionImport，
+// 不走预检、不走 pending.json、不走人工 confirm，等于留了一条绕过「两道人工闸门」
+// 的写库旁路。全仓（frontend / e2e / scripts / CLI）均无调用方，
+// 因此路由已在本轮安全收口时删除。
+// 服务函数 commitQuestionImport 保留 —— 正常流程里 commitPendingImport 仍然依赖它。
 
 module.exports = router;

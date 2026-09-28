@@ -173,7 +173,6 @@ External AI Proposal Gateway 使用独立的 `EXTERNAL_AI_GATEWAY_KEY`，不会�
 - `POST /api/questions/import/confirm`：确认待确认批次并写入题库
 - `DELETE /api/questions/import/pending`：丢弃当前待确认批次
 - `POST /api/questions/import/preview`：预检题库数据（harness 与调试使用）
-- `POST /api/questions/import/commit`：直接提交已预检的题目（保留兼容，页面已不再使用）
 - `GET /api/challenge-progress` / `PUT /api/challenge-progress`：读取或保存闯关进度
 - `GET /api/study-record-book` / `PUT /api/study-record-book`：读取或保存错题温习档案
 - `GET /api/external-ai/question-stats`：External AI Gateway 查询题库统计（需要 `x-external-ai-key`）
@@ -310,9 +309,42 @@ Harness 的覆盖规则（服务端强制）：一次成功的提交会把 `teac
 - `replace` 覆盖导入
 
 `replace` 模式会先自动备份现有数据库，再用新题目整体替换。
-`GET /api/questions` 与导入接口共用同一套管理访问规则：未配置 `ADMIN_IMPORT_KEY` 时仅允许本机访问，配置后需要通过 `x-admin-key` 请求头访问。
+`GET /api/questions` 与导入接口、题库写接口共用同一套管理访问规则（见下一节）。
 `POST /api/questions/generate` 也沿用同一套管理访问规则，并且只会生成草稿，不会直接写入题库。
 `POST /api/questions/ai/runtime-check` 可以测试服务端默认 AI 配置，或测试“自带 API Key 的自定义运行时”；仅提供 `Base URL` 而不提供 `API Key` 的请求会被拒绝。
+
+### 管理面 / External Harness 面的本机边界
+
+三类接口的边界是「学习 vs 管理」，不是「读 vs 写」：
+
+| 面 | 例子 | 谁能用 |
+| --- | --- | --- |
+| A 学习面 | `random` / `stats` / `coverage` / `submit` / `review*`、`study-record-book`、`challenge-progress`、`growth-*` | 本机 + 手机 / 局域网都正常使用（即使里面是 PUT / POST / PATCH / DELETE） |
+| B 管理面 | `proposals`、`questions/import`、`questions/batch`、`questions/generate`、`questions/ai/runtime-check`、裸 `questions`、数字 id 的 PATCH / DELETE | 本机浏览器；非本机必须带 `x-admin-key` |
+| C External Harness 面 | `/api/external-ai/**` | 只有本机的 DSH 直连 `http://127.0.0.1:8008`，任何浏览器都不经 Vite 代理它 |
+
+管理面的后端语义是：
+
+```
+real socket is loopback  OR  valid ADMIN_IMPORT_KEY
+```
+
+- PC 本机浏览器做管理：**不需要** `ADMIN_IMPORT_KEY`；
+- 非本机直连 backend 做管理：**必须**提供正确的 `ADMIN_IMPORT_KEY`（`x-admin-key`）；
+- 判定只依据内核给出的 socket 对端地址，**完全忽略** `X-Forwarded-For` / `Forwarded` / `X-Real-IP` / `req.ip`，也不设置 `trust proxy`。
+
+因为 Vite 代理是「服务端发起的新连接」，后端看到的对端永远是 `127.0.0.1`，所以“局域网浏览器不得调用管理面”由 **Vite 边缘**先拦：`frontend/vite.config.js` 的 `server.proxy["/api"].bypass` 读取**浏览器 → Vite 的真实 socket 地址**，非本机来源的管理面请求直接返回 404（fail-closed），根本到不了后端。External Harness 面则对**任何**来源都不代理。
+
+`frontend/security/managementPaths.js` 是这张路径表的唯一真源（纯函数，无 I/O），`frontend/security/managementPaths.test.js` 覆盖 A / B / C 三类与易错点。
+
+**⚠️ 换一个服务方式运行前端时，必须重新核对这条边界。** 上面的 Vite 边缘守卫只在**由本仓库的 Vite dev / preview server 提供前端**时生效：
+
+- `frontend/vite.config.proxy.ts` 由门户系统自动生成，它本身不实现守卫，而是通过 `loadConfigFromFile` + `mergeConfig` 继承 `vite.config.js` 的 `proxy.bypass` 与 `fs.allow/fs.deny`。**如果它被重新生成成不再加载基础配置，守卫会静默消失。**
+- 如果用 nginx、静态托管、门户自己的服务器或任何其它方式提供前端（`frontend/dist` 是构建产物），Vite 守卫一行都不会执行。
+
+在以上任何一种情况下，**必须配置 `ADMIN_IMPORT_KEY`**，否则局域网设备可以管理题库。`ADMIN_IMPORT_KEY` 是显式的远程管理凭证，也是这些部署形态下唯一的兜底，请保留它。
+
+另外，dev server 的 `/@fs/` 文件面也属于这条边界：`server.fs.allow` 只允许 `frontend/` 与 `shared/`，并对 `backend/**`、`*.db`、`*.sqlite` 加了 `fs.deny`。否则局域网里一条 `GET /@fs/<repo>/backend/data/trivia.db` 就能拿走整个题库（含答案）。
 
 ### 导入流程：harness 提交，页面确认
 

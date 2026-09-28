@@ -1,5 +1,19 @@
 // 自动生成的 Vite proxy 配置 - 支持局域网访问
 // 由智能门户系统自动创建，请勿手动修改
+//
+// ⚠️ 安全依赖（改动前必读）
+// 本文件不自己实现管理面守卫，而是通过下面的 loadConfigFromFile 读取
+// vite.config.js，并用 mergeConfig 合并上来的：
+//   · server.proxy["/api"].bypass  ← 管理面 / External Harness 边缘守卫
+//   · server.fs.allow / fs.deny    ← 防止 /@fs/ 暴露 backend/data
+// mergeConfig 会保留基础配置里、覆盖块没有写的键（已验证），所以本文件天然继承
+// 了那两个守卫；这里的 ws: true 也仍然会被 bypass 覆盖（Vite 8 的 upgrade 分支
+// 同样调用 bypass）。
+//
+// 因此：如果门户系统重新生成本文件时丢掉了 baseConfigFile / loadConfigFromFile
+// 这一步（或改成了内置 fallbackConfig），管理面守卫会静默消失。任何重新生成之后
+// 都必须确认这两件事仍然成立，或者干脆配置 ADMIN_IMPORT_KEY 作为兜底。
+// 详见 README「管理面 / External Harness 面的本机边界」。
 import { defineConfig, loadConfigFromFile, mergeConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { fileURLToPath, URL } from 'node:url'

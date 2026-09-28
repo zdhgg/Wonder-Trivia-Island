@@ -7,6 +7,7 @@ const {
 } = require("../../questions/repository");
 const { getKnowledgeTagSearchTerms } = require("../../questions/knowledgeTagAliases");
 const { normalizeRuntimeBaseUrl } = require("../../services/aiRuntimeConfig");
+const { MANAGEMENT_ACCESS, resolveManagementAccess } = require("../../security/localAccess");
 
 const ALLOWED_GRADE_SET = new Set(ALLOWED_GRADES);
 const ALLOWED_SEMESTER_SET = new Set(ALLOWED_SEMESTERS);
@@ -29,49 +30,44 @@ const QUESTION_SELECT_FIELDS = [
 ].join(", ");
 const MAX_COVERAGE_TARGETS = 32;
 
-function isLoopbackRequest(req) {
-  const candidates = [req.ip, req.socket?.remoteAddress, req.headers["x-forwarded-for"]];
-
-  return candidates.some((value) =>
-    String(value || "")
-      .split(",")
-      .some((candidate) => {
-        const normalized = candidate.trim();
-
-        return (
-          normalized === "::1" ||
-          normalized === "127.0.0.1" ||
-          normalized === "::ffff:127.0.0.1"
-        );
-      })
-  );
-}
-
+// 管理面访问守卫。
+//
+// 目标语义（本机 + 局域网的真实部署方式）：
+//   real socket is loopback  OR  valid ADMIN_IMPORT_KEY
+//
+// 也就是：
+//   - PC 本机浏览器管理：不需要 ADMIN_IMPORT_KEY；
+//   - 非本机直连 backend 管理：必须提供正确的 ADMIN_IMPORT_KEY。
+//
+// 判定只依据内核给出的 socket 对端地址（见 ../../security/localAccess）。
+// 历史上这里把 req.ip 与 x-forwarded-for 也算作候选，等于把「本机」的判定
+// 交给了客户端可以随便写的请求头 —— 局域网里加一个 X-Forwarded-For: 127.0.0.1
+// 就能拿到管理权限。这条路径已经被移除。
+//
+// 注意：经 Vite 代理到达的请求，socket 对端一定是 Vite 本机进程，
+// 所以「局域网浏览器不得调用管理面」必须由 Vite 边缘先拦（见 frontend/vite.config.js）。
 function requireImportAccess(req, res, next) {
-  const expectedKey = String(process.env.ADMIN_IMPORT_KEY || "").trim();
+  const access = resolveManagementAccess({
+    remoteAddress: req.socket?.remoteAddress,
+    expectedKey: process.env.ADMIN_IMPORT_KEY,
+    providedKey: req.get("x-admin-key")
+  });
 
-  if (!expectedKey) {
-    if (isLoopbackRequest(req)) {
-      next();
-      return;
-    }
-
-    res.status(403).json({
-      message: "当前未配置 ADMIN_IMPORT_KEY，导入功能仅允许在本机访问。"
-    });
+  if (access.allowed) {
+    next();
     return;
   }
 
-  const providedKey = String(req.get("x-admin-key") || "").trim();
-
-  if (providedKey !== expectedKey) {
+  if (access.reason === MANAGEMENT_ACCESS.DENY_INVALID_KEY) {
     res.status(401).json({
-      message: "导入口令无效。"
+      message: "管理口令无效。"
     });
     return;
   }
 
-  next();
+  res.status(403).json({
+    message: "管理功能仅允许在本机访问；如需从其他设备管理，请配置 ADMIN_IMPORT_KEY 并携带 x-admin-key。"
+  });
 }
 
 function parseIntegerParam(rawValue, defaultValue, { min = 1, max = Number.MAX_SAFE_INTEGER } = {}) {

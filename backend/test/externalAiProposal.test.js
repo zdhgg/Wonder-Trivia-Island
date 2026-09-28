@@ -580,9 +580,13 @@ test("accepted proposal 只有用户点击后才登记待外部生成请求，�
   const noKey = await jsonRequest("/api/external-ai/teaching-demo-requests");
   assert.equal(noKey.response.status, 401);
 
-  // 管理接口仍然要求管理凭证，浏览器以外的匿名调用拿不到状态。
-  const noAdminKey = await jsonRequest(`/api/proposals/${proposalId}/teaching-demo`);
-  assert.equal(noAdminKey.response.status, 401);
+  // 管理接口的目标语义是「真实 socket loopback OR 正确 ADMIN_IMPORT_KEY」。
+  // 测试进程的流量全部来自 loopback，所以本机调用不再需要管理口令。
+  // 非本机的拒绝由 securityBoundary.test.js 的 resolveManagementAccess 纯函数测试
+  // 以及 Vite 边缘守卫负责：HTTP 测试进程内无法模拟真实的非 loopback 来源。
+  const adminStateWithoutKey = await jsonRequest(`/api/proposals/${proposalId}/teaching-demo`);
+  assert.equal(adminStateWithoutKey.response.status, 200);
+  assert.ok(adminStateWithoutKey.payload.data.request);
 });
 
 test("Harness 提交合法 comparison_demo 后生成 draft，但不能自行审核", async () => {
@@ -667,12 +671,11 @@ test("Harness 提交合法 comparison_demo 后生成 draft，但不能自行审�
   assert.equal(stateAfterSubmit.payload.data.draft.id, submitted.payload.data.id);
   assert.equal(stateAfterSubmit.payload.data.draft.status, "draft");
 
-  // demo 审核只能走内部管理接口。
-  const approveWithoutAdmin = await jsonRequest(`/api/proposals/${proposalId}/teaching-demo/approve`, {
-    method: "POST",
-    body: JSON.stringify({})
-  });
-  assert.equal(approveWithoutAdmin.response.status, 401);
+  // demo 审核只能走内部管理接口：External Gateway 上没有 approve 入口，
+  // 上面已经有 practiceDemoApprove 之类的 404 断言。
+  // 本机（loopback）调用管理接口免管理口令是本轮明确调整后的语义，
+  // 因此这里不再用带副作用的 approve 去探测 401 —— 非本机的拒绝由
+  // securityBoundary.test.js 的纯函数测试 + Vite 边缘守卫覆盖。
 
   const approved = await jsonRequest(`/api/proposals/${proposalId}/teaching-demo/approve`, {
     method: "POST",
