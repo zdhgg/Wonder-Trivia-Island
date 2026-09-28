@@ -1,6 +1,6 @@
 const express = require("express");
 const { isLoopbackRequest } = require("../security/localAccess");
-const { getQuestionCount } = require("../questions/repository");
+const { ALLOWED_TYPES, getQuestionCount } = require("../questions/repository");
 const {
   all,
   get,
@@ -110,6 +110,9 @@ function serializeContextQuestion(row) {
 
 router.use(requireGatewayAccess);
 
+// byType 与 questions.type 的 CHECK 约束共用同一份真源：
+// questionTypes.ALLOWED_TYPES -> repository.buildAllowedTypesSql() 建表 CHECK，
+// 这里只是把同一份枚举交给既有的 buildGroupedCounts，不复制任何 enum。
 router.get("/question-stats", (req, res, next) => {
   try {
     res.json({
@@ -117,6 +120,7 @@ router.get("/question-stats", (req, res, next) => {
       bySubject: buildGroupedCounts(req.db, "subject", ALLOWED_SUBJECTS),
       byGrade: buildGroupedCounts(req.db, "grade", ALLOWED_GRADES),
       bySemester: buildGroupedCounts(req.db, "semester", ALLOWED_SEMESTERS),
+      byType: buildGroupedCounts(req.db, "type", ALLOWED_TYPES),
       topKnowledgeTags: buildTopKnowledgeTags(req.db)
     });
   } catch (error) {

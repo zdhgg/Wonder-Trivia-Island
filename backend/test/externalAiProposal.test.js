@@ -17,7 +17,7 @@ delete process.env.OPENAI_BASE_URL;
 
 const app = require("../src/app");
 const { questions } = require("../scripts/questionSeedData");
-const { closeDatabaseConnection, createDatabaseConnection, get, run } = require("../src/db/database");
+const { closeDatabaseConnection, createDatabaseConnection, get, run, all } = require("../src/db/database");
 const { ensureQuestionsTable, insertQuestions } = require("../src/questions/repository");
 const { ensureExternalAiProposalsTable } = require("../src/services/externalAiProposals");
 const { ensureTeachingDemoDraftsTable } = require("../src/services/teachingDemoDrafts");
@@ -274,6 +274,47 @@ test("Gateway 只读题目上下文和统计，且访问判定只看真实 socke
     }
   });
   assert.equal(forgedForwarded.response.status, 200);
+});
+
+// Harness 需要知道数据库允许的合法 questions.type，才能自己生成候选题。
+// byType 必须与建表 CHECK 用的同一份 ALLOWED_TYPES 对齐，不能是另一套枚举。
+test("question-stats 暴露 byType，且与 ALLOWED_TYPES 真源及真实数据库一致", async () => {
+  const { response, payload } = await jsonRequest("/api/external-ai/question-stats");
+  assert.equal(response.status, 200);
+
+  const { ALLOWED_TYPES } = require("../src/questions/repository");
+  assert.ok(Array.isArray(ALLOWED_TYPES) && ALLOWED_TYPES.length > 0);
+
+  // 键集合必须与真源完全一致：既不缺合法 type，也不凭空多出枚举。
+  assert.deepEqual(Object.keys(payload.byType).sort(), [...ALLOWED_TYPES].sort());
+
+  // 每个值都是非负整数，且总和等于 total（type 是 NOT NULL，不会有题落空）。
+  for (const [type, count] of Object.entries(payload.byType)) {
+    assert.ok(Number.isInteger(count) && count >= 0, `byType[${type}] 必须是非负整数`);
+  }
+
+  const byTypeTotal = Object.values(payload.byType).reduce((sum, count) => sum + count, 0);
+  assert.equal(byTypeTotal, payload.total);
+
+  // 与真实数据库的 GROUP BY type 结果一致（byType 不是硬编码常量）。
+  const db = createDatabaseConnection();
+
+  try {
+    const rows = all(db, "SELECT type, COUNT(*) AS count FROM questions GROUP BY type");
+    const expected = Object.fromEntries(ALLOWED_TYPES.map((type) => [type, 0]));
+
+    for (const row of rows) {
+      expected[row.type] = Number(row.count);
+    }
+
+    assert.deepEqual(payload.byType, expected);
+  } finally {
+    closeDatabaseConnection(db);
+  }
+
+  // 种子只放了 questions[0] 一道题：它的 type 必须是唯一非零项。
+  assert.equal(payload.byType[questions[0].type], 1);
+  assert.equal(byTypeTotal, 1);
 });
 
 test("Gateway 接受四种 proposal，默认保存为 pending", async () => {
