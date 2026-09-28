@@ -4,9 +4,6 @@ const { BACKEND_ORIGIN } = require("../e2e-environment");
 test.describe("External AI proposal 审核闭环", () => {
   test("提交 focus_mark 后可以在工具台接受，并在已确认列表查看", async ({ page, request }) => {
     const submitResponse = await request.post(`${BACKEND_ORIGIN}/api/external-ai/proposals`, {
-      headers: {
-        "x-external-ai-key": "e2e-gateway-key"
-      },
       data: {
         type: "focus_mark",
         scope: {

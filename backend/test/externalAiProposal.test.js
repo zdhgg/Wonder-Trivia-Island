@@ -9,7 +9,6 @@ const tempDbPath = path.join(tempDir, "external-ai-proposal.test.db");
 fs.mkdirSync(tempDir, { recursive: true });
 process.env.NODE_ENV = "test";
 process.env.TRIVIA_DB_PATH = tempDbPath;
-process.env.EXTERNAL_AI_GATEWAY_KEY = "test-gateway-key";
 process.env.ADMIN_IMPORT_KEY = "test-admin-key";
 // 教学演示链路必须完全不依赖模型供应商配置：这里显式清空，任何隐式依赖都会暴露出来。
 delete process.env.OPENAI_API_KEY;
@@ -93,9 +92,11 @@ async function jsonRequest(pathname, options = {}) {
   return { response, payload };
 }
 
+// External AI Gateway 现在是 localhost-only 的本机进程间接口：
+// 能不能访问完全由真实 socket 是否 loopback 决定，不需要也不接受任何凭证头。
+// 这个 helper 只负责补 JSON Content-Type。
 function gatewayHeaders(json = false) {
   return {
-    "x-external-ai-key": "test-gateway-key",
     ...(json ? { "Content-Type": "application/json" } : {})
   };
 }
@@ -233,7 +234,7 @@ test.beforeEach(() => {
   resetDatabase();
 });
 
-test("Gateway 只读题目上下文和统计，并拒绝没有专用凭证的访问", async () => {
+test("Gateway 只读题目上下文和统计，且访问判定只看真实 socket", async () => {
   const stats = await jsonRequest("/api/external-ai/question-stats", {
     headers: gatewayHeaders()
   });
@@ -248,10 +249,31 @@ test("Gateway 只读题目上下文和统计，并拒绝没有专用凭证的访
   assert.equal(typeof context.payload.data[0].content, "string");
   assert.equal(Object.hasOwn(context.payload.data[0], "answer"), false);
 
-  const noCredential = await jsonRequest("/api/external-ai/question-stats", {
+  // 完全不带任何 header：测试进程直连 backend，真实 socket 是 loopback，应当 200。
+  const noHeaderAtAll = await jsonRequest("/api/external-ai/question-stats");
+  assert.equal(noHeaderAtAll.response.status, 200);
+
+  // 已废弃的 x-external-ai-key 不再有任何特殊语义，带任意值都不影响判定。
+  const legacyKeyHeader = await jsonRequest("/api/external-ai/question-stats", {
+    headers: { "x-external-ai-key": "whatever" }
+  });
+  assert.equal(legacyKeyHeader.response.status, 200);
+
+  // ADMIN_IMPORT_KEY 属于人工管理面，不是 Gateway 的凭证：带上它既不提权也不被拒。
+  const adminKeyOnly = await jsonRequest("/api/external-ai/question-stats", {
     headers: { "x-admin-key": "test-admin-key" }
   });
-  assert.equal(noCredential.response.status, 401);
+  assert.equal(adminKeyOnly.response.status, 200);
+
+  // 伪造 forwarded header 同样不参与判定。
+  const forgedForwarded = await jsonRequest("/api/external-ai/question-stats", {
+    headers: {
+      "x-forwarded-for": "203.0.113.9",
+      forwarded: "for=203.0.113.9",
+      "x-real-ip": "203.0.113.9"
+    }
+  });
+  assert.equal(forgedForwarded.response.status, 200);
 });
 
 test("Gateway 接受四种 proposal，默认保存为 pending", async () => {
@@ -427,6 +449,75 @@ test("教学演示链路不依赖任何模型供应商配置", () => {
   }
 });
 
+test("External AI Gateway 不再依赖任何凭证：本机进程间接口只认真实 socket", () => {
+  // 这个 Key 已随 Gateway 本机化彻底移除，环境里不应再出现。
+  assert.equal(process.env.EXTERNAL_AI_GATEWAY_KEY, undefined);
+
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const scannedDirectories = [
+    path.join(repoRoot, "backend", "src"),
+    path.join(repoRoot, "frontend", "src"),
+    path.join(repoRoot, "frontend", "security"),
+    path.join(repoRoot, "e2e", "specs"),
+    path.join(repoRoot, "scripts")
+  ];
+  const scannedFiles = [
+    path.join(repoRoot, ".env.example"),
+    path.join(repoRoot, "README.md"),
+    path.join(repoRoot, "playwright.config.js"),
+    path.join(repoRoot, "frontend", "vite.config.js"),
+    path.join(repoRoot, "frontend", "vite.config.proxy.ts")
+  ].filter((file) => fs.existsSync(file));
+  // 这个测试文件本身不在扫描范围内，所以可以直接写明文。
+  const forbiddenTokens = ["EXTERNAL_AI_GATEWAY_KEY", "x-external-ai-key"];
+  const offenders = [];
+
+  function scanFile(filePath) {
+    const source = fs.readFileSync(filePath, "utf8");
+
+    for (const token of forbiddenTokens) {
+      if (source.includes(token)) {
+        offenders.push(`${path.relative(repoRoot, filePath)} :: ${token}`);
+      }
+    }
+  }
+
+  function walk(directory) {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const fullPath = path.join(directory, entry.name);
+
+      if (entry.isDirectory()) {
+        if (entry.name === "node_modules" || entry.name === "dist") {
+          continue;
+        }
+
+        walk(fullPath);
+        continue;
+      }
+
+      if (/\.(js|mjs|cjs|ts|vue|json|md)$/.test(entry.name)) {
+        scanFile(fullPath);
+      }
+    }
+  }
+
+  for (const directory of scannedDirectories) {
+    if (fs.existsSync(directory)) {
+      walk(directory);
+    }
+  }
+
+  for (const file of scannedFiles) {
+    scanFile(file);
+  }
+
+  assert.deepEqual(
+    offenders,
+    [],
+    `运行时代码 / 文档 / 配置里不应再出现已废弃的 Gateway 凭证：\n${offenders.join("\n")}`
+  );
+});
+
 test("teachingIntervention 可选且会拒绝非法类型或明显非法结构", async () => {
   const valid = await jsonRequest("/api/external-ai/proposals", {
     method: "POST",
@@ -576,9 +667,15 @@ test("accepted proposal 只有用户点击后才登记待外部生成请求，�
   assert.ok(entry.requestedAt);
   assert.ok(!("reviewNote" in entry), "待生成列表不应暴露管理字段");
 
-  // Gateway 凭证是硬性要求。
-  const noKey = await jsonRequest("/api/external-ai/teaching-demo-requests");
-  assert.equal(noKey.response.status, 401);
+  // Gateway 不需要任何凭证：本机直连（真实 socket 是 loopback）即可访问。
+  const withoutAnyCredential = await jsonRequest("/api/external-ai/teaching-demo-requests");
+  assert.equal(withoutAnyCredential.response.status, 200);
+
+  // 带上已废弃的 x-external-ai-key 也不改变判定。
+  const legacyKeyHeader = await jsonRequest("/api/external-ai/teaching-demo-requests", {
+    headers: { "x-external-ai-key": "whatever" }
+  });
+  assert.equal(legacyKeyHeader.response.status, 200);
 
   // 管理接口的目标语义是「真实 socket loopback OR 正确 ADMIN_IMPORT_KEY」。
   // 测试进程的流量全部来自 loopback，所以本机调用不再需要管理口令。

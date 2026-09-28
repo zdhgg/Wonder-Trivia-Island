@@ -1,4 +1,5 @@
 const express = require("express");
+const { isLoopbackRequest } = require("../security/localAccess");
 const { getQuestionCount } = require("../questions/repository");
 const {
   all,
@@ -49,26 +50,28 @@ const QUESTION_CONTEXT_FIELDS = [
   "updatedAt"
 ].join(", ");
 
+// External AI Gateway 是本机进程间接口，不是远程认证接口。
+//
+// 最终安全模型：
+//   DSH / External Harness → 本机直连 127.0.0.1:8008 → 真实 socket 是 loopback → 允许
+//   局域网 / 其他设备      → :8008/api/external-ai/* → 403
+//   浏览器（本机或局域网）  → :3008/api/external-ai/* → 404（Vite 明确不代理该前缀）
+//
+// 因此这里只依据内核给出的 socket 对端地址做判定，不引入任何 token / secret / session：
+//   · 不读取任何 Gateway 专用密钥（该配置已随本机化一并移除）
+//   · 不接受 ADMIN_IMPORT_KEY（那是人工管理面的另一套权限边界）
+//   · 不读取 X-Forwarded-For / Forwarded / X-Real-IP / req.ip
+// 判定真源是 shared/loopbackAddress.mjs，经 ../security/localAccess 暴露，
+// 与 requireImportAccess 共用同一份实现。
 function requireGatewayAccess(req, res, next) {
-  const expectedKey = String(process.env.EXTERNAL_AI_GATEWAY_KEY || "").trim();
-
-  if (!expectedKey) {
-    res.status(503).json({
-      message: "External AI Gateway 尚未配置 EXTERNAL_AI_GATEWAY_KEY。"
-    });
+  if (isLoopbackRequest(req)) {
+    next();
     return;
   }
 
-  const providedKey = String(req.get("x-external-ai-key") || "").trim();
-
-  if (providedKey !== expectedKey) {
-    res.status(401).json({
-      message: "External AI Gateway 凭证无效。"
-    });
-    return;
-  }
-
-  next();
+  res.status(403).json({
+    message: "External AI Gateway 只允许本机直连访问。"
+  });
 }
 
 function normalizeQueryText(value, maxLength = 120) {

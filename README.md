@@ -145,8 +145,7 @@ npm run backend:start
 ```
 
 如果未配置 `ADMIN_IMPORT_KEY`，导入接口默认只允许本机访问。
-External AI Proposal Gateway 使用独立的 `EXTERNAL_AI_GATEWAY_KEY`，不会接受 `ADMIN_IMPORT_KEY`。
-未配置该密钥时 Gateway 默认关闭；它只提供白名单查询、proposal 提交和 proposal 状态读取，不提供题库或学习记录写入。
+External AI Gateway 是 **localhost-only 的本机进程间接口**：只供 DSH / External Harness 直连 `http://127.0.0.1:8008/api/external-ai/...` 使用。它只认真实 socket loopback，**不需要也不接受任何凭证**——既没有网关专用密钥，也不接受 `ADMIN_IMPORT_KEY`。它不经过 Vite，也不应通过任何远程代理或浏览器暴露给局域网。它只提供白名单查询、proposal 提交和 proposal 状态读取，不提供题库或学习记录写入。
 如果未配置 `OPENAI_API_KEY`，AI 出题、AI 点评、首页欢迎语和语音播报会返回不可用提示，但现有题库查看、导入、答题、学习和闯关功能不受影响。
 教学演示（Teaching Demo）不依赖任何模型 Key：系统只登记“待外部生成”请求，demo 由外部 Harness 通过 External AI Gateway 提交，未配置 `OPENAI_API_KEY` 时该流程依然完整可用。
 如果你在前端设置里为某条模型填写了自定义 `Base URL`，需要同时填写该模型自己的 `API Key`；服务端不会再把默认密钥转发到任意自定义网关。
@@ -175,13 +174,13 @@ External AI Proposal Gateway 使用独立的 `EXTERNAL_AI_GATEWAY_KEY`，不会�
 - `POST /api/questions/import/preview`：预检题库数据（harness 与调试使用）
 - `GET /api/challenge-progress` / `PUT /api/challenge-progress`：读取或保存闯关进度
 - `GET /api/study-record-book` / `PUT /api/study-record-book`：读取或保存错题温习档案
-- `GET /api/external-ai/question-stats`：External AI Gateway 查询题库统计（需要 `x-external-ai-key`）
-- `GET /api/external-ai/questions`：External AI Gateway 查询白名单题目上下文（需要 `x-external-ai-key`）
-- `GET /api/external-ai/learning-evidence?profileId=...`：按必填 profileId 查询聚合后的学习证据，不返回 profile 列表、profile ID 或完整学习记录 JSON（需要 `x-external-ai-key`）
-- `GET/POST /api/external-ai/proposals`：读取 accepted、或按 `sourceId` 筛选 pending/rejected proposal，或提交 pending proposal（需要 `x-external-ai-key`）
-- `GET /api/external-ai/proposals/:id`：查询 accepted，或按 `sourceId` 筛选单条 pending/rejected proposal（需要 `x-external-ai-key`）
-- `GET /api/external-ai/teaching-demo-requests`：查询“已 accepted 且用户明确请求制作”的教学演示待生成请求（需要 `x-external-ai-key`）
-- `POST /api/external-ai/teaching-demo-drafts`：提交外部 Harness 生成的受控 demo spec，校验后保存为 draft（需要 `x-external-ai-key`）
+- `GET /api/external-ai/question-stats`：External AI Gateway 查询题库统计（localhost-only）
+- `GET /api/external-ai/questions`：External AI Gateway 查询白名单题目上下文（localhost-only）
+- `GET /api/external-ai/learning-evidence?profileId=...`：按必填 profileId 查询聚合后的学习证据，不返回 profile 列表、profile ID 或完整学习记录 JSON（localhost-only）
+- `GET/POST /api/external-ai/proposals`：读取 accepted、或按 `sourceId` 筛选 pending/rejected proposal，或提交 pending proposal（localhost-only）
+- `GET /api/external-ai/proposals/:id`：查询 accepted，或按 `sourceId` 筛选单条 pending/rejected proposal（localhost-only）
+- `GET /api/external-ai/teaching-demo-requests`：查询“已 accepted 且用户明确请求制作”的教学演示待生成请求（localhost-only）
+- `POST /api/external-ai/teaching-demo-drafts`：提交外部 Harness 生成的受控 demo spec，校验后保存为 draft（localhost-only）
 - `GET /api/proposals?status=pending|accepted|rejected`：后台审核页读取 proposal（复用 `ADMIN_IMPORT_KEY` / 本机规则）
 - `POST /api/proposals/:id/accept`、`POST /api/proposals/:id/reject`：后台审核 proposal（复用 `ADMIN_IMPORT_KEY` / 本机规则）
 - `GET /api/proposals/:id/teaching-demo`：后台读取教学演示的请求状态与草稿（复用 `ADMIN_IMPORT_KEY` / 本机规则）
@@ -197,8 +196,7 @@ proposal 只在 `pending`、`accepted`、`rejected` 三种状态之间停留；a
 请求示例：
 
 ```bash
-curl -X POST http://localhost:8008/api/external-ai/proposals `
-  -H "x-external-ai-key: your-gateway-key" `
+curl -X POST http://127.0.0.1:8008/api/external-ai/proposals `
   -H "Content-Type: application/json" `
   -d '{
     "type": "focus_mark",
@@ -223,8 +221,7 @@ curl -X POST http://localhost:8008/api/external-ai/proposals `
 4. Harness 用自己的模型（DeepSeek / Codex / 其他）生成受控 spec，再提交：
 
 ```bash
-curl -X POST http://localhost:8008/api/external-ai/teaching-demo-drafts `
-  -H "x-external-ai-key: your-gateway-key" `
+curl -X POST http://127.0.0.1:8008/api/external-ai/teaching-demo-drafts `
   -H "Content-Type: application/json" `
   -d '{
     "proposalId": 12,

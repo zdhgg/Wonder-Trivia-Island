@@ -2,11 +2,9 @@ const { test, expect } = require("@playwright/test");
 const { BACKEND_ORIGIN } = require("../e2e-environment");
 
 // 全链路 E2E：Wonder-Trivia-Island 自己不做任何模型推理。
-// 测试进程扮演外部 Harness，用独立 EXTERNAL_AI_GATEWAY_KEY 通过 External AI Gateway
-// 提交 proposal 与 demo spec；管理页只负责登记请求、预览与人工审核。
-const GATEWAY_HEADERS = {
-  "x-external-ai-key": "e2e-gateway-key"
-};
+// 测试进程扮演外部 Harness，直连本机 backend（真实 socket 是 loopback）通过
+// External AI Gateway 提交 proposal 与 demo spec；管理页只负责登记请求、预览与人工审核。
+// Gateway 是 localhost-only 的本机进程间接口，不需要也不接受任何凭证头。
 
 function teachingProposalPayload(interventionType, harnessId) {
   return {
@@ -100,7 +98,6 @@ function microAnimationSpec() {
 
 async function submitProposal(request, interventionType, harnessId) {
   const response = await request.post(`${BACKEND_ORIGIN}/api/external-ai/proposals`, {
-    headers: GATEWAY_HEADERS,
     data: teachingProposalPayload(interventionType, harnessId)
   });
 
@@ -118,9 +115,7 @@ async function acceptProposal(request, proposalId) {
 }
 
 async function listRequests(request) {
-  const response = await request.get(`${BACKEND_ORIGIN}/api/external-ai/teaching-demo-requests`, {
-    headers: GATEWAY_HEADERS
-  });
+  const response = await request.get(`${BACKEND_ORIGIN}/api/external-ai/teaching-demo-requests`);
 
   expect(response.status()).toBe(200);
 
@@ -129,7 +124,6 @@ async function listRequests(request) {
 
 async function submitDraft(request, body) {
   return request.post(`${BACKEND_ORIGIN}/api/external-ai/teaching-demo-drafts`, {
-    headers: GATEWAY_HEADERS,
     data: body
   });
 }

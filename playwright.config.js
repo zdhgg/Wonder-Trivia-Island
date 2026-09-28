@@ -62,7 +62,6 @@ module.exports = defineConfig({
         API_PORT: String(BACKEND_PORT),
         // 硬性隔离：E2E 后端只允许打开专用测试库。
         TRIVIA_DB_PATH: E2E_DB_PATH,
-        EXTERNAL_AI_GATEWAY_KEY: "e2e-gateway-key",
         NODE_ENV: "test"
       }
     },
