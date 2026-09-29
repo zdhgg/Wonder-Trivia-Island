@@ -13,15 +13,13 @@
   <circle cx="56" cy="36" r="26" fill="#FFF1E3" opacity="0.9" />
   <rect x="38" y="26" width="404" height="228" rx="28" fill="#FFFDFB" filter="url(#shadow)" />
   <rect x="38" y="26" width="404" height="52" rx="28" fill="#E5823A" />
-  <rect x="54" y="44" width="84" height="20" rx="10" fill="rgba(255,255,255,0.20)" />
-  <text x="96" y="58" text-anchor="middle" font-size="12" fill="#FFFFFF" font-weight="700">图表阅读</text>
-  <text x="64" y="112" font-size="24" fill="#5A3520" font-weight="800">通知栏写着</text>
-  <text x="64" y="70" font-size="24" fill="#FFFFFF" font-weight="800">三年级 语文</text>
-  
-    <rect x="64" y="86" width="352" height="116" rx="24" fill="#FFFDFB" stroke="#F1D5BF" />
-    <rect x="84" y="108" width="312" height="72" rx="18" fill="#FFF0E4" />
-    <text x="88" y="104" font-size="20" fill="#5A3520" font-weight="700"><tspan x="88" y="104">科技节开幕式4月18日上午9点在</tspan><tspan x="88" y="132">礼堂举行</tspan></text>
-  
-  <rect x="56" y="218" width="368" height="24" rx="12" fill="#FFF1E3" />
-  <text x="68" y="238" font-size="14" fill="#8A624B" font-weight="600"><tspan x="68" y="238">开幕式在哪里举行？</tspan></text>
+  <text x="56" y="59" font-size="20" fill="#FFFFFF" font-weight="800">三年级 语文</text>
+  <text x="424" y="57" text-anchor="end" font-size="14" fill="rgba(255,255,255,0.85)" font-weight="700">图表阅读</text>
+
+    <rect x="64" y="86" width="352" height="120" rx="20" fill="#FFFDFB" stroke="#F1D5BF" />
+    <rect x="84" y="98" width="312" height="96" rx="16" fill="#FFF0E4" />
+    <text x="96" font-size="20" fill="#5A3520" font-weight="700"><tspan x="96" y="120">科技节开幕式4月18日上午9</tspan><tspan x="96" y="143">点在礼堂举行</tspan></text>
+
+  <rect x="56" y="222" width="368" height="24" rx="12" fill="#FFF1E3" />
+  <text x="68" y="238" font-size="14" fill="#8A624B" font-weight="600">开幕式在哪里举行？</text>
 </svg>

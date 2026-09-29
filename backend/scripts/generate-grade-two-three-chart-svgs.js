@@ -178,22 +178,27 @@ function extractChartPayload(content) {
 
 function parseEntries(body) {
   return String(body || "")
-    .split(/[，；]/)
-    .map((item) => item.trim())
+    .split(/[，；、]/)
+    .map((item) => item.trim().split("。")[0].trim())
     .filter(Boolean);
 }
 
+// value：归一化到公共单位（克/角/分钟），只用于条形图长度比例；
+// display：题面原始写法，用于条形图末端的数值标签，避免“24千克”被显示成换算后的“24000”。
 function extractComparableValue(text) {
   const source = String(text || "");
 
   const timeMatch = source.match(/(\d{1,2}):(\d{2})/);
   if (timeMatch) {
-    return Number(timeMatch[1]) * 60 + Number(timeMatch[2]);
+    return { value: Number(timeMatch[1]) * 60 + Number(timeMatch[2]), display: timeMatch[0] };
   }
 
   const currencyWithJiao = source.match(/(\d+(?:\.\d+)?)元(\d+)角/);
   if (currencyWithJiao) {
-    return Number(currencyWithJiao[1]) * 10 + Number(currencyWithJiao[2]);
+    return {
+      value: Number(currencyWithJiao[1]) * 10 + Number(currencyWithJiao[2]),
+      display: `${currencyWithJiao[1]}元${currencyWithJiao[2]}角`
+    };
   }
 
   if (/千克/.test(source) || /克/.test(source)) {
@@ -201,26 +206,29 @@ function extractComparableValue(text) {
     const gramMatch = source.match(/(\d+(?:\.\d+)?)克/);
 
     if (kilogramMatch && gramMatch && source.indexOf("千克") < source.indexOf("克")) {
-      return Number(kilogramMatch[1]) * 1000 + Number(gramMatch[1]);
+      return {
+        value: Number(kilogramMatch[1]) * 1000 + Number(gramMatch[1]),
+        display: `${kilogramMatch[0]}${gramMatch[1]}克`
+      };
     }
 
     if (kilogramMatch) {
-      return Number(kilogramMatch[1]) * 1000;
+      return { value: Number(kilogramMatch[1]) * 1000, display: `${kilogramMatch[1]}千克` };
     }
 
     if (gramMatch) {
-      return Number(gramMatch[1]);
+      return { value: Number(gramMatch[1]), display: `${gramMatch[1]}克` };
     }
   }
 
   const currencyOnlyYuan = source.match(/(\d+(?:\.\d+)?)元/);
   if (currencyOnlyYuan && !/角/.test(source)) {
-    return Number(currencyOnlyYuan[1]) * 10;
+    return { value: Number(currencyOnlyYuan[1]) * 10, display: `${currencyOnlyYuan[1]}元` };
   }
 
   const currencyOnlyJiao = source.match(/(\d+(?:\.\d+)?)角/);
   if (currencyOnlyJiao) {
-    return Number(currencyOnlyJiao[1]);
+    return { value: Number(currencyOnlyJiao[1]), display: `${currencyOnlyJiao[1]}角` };
   }
 
   const numberMatches = [...source.matchAll(/(\d+(?:\.\d+)?)/g)];
@@ -228,44 +236,48 @@ function extractComparableValue(text) {
     return null;
   }
 
-  return Number(numberMatches[numberMatches.length - 1][1]);
+  const lastNumber = numberMatches[numberMatches.length - 1][1];
+  return { value: Number(lastNumber), display: lastNumber };
 }
 
 function buildRows(entries, theme) {
-  const values = entries.map((entry) => extractComparableValue(entry));
-  const canDrawBars = values.every((value) => Number.isFinite(value));
-  const maxValue = canDrawBars ? Math.max(...values) : 0;
+  const comparableValues = entries.map((entry) => extractComparableValue(entry));
+  const canDrawBars = comparableValues.every((item) => item && Number.isFinite(item.value));
+  const maxValue = canDrawBars ? Math.max(...comparableValues.map((item) => item.value)) : 0;
 
   return entries
     .slice(0, 3)
     .map((entry, index) => {
-      const y = 86 + index * 52;
-      const lines = wrapText(entry, 14);
-      const value = values[index];
-      const barWidth = canDrawBars && maxValue > 0 ? Math.max(26, Math.round((value / maxValue) * 124)) : 0;
+      // 行区 y 86~216（3 行 x 38 高 + 8 间距），给 y=222 的 footer 留出间隙
+      const y = 86 + index * 46;
+      const lines = wrapText(entry, 13);
+      const comparable = comparableValues[index];
+      const barWidth =
+        canDrawBars && comparable ? Math.max(20, Math.round((comparable.value / maxValue) * 76)) : 0;
 
+      const lineBaselines = lines.length > 1 ? [y + 15, y + 33] : [y + 24];
       const textNodes = lines
         .slice(0, 2)
         .map(
           (line, lineIndex) =>
-            `<tspan x="98" y="${y + 20 + lineIndex * 18}">${escapeXml(line)}</tspan>`
+            `<tspan x="98" y="${lineBaselines[lineIndex]}">${escapeXml(line)}</tspan>`
         )
         .join("");
 
       const barNode =
-        canDrawBars && Number.isFinite(value)
+        canDrawBars && comparable
           ? `
-        <rect x="314" y="${y + 10}" width="124" height="12" rx="6" fill="${theme.stripSoft}" />
-        <rect x="314" y="${y + 10}" width="${barWidth}" height="12" rx="6" fill="${theme.strip}" />
-        <text x="438" y="${y + 21}" text-anchor="end" font-size="14" fill="${theme.accent}" font-weight="700">${escapeXml(String(value))}</text>
+        <rect x="314" y="${y + 13}" width="76" height="12" rx="6" fill="${theme.stripSoft}" />
+        <rect x="314" y="${y + 13}" width="${barWidth}" height="12" rx="6" fill="${theme.strip}" />
+        <text x="432" y="${y + 23}" text-anchor="end" font-size="12" fill="${theme.accent}" font-weight="700">${escapeXml(comparable.display)}</text>
       `
           : "";
 
       return `
-      <rect x="62" y="${y}" width="376" height="42" rx="16" fill="${theme.card}" stroke="${theme.line}" />
-      <circle cx="84" cy="${y + 21}" r="10" fill="${theme.badge}" stroke="${theme.line}" />
-      <text x="84" y="${y + 26}" text-anchor="middle" font-size="12" fill="${theme.accent}" font-weight="700">${index + 1}</text>
-      <text x="98" y="${y + 20}" font-size="16" fill="${theme.text}" font-weight="600">${textNodes}</text>
+      <rect x="62" y="${y}" width="376" height="38" rx="14" fill="${theme.card}" stroke="${theme.line}" />
+      <circle cx="84" cy="${y + 19}" r="10" fill="${theme.badge}" stroke="${theme.line}" />
+      <text x="84" y="${y + 23}" text-anchor="middle" font-size="12" fill="${theme.accent}" font-weight="700">${index + 1}</text>
+      <text x="98" font-size="16" fill="${theme.text}" font-weight="600">${textNodes}</text>
       ${barNode}
     `;
     })
@@ -273,19 +285,21 @@ function buildRows(entries, theme) {
 }
 
 function buildNoteBody(body, theme) {
-  const lines = wrapText(body, 16);
+  const lines = wrapText(body, 14);
+  // 内框 y 98~194，四行基线 120/143/166/189 全部落在框内
+  const lineBaselines = [120, 143, 166, 189];
   const textNodes = lines
     .slice(0, 4)
     .map(
       (line, index) =>
-        `<tspan x="88" y="${104 + index * 28}">${escapeXml(line)}</tspan>`
+        `<tspan x="96" y="${lineBaselines[index]}">${escapeXml(line)}</tspan>`
     )
     .join("");
 
   return `
-    <rect x="64" y="86" width="352" height="116" rx="24" fill="${theme.card}" stroke="${theme.line}" />
-    <rect x="84" y="108" width="312" height="72" rx="18" fill="${theme.accentSoft}" />
-    <text x="88" y="104" font-size="20" fill="${theme.text}" font-weight="700">${textNodes}</text>
+    <rect x="64" y="86" width="352" height="120" rx="20" fill="${theme.card}" stroke="${theme.line}" />
+    <rect x="84" y="98" width="312" height="96" rx="16" fill="${theme.accentSoft}" />
+    <text x="96" font-size="20" fill="${theme.text}" font-weight="700">${textNodes}</text>
   `;
 }
 
@@ -296,14 +310,9 @@ function buildSvg(question) {
   const isNoteLayout = entries.length < 2;
   const bodyNode = isNoteLayout ? buildNoteBody(payload.body, theme) : buildRows(entries, theme);
   const footer = question.subject === "数学" ? "观察数据，再判断答案" : "读懂信息，再选择答案";
-  const promptLines = wrapText(payload.prompt || footer, 18);
-  const promptNodes = promptLines
-    .slice(0, 2)
-    .map(
-      (line, index) =>
-        `<tspan x="68" y="${238 + index * 18}">${escapeXml(line)}</tspan>`
-    )
-    .join("");
+  // footer 单行最多 24 字；超长时截断加省略号，避免溢出提示条
+  const promptLines = wrapText(payload.prompt || footer, 24);
+  const promptText = promptLines.length > 1 ? `${promptLines[0]}…` : promptLines[0];
 
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 280">
   <defs>
@@ -320,13 +329,11 @@ function buildSvg(question) {
   <circle cx="56" cy="36" r="26" fill="${theme.badge}" opacity="0.9" />
   <rect x="38" y="26" width="404" height="228" rx="28" fill="${theme.card}" filter="url(#shadow)" />
   <rect x="38" y="26" width="404" height="52" rx="28" fill="${theme.strip}" />
-  <rect x="54" y="44" width="84" height="20" rx="10" fill="rgba(255,255,255,0.20)" />
-  <text x="96" y="58" text-anchor="middle" font-size="12" fill="#FFFFFF" font-weight="700">${escapeXml(question.type)}</text>
-  <text x="64" y="112" font-size="24" fill="${theme.text}" font-weight="800">${escapeXml(payload.title || question.type)}</text>
-  <text x="64" y="70" font-size="24" fill="#FFFFFF" font-weight="800">${escapeXml(question.grade)} ${escapeXml(question.subject)}</text>
+  <text x="56" y="59" font-size="20" fill="#FFFFFF" font-weight="800">${escapeXml(question.grade)} ${escapeXml(question.subject)}</text>
+  <text x="424" y="57" text-anchor="end" font-size="14" fill="rgba(255,255,255,0.85)" font-weight="700">${escapeXml(question.type)}</text>
   ${bodyNode}
-  <rect x="56" y="218" width="368" height="24" rx="12" fill="${theme.badge}" />
-  <text x="68" y="238" font-size="14" fill="${theme.subtext}" font-weight="600">${promptNodes}</text>
+  <rect x="56" y="222" width="368" height="24" rx="12" fill="${theme.badge}" />
+  <text x="68" y="238" font-size="14" fill="${theme.subtext}" font-weight="600">${escapeXml(promptText)}</text>
 </svg>`;
 }
 
@@ -346,7 +353,7 @@ function findQuestions(group) {
 
 function writeSvgFile(filePath, content) {
   ensureDir(path.dirname(filePath));
-  fs.writeFileSync(filePath, content, "utf8");
+  fs.writeFileSync(filePath, content.replace(/[ \t]+$/gm, ""), "utf8");
 }
 
 function main() {
