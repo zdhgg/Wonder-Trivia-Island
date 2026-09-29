@@ -3,7 +3,18 @@ export const DEFAULT_AUDIO_PREFERENCES = Object.freeze({
   musicVolume: 0.42,
   sfxVolume: 0.9,
   musicEnabled: true,
-  sfxEnabled: true
+  sfxEnabled: true,
+  // 知识岛页面的海浪环境声单独记一个开关。
+  // 默认 false：这一页不应该在孩子还没点过任何东西时自己发出声音，
+  // 它是"想听才听"的背景，不是必须存在的功能。
+  islandAmbienceEnabled: false
+});
+
+// 海浪环境声的输出音量系数。
+// 它乘在 masterVolume × musicVolume 之上，所以设置里的总音量与静音仍然对它生效
+// （muteAll() 把它一起按掉），而这一层再额外压低，保证它只是"垫在下面"的海声。
+export const ISLAND_AMBIENCE_VOLUME = Object.freeze({
+  islandWaves: 0.16
 });
 
 export const AUDIO_CUES = Object.freeze({

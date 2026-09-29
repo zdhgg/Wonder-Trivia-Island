@@ -33,7 +33,13 @@ function normalizePreferences(savedPreferences = {}) {
     sfxEnabled:
       typeof savedPreferences.sfxEnabled === "boolean"
         ? savedPreferences.sfxEnabled
-        : DEFAULT_AUDIO_PREFERENCES.sfxEnabled
+        : DEFAULT_AUDIO_PREFERENCES.sfxEnabled,
+    // 知识岛海浪环境声：和上面几个开关写在同一个 storage key 里，
+    // 所以记忆方式与既有偏好完全一致，不引入第二套本地持久。
+    islandAmbienceEnabled:
+      typeof savedPreferences.islandAmbienceEnabled === "boolean"
+        ? savedPreferences.islandAmbienceEnabled
+        : DEFAULT_AUDIO_PREFERENCES.islandAmbienceEnabled
   };
 }
 
@@ -53,7 +59,8 @@ export const useAudioStore = defineStore("audio", {
       musicVolume: state.musicVolume,
       sfxVolume: state.sfxVolume,
       musicEnabled: state.musicEnabled,
-      sfxEnabled: state.sfxEnabled
+      sfxEnabled: state.sfxEnabled,
+      islandAmbienceEnabled: state.islandAmbienceEnabled
     })
   },
 
@@ -132,6 +139,15 @@ export const useAudioStore = defineStore("audio", {
 
     setSfxEnabled(nextValue) {
       this.sfxEnabled = Boolean(nextValue);
+      this.persistPreferences();
+    },
+
+    // 知识岛页面的海浪环境声开关。
+    // 它只影响"知识岛这一页要不要有海浪声"，
+    // 不动 masterVolume / musicVolume / musicEnabled / sfxEnabled 里的任何一个，
+    // 也不影响任何阶段、印章或繁荣度。
+    setIslandAmbienceEnabled(nextValue) {
+      this.islandAmbienceEnabled = Boolean(nextValue);
       this.persistPreferences();
     },
 

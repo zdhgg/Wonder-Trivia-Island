@@ -459,6 +459,15 @@ watch(
         <span v-if="isProsperityAtLeast(1)" class="knowledge-island__gull knowledge-island__gull--a" aria-hidden="true"></span>
         <span v-if="isProsperityAtLeast(1)" class="knowledge-island__gull knowledge-island__gull--b" aria-hidden="true"></span>
         <span v-if="isProsperityAtLeast(2)" class="knowledge-island__gull knowledge-island__gull--c" aria-hidden="true"></span>
+        <!-- 偶尔掠过的一只：与上面三只停在天上的海鸥不同，它大部分时间待在画面外，
+             只是每隔很久从天上慢慢横穿过去一次。
+             它是纯装饰：不参与热点测量（可点的那只仍然是 __gull--a），
+             所以这里动起来不会把「点海鸥」那个热点的位置带歪。 -->
+        <span
+          v-if="isProsperityAtLeast(1)"
+          class="knowledge-island__gull knowledge-island__gull--flyby"
+          aria-hidden="true"
+        ></span>
 
         <!-- 海水分三层：远处的浅蓝、近处的深蓝和贴着岸边的浪线。
              海是画布级背景，不跟着岛走（岛在水里，海不会跟着岛搬家）。 -->
@@ -778,6 +787,30 @@ watch(
 
 <style scoped>
 .knowledge-island {
+  /* ===========================================================================
+     环境生命感（第五层，纯表现）
+     ---------------------------------------------------------------------------
+     小岛应该"轻轻动起来、听起来像一个海岛"，但不能抢主体，所以这一层的规矩是：
+       1. 全部用 CSS animation，不用 JS 高频定时器驱动画面；
+       2. 全部只动 transform / opacity —— 不动 width / height / top / left，
+          所以绝不会引起重排，也不会把画面推出边界造成横向溢出；
+       3. 具体物件仍然以「点击才回应」为主：这里动的全是环境
+          （海、云、天上偶尔飞过的海鸥、光晕）和极轻的静物摆动；
+       4. 节奏与幅度统一挂在这几个变量上，繁荣度只改"动得多快、动多大"，
+          绝不参与任何阶段、印章或解锁判定。
+     基础档是默认值（最克制），下面两档只是把节奏收快一点、幅度放大一点。
+     =========================================================================== */
+  --ki-ambient-wave: 26s;   /* 岸边浪纹的横向漂移 */
+  --ki-ambient-swell: 30s;  /* 整条浪带的缓慢起伏 */
+  --ki-ambient-cloud: 108s; /* 云漂移（一轮要长到不像在循环） */
+  --ki-ambient-flyby: 78s;  /* 海鸥掠过的完整周期（含长时间不出现） */
+  --ki-ambient-sun: 13s;    /* 太阳光晕的呼吸 */
+  --ki-ambient-sway: 9.5s;  /* 嫩芽 / 草丛轻摆 */
+  --ki-ambient-bob: 8s;     /* 小船轻摇 */
+  --ki-ambient-beam: 19s;   /* 灯塔光束缓慢扫动 */
+  /* 幅度系数：所有环境动画的位移 / 角度都乘它，繁荣度越高动得越多一点。 */
+  --ki-ambient-amp: 1;
+
   display: grid;
   gap: 12px;
   padding: 14px 16px;
@@ -787,6 +820,33 @@ watch(
     linear-gradient(170deg, rgba(238, 252, 249, 0.98) 0%, rgba(255, 252, 243, 0.94) 100%);
   box-sizing: border-box;
   min-width: 0;
+}
+
+/* 丰盛：稍微多一点动态 —— 节奏快一档、幅度大一点点。
+   仍然只是"多一点"，不是换一套动画。 */
+.knowledge-island--prosperity-lush {
+  --ki-ambient-wave: 23s;
+  --ki-ambient-swell: 26s;
+  --ki-ambient-cloud: 96s;
+  --ki-ambient-flyby: 68s;
+  --ki-ambient-sun: 11.5s;
+  --ki-ambient-sway: 8.4s;
+  --ki-ambient-bob: 7s;
+  --ki-ambient-beam: 16.5s;
+  --ki-ambient-amp: 1.35;
+}
+
+/* 繁荣：动态稍丰富。同样只是变量不同，动画本身与解锁规则一个字都没改。 */
+.knowledge-island--prosperity-flourishing {
+  --ki-ambient-wave: 20s;
+  --ki-ambient-swell: 22s;
+  --ki-ambient-cloud: 84s;
+  --ki-ambient-flyby: 58s;
+  --ki-ambient-sun: 10s;
+  --ki-ambient-sway: 7.4s;
+  --ki-ambient-bob: 6.2s;
+  --ki-ambient-beam: 14s;
+  --ki-ambient-amp: 1.7;
 }
 
 /* ===========================================================================
@@ -855,7 +915,40 @@ watch(
   z-index: 1;
 }
 
+/* 光晕的"呼吸"落在这一层伪元素上，而不是去动 ::before 之外那颗太阳本体：
+   只改 opacity 与极小的 scale，所以不触发重排，太阳本体的位置与大小也一动不动。
+   直径取 280%（22 设计单位 → 约 61.6），配合同样的位移上限，
+   最右也只到设计画布 400 以内，永远不会顶出画面。 */
+.knowledge-island__sun::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 280%;
+  height: 280%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 233, 158, 0.5) 0%, rgba(255, 226, 132, 0) 68%);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  animation: knowledge-island-sun-breathe var(--ki-ambient-sun) ease-in-out infinite;
+}
+
+@keyframes knowledge-island-sun-breathe {
+  0%,
+  100% {
+    opacity: 0.34;
+    transform: translate(-50%, -50%) scale(0.96);
+  }
+
+  50% {
+    opacity: 0.62;
+    transform: translate(-50%, -50%) scale(1.04);
+  }
+}
+
 .knowledge-island__cloud {
+  --ki-cloud-scale: 1;
+  --ki-cloud-direction: 1;
   position: absolute;
   width: calc(var(--ki-u) * 62);
   height: calc(var(--ki-u) * 18);
@@ -863,6 +956,10 @@ watch(
   background: rgba(255, 255, 255, 0.72);
   opacity: 0.86;
   z-index: 1;
+  /* 云的静止大小改由 --ki-cloud-scale 承担，transform 整个交给漂移动画，
+     这样"缩放"和"漂移"不会互相覆盖。 */
+  transform: translateX(0) scale(var(--ki-cloud-scale));
+  animation: knowledge-island-cloud-drift var(--ki-ambient-cloud) ease-in-out infinite alternate;
 }
 
 .knowledge-island__cloud::before,
@@ -886,24 +983,49 @@ watch(
   aspect-ratio: 1;
 }
 
+/* 三朵云各走各的：左边一朵慢慢往右飘，右边一朵反向飘得更慢，
+   繁荣档多出来的那朵走得稍快一点。
+   周期与幅度都极小（每轮只移动 ±10 个设计单位），所以看不出在循环，
+   而且三朵云的漂移范围都远在 400 设计单位之内。 */
 .knowledge-island__cloud--left {
   top: calc(var(--ki-u) * 26);
   left: calc(var(--ki-u) * 34);
-  transform: scale(0.78);
+  --ki-cloud-scale: 0.78;
+  --ki-cloud-direction: 1;
+  animation-delay: -21s;
 }
 
 .knowledge-island__cloud--right {
   top: calc(var(--ki-u) * 46);
   left: calc(var(--ki-u) * 248);
-  transform: scale(0.58);
+  --ki-cloud-scale: 0.58;
+  --ki-cloud-direction: -1;
   opacity: 0.56;
+  /* 反向 + 更慢，避免两朵云看起来是同一段动画的两份拷贝。 */
+  animation-duration: calc(var(--ki-ambient-cloud) * 1.45);
+  animation-delay: -63s;
 }
 
 .knowledge-island__cloud--flourishing {
   top: calc(var(--ki-u) * 16);
   left: calc(var(--ki-u) * 150);
-  transform: scale(0.5);
+  --ki-cloud-scale: 0.5;
+  --ki-cloud-direction: 1;
   opacity: 0.66;
+  animation-duration: calc(var(--ki-ambient-cloud) * 0.82);
+  animation-delay: -37s;
+}
+
+@keyframes knowledge-island-cloud-drift {
+  from {
+    transform: translateX(calc(var(--ki-u) * -10 * var(--ki-ambient-amp) * var(--ki-cloud-direction)))
+      scale(var(--ki-cloud-scale));
+  }
+
+  to {
+    transform: translateX(calc(var(--ki-u) * 10 * var(--ki-ambient-amp) * var(--ki-cloud-direction)))
+      scale(var(--ki-cloud-scale));
+  }
 }
 
 .knowledge-island__sky-dot {
@@ -990,6 +1112,45 @@ watch(
   opacity: 0.68;
 }
 
+/* 偶尔掠过的一只海鸥。
+   一个周期里只有前 1/4 的时间在画面里横穿过去，剩下的时间停在画面外、不可见，
+   所以它是"偶尔有一只飞过"，而不是"一直有一只在那扇翅膀"。
+   关键约束：可点的那只海鸥是 __gull--a，它的热点位置是按静止盒子量出来的，
+   所以这里必须另起一个元素——绝不能去动 __gull--a，否则热区会停在原地点不到鸟。 */
+.knowledge-island__gull--flyby {
+  top: calc(var(--ki-u) * 34);
+  left: 0;
+  transform: scale(0.8);
+  opacity: 0;
+  animation: knowledge-island-gull-flyby var(--ki-ambient-flyby) linear infinite;
+}
+
+@keyframes knowledge-island-gull-flyby {
+  0% {
+    transform: translateX(calc(var(--ki-u) * -30)) translateY(calc(var(--ki-u) * 7)) scale(0.8);
+    opacity: 0;
+  }
+
+  5% {
+    opacity: 0.66;
+  }
+
+  26% {
+    transform: translateX(calc(var(--ki-u) * 430)) translateY(calc(var(--ki-u) * -5)) scale(0.8);
+    opacity: 0.6;
+  }
+
+  34% {
+    transform: translateX(calc(var(--ki-u) * 430)) translateY(calc(var(--ki-u) * -5)) scale(0.8);
+    opacity: 0;
+  }
+
+  100% {
+    transform: translateX(calc(var(--ki-u) * 430)) translateY(calc(var(--ki-u) * -5)) scale(0.8);
+    opacity: 0;
+  }
+}
+
 /* ---------- 海（画布级背景） ---------- */
 .knowledge-island__sea {
   position: absolute;
@@ -1040,6 +1201,20 @@ watch(
   height: 14%;
   opacity: 0.76;
   z-index: 4;
+  /* 整条浪带非常缓慢地轻轻起伏：位移只有 ±0.9 个设计单位，
+     远小于浪带自身 14% 的高度，所以不会露出海面、也不会碰到岛。
+     动的是这一整层而不是海面本身——海面不跟着晃，晃的只是贴着岸的那几道浪。 */
+  animation: knowledge-island-sea-swell var(--ki-ambient-swell) ease-in-out infinite alternate;
+}
+
+@keyframes knowledge-island-sea-swell {
+  from {
+    transform: translateY(calc(var(--ki-u) * -0.9 * var(--ki-ambient-amp)));
+  }
+
+  to {
+    transform: translateY(calc(var(--ki-u) * 0.9 * var(--ki-ambient-amp)));
+  }
 }
 
 /* 岸边只留几段手绘浪线：宽度、间距、角度各不相同，避免规则矩形的瓷砖感。 */
@@ -1053,7 +1228,9 @@ watch(
   border-radius: 50%;
   transform: translateX(0) rotate(var(--wave-angle));
   transform-origin: left center;
-  animation: knowledge-island-wave-drift 7s ease-in-out infinite alternate;
+  /* 岸边浪纹只做非常缓慢的横向漂移：周期由繁荣度变量给出（基础档 26s 一轮），
+     每一段浪纹还各自带一个负 delay，所以它们从一开始就是错开的。 */
+  animation: knowledge-island-wave-drift var(--ki-ambient-wave) ease-in-out infinite alternate;
 }
 
 .knowledge-island__surf-line::after {
@@ -1471,11 +1648,26 @@ watch(
 }
 
 /* ---------- 中央绿地：嫩芽 / 草丛 / 花 ---------- */
+/* 阶段专属生命感之一：萌芽海岸之后，嫩芽与草丛轻轻摆一下。
+   摆的是整个容器（容器本身没有基础 transform，所以不会顶掉叶子自己的角度），
+   支点放在底部，幅度只有 ±1.4° × 繁荣度系数——是"有风"，不是"被吹"。 */
 .knowledge-island__sprout {
   left: 26%;
   bottom: 6%;
   width: calc(var(--ki-u) * 24 * var(--ki-unit, 1));
   height: calc(var(--ki-u) * 31 * var(--ki-unit, 1));
+  transform-origin: bottom center;
+  animation: knowledge-island-sway var(--ki-ambient-sway) ease-in-out infinite alternate;
+}
+
+@keyframes knowledge-island-sway {
+  from {
+    transform: rotate(calc(-1.4deg * var(--ki-ambient-amp)));
+  }
+
+  to {
+    transform: rotate(calc(1.4deg * var(--ki-ambient-amp)));
+  }
 }
 
 .knowledge-island__sprout-stem {
@@ -1540,6 +1732,9 @@ watch(
   bottom: 4%;
   width: calc(var(--ki-u) * 22 * var(--ki-unit, 1));
   height: calc(var(--ki-u) * 19 * var(--ki-unit, 1));
+  transform-origin: bottom center;
+  /* 和嫩芽同一段动画，但方向与节奏错开一点，两丛草不会同步摆。 */
+  animation: knowledge-island-sway calc(var(--ki-ambient-sway) * 1.24) ease-in-out infinite alternate-reverse;
 }
 
 .knowledge-island__grass-blade {
@@ -1944,6 +2139,23 @@ watch(
   bottom: -18%;
   width: calc(var(--ki-u) * 26 * var(--ki-unit, 1));
   height: calc(var(--ki-u) * 29 * var(--ki-unit, 1));
+  /* 阶段专属生命感之二：探险码头之后，小船轻轻摇一下。
+     支点放在船身中下方，位移 ±0.7、倾角 ±0.9°，都是设计单位级的小数，
+     所以它始终停在码头的位置附近，不会漂出港口街区。 */
+  transform-origin: 50% 88%;
+  animation: knowledge-island-boat-bob var(--ki-ambient-bob) ease-in-out infinite alternate;
+}
+
+@keyframes knowledge-island-boat-bob {
+  from {
+    transform: translateY(calc(var(--ki-u) * 0.7 * var(--ki-ambient-amp)))
+      rotate(calc(-0.9deg * var(--ki-ambient-amp)));
+  }
+
+  to {
+    transform: translateY(calc(var(--ki-u) * -0.7 * var(--ki-ambient-amp)))
+      rotate(calc(0.9deg * var(--ki-ambient-amp)));
+  }
 }
 
 .knowledge-island__boat-hull {
@@ -2093,8 +2305,24 @@ watch(
   height: calc(var(--ki-u) * 20 * var(--ki-unit, 1));
   background: linear-gradient(90deg, rgba(255, 226, 132, 0.95), rgba(255, 238, 160, 0.55) 40%, rgba(255, 238, 160, 0));
   clip-path: polygon(0 36%, 100% 0, 100% 100%, 0 64%);
-  animation: knowledge-island-beam 4s ease-in-out infinite;
+  /* 阶段专属生命感之三：知识灯塔之后，光束除了缓慢明暗呼吸，还非常缓慢地左右扫一下。
+     两条动画动的是不同属性（一条 opacity、一条 transform），互不覆盖。
+     支点钉在灯塔的窗口上（left center），所以扫的是光束自己，光的起点始终不动。 */
+  transform-origin: left center;
+  animation:
+    knowledge-island-beam var(--ki-ambient-beam) ease-in-out infinite,
+    knowledge-island-beam-sweep calc(var(--ki-ambient-beam) * 1.6) ease-in-out infinite alternate;
   z-index: -1;
+}
+
+@keyframes knowledge-island-beam-sweep {
+  from {
+    transform: rotate(calc(-2.2deg * var(--ki-ambient-amp)));
+  }
+
+  to {
+    transform: rotate(calc(2.2deg * var(--ki-ambient-amp)));
+  }
 }
 
 .knowledge-island__beam--lush {
@@ -2628,6 +2856,32 @@ watch(
   .knowledge-island__camp-smoke,
   .knowledge-island__next-terrain {
     animation: none;
+  }
+
+  /* ---- 环境生命感：减少动态下全部关掉 ----
+     这一组是"自己微动"的环境层（海、云、掠过的海鸥、光晕、灯塔光束）
+     以及极轻的静物摆动（嫩芽 / 草丛 / 小船）。
+     它们没有交互反馈要表达，所以直接停掉不会损失任何信息：
+     画面仍然是完整的一幅画，只是静止。 */
+  .knowledge-island__surf,
+  .knowledge-island__sun::after,
+  .knowledge-island__cloud,
+  .knowledge-island__gull--flyby,
+  .knowledge-island__sprout,
+  .knowledge-island__grass,
+  .knowledge-island__boat {
+    animation: none;
+  }
+
+  /* 太阳光晕关掉动画后不能淡到没有：给一个稳定的静态强度。 */
+  .knowledge-island__sun::after {
+    opacity: 0.46;
+  }
+
+  /* 光束同理：原来是在 0.42～0.84 之间呼吸，
+     直接关掉动画会让它变成常亮的 1，反而比有动画时更抢眼。 */
+  .knowledge-island__beam {
+    opacity: 0.6;
   }
 
   /* 关掉动画后，预告轮廓不能淡到看不见：给一个稳定的静态强度。 */

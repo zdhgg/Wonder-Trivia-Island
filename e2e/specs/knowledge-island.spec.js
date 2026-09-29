@@ -1668,3 +1668,644 @@ test.describe("知识岛测试账本 fixture 自洽性", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// 环境生命感 + 海浪环境声。
+//
+// 这一组只测"表现"，不重新判定任何成长规则：
+//   - 动画全部由 CSS 驱动，所以断言方式是读 computed style 里挂了哪些 animation，
+//     而不是等画面稳定（这些周期是 8 秒到一分多钟，等不起）；
+//   - 音频只测控制权：默认不响、点一下才响、离页就停、再进来按偏好恢复、不叠播。
+// 阶段阈值（0/3/7/15/30）、繁荣度（21/63）、星星、terrain 一律仍由上面那些用例守着，
+// 这里只额外确认"环境动画不会绕过解锁规则"。
+// ---------------------------------------------------------------------------
+
+const ISLAND_AMBIENCE_TOGGLE = '[data-role="island-ambience-toggle"]';
+
+// 环境层：海浪（浪带 + 浪纹）、云、太阳光晕。
+const AMBIENT_ANIMATED_SELECTORS = Object.freeze([
+  ".knowledge-island__surf",
+  ".knowledge-island__surf-line",
+  ".knowledge-island__cloud",
+  ".knowledge-island__sun"
+]);
+
+// 阶段专属生命感：分别属于不同阶段，所以下面按阶段分别断言。
+const STAGE_LIFE_SELECTORS = Object.freeze({
+  sprout: ".knowledge-island__sprout",
+  grass: ".knowledge-island__grass",
+  boat: ".knowledge-island__boat",
+  beam: ".knowledge-island__beam"
+});
+
+// 把一个选择器上"主元素 + ::after"里所有真正在跑的 animation 读出来。
+// 为什么要连 ::after 一起读：太阳的呼吸、光晕落在伪元素上，
+// 而掠过的那只海鸥落在主元素上，两边都要能看到才算完整。
+async function readAmbientAnimations(page, selectors) {
+  return page.evaluate((targetSelectors) => {
+    const collectRunning = (style) =>
+      String(style.animationName)
+        .split(",")
+        .map((name) => name.trim())
+        .filter((name) => name !== "none")
+        .map((name, index) => ({
+          name,
+          durationSeconds: Number.parseFloat(String(style.animationDuration).split(",")[index]) || 0
+        }));
+
+    const result = {};
+
+    for (const selector of targetSelectors) {
+      const element = document.querySelector(selector);
+
+      if (!element) {
+        result[selector] = null;
+        continue;
+      }
+
+      result[selector] = {
+        animations: [
+          ...collectRunning(window.getComputedStyle(element)),
+          ...collectRunning(window.getComputedStyle(element, "::after"))
+        ]
+      };
+    }
+
+    return result;
+  }, selectors);
+}
+
+function animationNames(animation) {
+  return animation ? animation.animations.map((item) => item.name) : [];
+}
+
+// Vue 的 <style scoped> 会给 @keyframes 名字加一个作用域后缀
+// （编译产物里是 knowledge-island-sea-swell-e13061ff 这种），
+// 所以这里只比前缀，不比全名 —— 否则断言会绑死在某一次构建的哈希上。
+function hasAnimation(animation, baseName) {
+  return animationNames(animation).some((name) => name.startsWith(baseName));
+}
+
+test.describe("知识岛环境生命感", () => {
+  test("海浪 / 云 / 光晕都在动，而且节奏非常慢：没有一条是快速循环", async ({ page }) => {
+    await openHomeWithStampCount(page, 7);
+    const islandPage = await openKnowledgeIslandPage(page);
+    const animations = await readAmbientAnimations(page, AMBIENT_ANIMATED_SELECTORS);
+
+    // 每个环境元素都必须真的挂上了动画（太阳在 ::after 上，所以看聚合结果）。
+    for (const selector of AMBIENT_ANIMATED_SELECTORS) {
+      expect(animations[selector], `${selector} 不存在`).not.toBeNull();
+      expect(animations[selector].animations.length, `${selector} 没有环境动画`).toBeGreaterThan(0);
+    }
+
+    expect(hasAnimation(animations[".knowledge-island__sun"], "knowledge-island-sun-breathe")).toBe(true);
+    expect(hasAnimation(animations[".knowledge-island__surf"], "knowledge-island-sea-swell")).toBe(true);
+    expect(hasAnimation(animations[".knowledge-island__cloud"], "knowledge-island-cloud-drift")).toBe(true);
+
+    // "不抢主体"的第一道保证：全部是慢动作，最快的一条也不到 7 秒一轮。
+    for (const selector of AMBIENT_ANIMATED_SELECTORS) {
+      for (const animation of animations[selector].animations) {
+        expect(animation.durationSeconds, `${selector} 的 ${animation.name} 太快了`).toBeGreaterThanOrEqual(7);
+      }
+    }
+
+    // 云要漂很久，一轮长到看不出在循环。
+    const cloudDrift = animations[".knowledge-island__cloud"].animations.find((item) =>
+      item.name.startsWith("knowledge-island-cloud-drift")
+    );
+    expect(cloudDrift.durationSeconds).toBeGreaterThanOrEqual(60);
+  });
+
+  test("海鸥：平时停在天上，另外偶尔有一只慢慢掠过（不扇翅膀）", async ({ page }) => {
+    // 21 颗星 = 丰盛档，这一档才有天上飞过的海鸥。
+    await openHomeWithStampAndStarCount(page, { stampCount: 7, starCount: 21 });
+    const islandPage = await openKnowledgeIslandPage(page);
+
+    await expect(islandPage.locator(".knowledge-island__cloud")).toHaveCount(2);
+    // 掠过的那只是独立元素：可点的那只仍然是 __gull--a，位置不能被它带歪。
+    await expect(islandPage.locator(".knowledge-island__gull--a")).toHaveCount(1);
+    await expect(islandPage.locator(".knowledge-island__gull--flyby")).toHaveCount(1);
+
+    const gulls = await islandPage.evaluate(() =>
+      [...document.querySelectorAll(".knowledge-island__gull")].map((element) => ({
+        modifier: [...element.classList].find((name) => name.startsWith("knowledge-island__gull--")),
+        animationName: window.getComputedStyle(element).animationName,
+        animationDuration: Number.parseFloat(window.getComputedStyle(element).animationDuration)
+      }))
+    );
+
+    // 停在画面上的海鸥完全不扇翅膀。
+    const perched = gulls.filter((gull) => gull.modifier !== "knowledge-island__gull--flyby");
+    expect(perched.length).toBeGreaterThan(0);
+
+    for (const gull of perched) {
+      expect(gull.animationName, `${gull.modifier} 不该持续扇动`).toBe("none");
+    }
+
+    // 掠过的那只：完整周期很长，说明它大部分时间待在画面外。
+    const flyby = gulls.find((gull) => gull.modifier === "knowledge-island__gull--flyby");
+    expect(flyby.animationName).toMatch(/^knowledge-island-gull-flyby/);
+    expect(flyby.animationDuration).toBeGreaterThanOrEqual(30);
+  });
+
+  test("阶段专属生命感：3 枚有嫩芽与草丛轻摆，15 枚有小船轻摇，30 枚有光束扫动", async ({ page }) => {
+    // 每一次都量全部四个选择器：没请求到的 key 在结果里是 undefined，
+    // 分不清"没量"和"这一阶段确实没有这个元素"，所以宁可每次都量全。
+    const lifeSelectors = Object.values(STAGE_LIFE_SELECTORS);
+
+    // 萌芽海岸（3 枚）：嫩芽 + 草丛轻摆。
+    await openHomeWithStampCount(page, 3);
+    let islandPage = await openKnowledgeIslandPage(page);
+    let animations = await readAmbientAnimations(page, lifeSelectors);
+
+    expect(hasAnimation(animations[STAGE_LIFE_SELECTORS.sprout], "knowledge-island-sway")).toBe(true);
+    expect(hasAnimation(animations[STAGE_LIFE_SELECTORS.grass], "knowledge-island-sway")).toBe(true);
+    // 这一阶段还没有码头和灯塔：它们连元素都不存在，更谈不上动画。
+    expect(animations[STAGE_LIFE_SELECTORS.boat]).toBeNull();
+    expect(animations[STAGE_LIFE_SELECTORS.beam]).toBeNull();
+
+    // 探险码头（15 枚）：小船轻摇。
+    await openHomeWithStampCount(page, 15);
+    islandPage = await openKnowledgeIslandPage(page);
+    animations = await readAmbientAnimations(page, lifeSelectors);
+
+    expect(hasAnimation(animations[STAGE_LIFE_SELECTORS.boat], "knowledge-island-boat-bob")).toBe(true);
+    expect(animations[STAGE_LIFE_SELECTORS.beam]).toBeNull();
+
+    // 知识灯塔（30 枚）：光束缓慢扫动。
+    await openHomeWithStampCount(page, 30);
+    islandPage = await openKnowledgeIslandPage(page);
+    animations = await readAmbientAnimations(page, lifeSelectors);
+
+    expect(hasAnimation(animations[STAGE_LIFE_SELECTORS.beam], "knowledge-island-beam-sweep")).toBe(true);
+  });
+
+  test("0 枚：初见小岛没有任何阶段专属生命感（动画不会提前解锁后面的东西）", async ({ page }) => {
+    await openHomeWithStampCount(page, 0);
+
+    const islandPage = await openKnowledgeIslandPage(page);
+    const animations = await readAmbientAnimations(page, Object.values(STAGE_LIFE_SELECTORS));
+
+    for (const [name, selector] of Object.entries(STAGE_LIFE_SELECTORS)) {
+      expect(animations[selector], `${name} 在 0 枚时不该存在`).toBeNull();
+    }
+
+    // 但环境层仍然是动的：初见小岛也有一片会呼吸的海。
+    const ambient = await readAmbientAnimations(page, [".knowledge-island__surf"]);
+
+    expect(hasAnimation(ambient[".knowledge-island__surf"], "knowledge-island-sea-swell")).toBe(true);
+  });
+
+  test("繁荣度只轻微影响生命感：岛一样大，基础最克制、繁荣稍丰富", async ({ page }) => {
+    const tiers = [];
+
+    for (const starCount of [0, 21, 70]) {
+      await openHomeWithStampAndStarCount(page, { stampCount: 7, starCount });
+      const islandPage = await openKnowledgeIslandPage(page);
+      const measurements = await islandPage.evaluate(() => {
+        const island = document.querySelector(".knowledge-island");
+        const terrain = document.querySelector('[data-role="knowledge-island-terrain"]');
+        const islandStyle = window.getComputedStyle(island);
+        const durationOf = (selector) =>
+          Number.parseFloat(window.getComputedStyle(document.querySelector(selector)).animationDuration);
+
+        return {
+          prosperity: island.getAttribute("data-prosperity"),
+          terrainWidth: Math.round(terrain.getBoundingClientRect().width),
+          swellDuration: durationOf(".knowledge-island__surf"),
+          waveDuration: durationOf(".knowledge-island__surf-line"),
+          declaredSwayDuration: Number.parseFloat(islandStyle.getPropertyValue("--ki-ambient-sway"))
+        };
+      });
+
+      tiers.push(measurements);
+    }
+
+    expect(tiers.map((tier) => tier.prosperity)).toEqual(["basic", "lush", "flourishing"]);
+
+    // 关键红线：繁荣度绝不改变任何解锁结果，三档的岛身一样大。
+    for (const tier of tiers) {
+      expect(tier.terrainWidth).toBe(tiers[0].terrainWidth);
+    }
+
+    // 生命感只是"稍多一点"：繁荣档节奏更快，但仍然全部是慢动作。
+    expect(tiers[0].swellDuration).toBeGreaterThan(tiers[1].swellDuration);
+    expect(tiers[1].swellDuration).toBeGreaterThan(tiers[2].swellDuration);
+    expect(tiers[0].waveDuration).toBeGreaterThan(tiers[2].waveDuration);
+    expect(tiers[0].declaredSwayDuration).toBeGreaterThan(tiers[2].declaredSwayDuration);
+    // 就算最快的那一档，摆动周期也仍然是 7 秒以上的慢动作。
+    expect(tiers[2].swellDuration).toBeGreaterThanOrEqual(9);
+    expect(tiers[2].declaredSwayDuration).toBeGreaterThanOrEqual(7);
+  });
+
+  test("减少动态偏好下：环境动画全部停掉，但画面仍然是完整的一座岛", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    // 30 枚 + 70 星：把这一档能有的动画都凑齐（海、云、海鸥、光晕、嫩芽、船、光束）。
+    await openHomeWithStampAndStarCount(page, { stampCount: 30, starCount: 70 });
+
+    const islandPage = await openKnowledgeIslandPage(page);
+    const selectors = [...AMBIENT_ANIMATED_SELECTORS, ...Object.values(STAGE_LIFE_SELECTORS)];
+    const animations = await readAmbientAnimations(page, selectors);
+
+    for (const [selector, animation] of Object.entries(animations)) {
+      expect(animation, `${selector} 在减少动态下应当仍然存在`).not.toBeNull();
+      expect(animation.animations, `${selector} 在减少动态下仍在动`).toEqual([]);
+    }
+
+    // 关掉动画不等于关掉画面：岛屿仍然是完整画出来的。
+    const figure = await islandPage.locator(KNOWLEDGE_ISLAND_FIGURE).evaluate((element) => ({
+      width: element.getBoundingClientRect().width,
+      height: element.getBoundingClientRect().height,
+      visibleChildren: [...element.querySelectorAll("*")].filter((child) => child.getBoundingClientRect().width > 0)
+        .length
+    }));
+
+    expect(figure.width).toBeGreaterThan(400);
+    expect(figure.height).toBeGreaterThan(200);
+    expect(figure.visibleChildren).toBeGreaterThan(0);
+  });
+
+  test("1440 / 820 / 390：动画跑起来也不横向溢出、页面不抖", async ({ page }) => {
+    await openHomeWithStampAndStarCount(page, { stampCount: 30, starCount: 70 });
+
+    for (const width of [1440, 820, 390]) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+      const islandPage = await openKnowledgeIslandPage(page);
+      const layout = await islandPage.evaluate(async () => {
+        const root = document.documentElement;
+        const figure = document.querySelector('[data-role="knowledge-island-figure"]');
+        const island = document.querySelector(".knowledge-island");
+
+        // 在动画跑着的时候连续采样一段时间：
+        // 真的验收线是「任何时刻都不出现横向滚动」，而不只是打开页面那一瞬间。
+        const documentWidths = [];
+        const figureWidths = [];
+
+        for (let sample = 0; sample < 8; sample += 1) {
+          documentWidths.push(root.scrollWidth);
+          figureWidths.push(Math.round(figure.getBoundingClientRect().width));
+          await new Promise((resolve) => setTimeout(resolve, 220));
+        }
+
+        return {
+          viewport: window.innerWidth,
+          maxDocumentWidth: Math.max(...documentWidths),
+          figureWidths,
+          figureRight: Math.round(figure.getBoundingClientRect().right),
+          islandRight: Math.round(island.getBoundingClientRect().right),
+          // 画面盒负责裁剪：云、浪、光束、掠过的那只海鸥都在这一层里面，
+          // 所以它们再怎么动也不会跑到页面上、把整页撑宽。
+          figureOverflow: window.getComputedStyle(figure).overflow
+        };
+      });
+
+      expect(layout.maxDocumentWidth, `${width} 宽动画期间出现横向溢出`).toBeLessThanOrEqual(layout.viewport);
+      expect(layout.figureRight, `${width} 宽画面盒超出视口`).toBeLessThanOrEqual(layout.viewport);
+      expect(layout.islandRight, `${width} 宽知识岛卡片超出视口`).toBeLessThanOrEqual(layout.viewport);
+      expect(layout.figureOverflow).toBe("hidden");
+      // 布局不抖：动画期间画面盒的宽度必须一直是同一个值
+      // （环境动画只动 transform / opacity，不动任何参与布局的属性）。
+      expect(new Set(layout.figureWidths).size, `${width} 宽动画期间画面盒宽度在抖`).toBe(1);
+    }
+  });
+});
+
+test.describe("知识岛海浪环境声", () => {
+  // 用一个 Audio 替身来"数实例"：生产代码不会为测试暴露任何全局变量，
+  // 也不用往代码里塞测试专用入口。替身只认海浪素材的 URL，
+  // 所以应用自己的背景音乐那个 Audio 不会被算进来。
+  async function installAmbienceAudioProbe(page) {
+    await page.addInitScript(() => {
+      const NativeAudio = window.Audio;
+      const probe = { created: 0, instance: null };
+
+      window.__islandWavesProbe = probe;
+
+      window.Audio = class ProbedAudio extends NativeAudio {
+        constructor(source) {
+          super(source);
+
+          if (typeof source === "string" && source.includes("island-waves")) {
+            probe.created += 1;
+            probe.instance = this;
+          }
+        }
+      };
+    });
+  }
+
+  async function readAmbienceAudioProbe(page) {
+    return page.evaluate(() => {
+      const probe = window.__islandWavesProbe;
+
+      if (!probe) {
+        return { created: 0, playing: 0 };
+      }
+
+      return {
+        created: probe.created,
+        playing: probe.instance && !probe.instance.paused ? 1 : 0
+      };
+    });
+  }
+
+  test("默认不出声：深链直接打开知识岛也是安静的", async ({ page }) => {
+    await installAmbienceAudioProbe(page);
+    await openHomeWithStampCount(page, 7);
+
+    const islandPage = await openKnowledgeIslandPage(page);
+    const toggle = islandPage.locator(ISLAND_AMBIENCE_TOGGLE);
+
+    await expect(toggle).toBeVisible();
+    await expect(toggle).toHaveAttribute("data-enabled", "false");
+    // 关键断言：从来没有用户交互之前，偏好里就算写了"开"也不播。
+    await expect(toggle).toHaveAttribute("data-playing", "false");
+    expect(await readAmbienceAudioProbe(page)).toEqual({ created: 0, playing: 0 });
+  });
+
+  test("点一下才响：开关与真实播放状态一起变，而且只有一个实例", async ({ page }) => {
+    await installAmbienceAudioProbe(page);
+    await openHomeWithStampCount(page, 7);
+
+    const islandPage = await openKnowledgeIslandPage(page);
+    const toggle = islandPage.locator(ISLAND_AMBIENCE_TOGGLE);
+
+    // 它是一个真正的按钮：键盘可操作，并带 aria-pressed。
+    await expect(toggle).toHaveRole("button", { name: "海浪声" });
+    await toggle.click();
+
+    await expect(toggle).toHaveAttribute("data-enabled", "true");
+    await expect(toggle).toHaveAttribute("data-playing", "true");
+    // 图标与 aria-pressed 跟的是"此刻有没有声音"，所以和播放状态一致。
+    await expect(toggle).toHaveAttribute("aria-pressed", "true");
+    expect(await readAmbienceAudioProbe(page)).toEqual({ created: 1, playing: 1 });
+
+    await toggle.click();
+
+    await expect(toggle).toHaveAttribute("data-enabled", "false");
+    await expect(toggle).toHaveAttribute("data-playing", "false");
+    await expect(toggle).toHaveAttribute("aria-pressed", "false");
+    // 同一个实例被暂停复用，而不是丢掉再新建一个。
+    expect(await readAmbienceAudioProbe(page)).toEqual({ created: 1, playing: 0 });
+  });
+
+  test("记住选择：刷新回来仍然记着，但不会自动出声，要等一次交互", async ({ page }) => {
+    await installAmbienceAudioProbe(page);
+    await openHomeWithStampCount(page, 7);
+
+    let islandPage = await openKnowledgeIslandPage(page);
+    await islandPage.locator(ISLAND_AMBIENCE_TOGGLE).click();
+    await expect(islandPage.locator(ISLAND_AMBIENCE_TOGGLE)).toHaveAttribute("data-playing", "true");
+
+    // 刷新：偏好从既有的那个 localStorage key 读回来。
+    await page.reload();
+    await page
+      .getByRole("region", { name: KNOWLEDGE_ISLAND_REGION })
+      .waitFor({ state: "visible", timeout: 15_000 });
+    islandPage = page.getByRole("region", { name: KNOWLEDGE_ISLAND_REGION });
+    const toggle = islandPage.locator(ISLAND_AMBIENCE_TOGGLE);
+
+    // 「想听」这个选择记住了。
+    await expect(toggle).toHaveAttribute("data-enabled", "true");
+    // 但刷新是一次全新的文档，用户还没在新文档里交互过 —— 所以它保持安静。
+    // 这正是「必须经过用户交互后再播放」：不能因为偏好是开的就自动出声。
+    await expect(toggle).toHaveAttribute("data-playing", "false");
+    expect(await readAmbienceAudioProbe(page)).toEqual({ created: 0, playing: 0 });
+
+    // 图标因此诚实地显示"现在没有声音"，而且点一下真的会把它放出来
+    // （而不是把已经记住的偏好又关掉）。
+    await expect(toggle).toHaveAttribute("aria-pressed", "false");
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("data-playing", "true");
+    await expect(toggle).toHaveAttribute("data-enabled", "true");
+    expect(await readAmbienceAudioProbe(page)).toEqual({ created: 1, playing: 1 });
+  });
+
+  test("离开知识岛会暂停释放，再进来按偏好恢复", async ({ page }) => {
+    await installAmbienceAudioProbe(page);
+    await openHomeWithStampCount(page, 7);
+
+    const islandPage = await openKnowledgeIslandPage(page);
+    await islandPage.locator(ISLAND_AMBIENCE_TOGGLE).click();
+    await expect(islandPage.locator(ISLAND_AMBIENCE_TOGGLE)).toHaveAttribute("data-playing", "true");
+
+    // 回首页：这一页被卸载，海浪必须停。
+    await page.getByRole("button", { name: "返回首页" }).click();
+    await page.getByRole("region", { name: "我的成长" }).waitFor({ state: "visible", timeout: 15_000 });
+    expect(await readAmbienceAudioProbe(page)).toEqual({ created: 1, playing: 0 });
+
+    // 再进知识岛：这是同一个文档、用户已经交互过，所以按偏好直接恢复，
+    // 仍然只有同一个实例在响。
+    await page.goto(KNOWLEDGE_ISLAND_PAGE_URL);
+    await page
+      .getByRole("region", { name: KNOWLEDGE_ISLAND_REGION })
+      .waitFor({ state: "visible", timeout: 15_000 });
+    await expect(page.locator(ISLAND_AMBIENCE_TOGGLE)).toHaveAttribute("data-playing", "true");
+    expect(await readAmbienceAudioProbe(page)).toEqual({ created: 1, playing: 1 });
+  });
+
+  test("快速反复进出不会叠出第二个 audio 实例", async ({ page }) => {
+    await installAmbienceAudioProbe(page);
+    await openHomeWithStampCount(page, 7);
+
+    const islandPage = await openKnowledgeIslandPage(page);
+    await islandPage.locator(ISLAND_AMBIENCE_TOGGLE).click();
+    await expect(islandPage.locator(ISLAND_AMBIENCE_TOGGLE)).toHaveAttribute("data-playing", "true");
+
+    // 连续三轮「进知识岛 → 回首页」，中间不做额外等待。
+    for (let round = 0; round < 3; round += 1) {
+      await page.getByRole("button", { name: "返回首页" }).click();
+      await page.getByRole("region", { name: "我的成长" }).waitFor({ state: "visible", timeout: 15_000 });
+      await page.goto(KNOWLEDGE_ISLAND_PAGE_URL);
+      await page
+        .getByRole("region", { name: KNOWLEDGE_ISLAND_REGION })
+        .waitFor({ state: "visible", timeout: 15_000 });
+    }
+
+    // 三轮之后仍然只有一个在响，而且从头到尾只被创建过一次。
+    await expect(page.locator(ISLAND_AMBIENCE_TOGGLE)).toHaveAttribute("data-playing", "true");
+    expect(await readAmbienceAudioProbe(page)).toEqual({ created: 1, playing: 1 });
+  });
+
+  test("390 窄屏：开关完整可点、显示得下，而且不横向溢出", async ({ page }) => {
+    await installAmbienceAudioProbe(page);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openHomeWithStampCount(page, 7);
+
+    const islandPage = await openKnowledgeIslandPage(page);
+    const toggle = islandPage.locator(ISLAND_AMBIENCE_TOGGLE);
+
+    await expect(toggle).toBeVisible();
+    // 触摸目标仍然够点的高度。
+    expect((await toggle.boundingBox()).height).toBeGreaterThanOrEqual(40);
+
+    const layout = await page.evaluate(() => {
+      const root = document.documentElement;
+      const toggleElement = document.querySelector('[data-role="island-ambience-toggle"]');
+
+      return {
+        docWidth: root.scrollWidth,
+        viewport: window.innerWidth,
+        toggleRight: Math.round(toggleElement.getBoundingClientRect().right)
+      };
+    });
+
+    expect(layout.docWidth).toBeLessThanOrEqual(layout.viewport);
+    expect(layout.toggleRight).toBeLessThanOrEqual(layout.viewport);
+
+    // 390 下也真的能点开。
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("data-playing", "true");
+  });
+});
+
+test.describe("知识岛轻互动不回归", () => {
+  // 这一组守着「点一下有回应」这一层：环境动画全部加上去之后，
+  // 贝壳 / 石头 / 海鸥 / 下一阶段预告 / 海面这五块仍然要各自可点、各自有回应。
+  const HOT_SPOT_IDS = Object.freeze(["shell", "rock", "gull", "next", "sea"]);
+
+  function hotSpot(page, id) {
+    return page.getByRole("region", { name: KNOWLEDGE_ISLAND_REGION }).locator(
+      `[data-role="knowledge-island-hotspot-${id}"]`
+    );
+  }
+
+  // 15 枚（还没满级，所以「下一阶段预告」那一块存在）+ 70 星（繁荣档，海鸥也在）。
+  // 这两个条件凑齐，五个热点才会同时在画面上。
+  const FULLY_BUILT_STAMP_COUNT = 15;
+  const FULLY_BUILT_STAR_COUNT = 70;
+
+  async function openFullyBuiltIsland(page) {
+    await openHomeWithStampAndStarCount(page, {
+      stampCount: FULLY_BUILT_STAMP_COUNT,
+      starCount: FULLY_BUILT_STAR_COUNT
+    });
+    return openKnowledgeIslandPage(page);
+  }
+
+  test("五个热点都在，而且都贴着它自己的元素", async ({ page }) => {
+    const islandPage = await openFullyBuiltIsland(page);
+
+    for (const id of HOT_SPOT_IDS) {
+      await expect(hotSpot(page, id), `${id} 热点不见了`).toHaveCount(1);
+      // 每个热点都有给孩子听的名字（键盘与读屏用户靠它知道点到了什么）。
+      await expect(hotSpot(page, id)).toHaveAccessibleName(/\S/);
+    }
+
+    // 热区是真的量在元素上的，不是随手写死的坐标：
+    // 每一块都落在画面盒内部，且有可点的面积。
+    const boxes = await page.evaluate(() => {
+      const figure = document.querySelector('[data-role="knowledge-island-figure"]').getBoundingClientRect();
+
+      return [...document.querySelectorAll('[data-role^="knowledge-island-hotspot-"]')].map((element) => {
+        const rect = element.getBoundingClientRect();
+
+        return {
+          role: element.getAttribute("data-role"),
+          width: rect.width,
+          height: rect.height,
+          insideFigure: rect.left >= figure.left - 1 && rect.right <= figure.right + 1
+        };
+      });
+    });
+
+    expect(boxes).toHaveLength(HOT_SPOT_IDS.length);
+
+    for (const box of boxes) {
+      expect(box.insideFigure, `${box.role} 跑出画面了`).toBe(true);
+
+      // 预告是一枚看得见的小牌子（chip），它的高度是 0，所以只检查另外四个。
+      if (box.role !== "knowledge-island-hotspot-next") {
+        expect(box.width, `${box.role} 宽度不足以点`).toBeGreaterThan(0);
+        expect(box.height, `${box.role} 高度不足以点`).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  test("五个热点逐个点下去都各有回应", async ({ page }) => {
+    const islandPage = await openFullyBuiltIsland(page);
+    const hint = islandPage.locator('[data-role="knowledge-island-hint"]');
+
+    for (const id of HOT_SPOT_IDS) {
+      await hotSpot(page, id).click();
+
+      // 一次只回应一个：根节点上出现对应的 active 类。
+      await expect(islandPage.locator(".knowledge-island")).toHaveClass(new RegExp(`knowledge-island--active-${id}`));
+      // 并且说一句孩子听得懂的话。
+      await expect(hint).toBeVisible();
+      expect((await hint.innerText()).trim().length).toBeGreaterThan(0);
+      // 气泡带 aria-live，键盘和读屏用户点完同样知道发生了什么。
+      await expect(hint).toHaveAttribute("aria-live", "polite");
+
+      // 等这一轮回应结束，再点下一个。
+      await expect(islandPage.locator(".knowledge-island")).not.toHaveClass(
+        new RegExp(`knowledge-island--active-${id}`)
+      );
+    }
+  });
+
+  test("点海面会荡开一圈小涟漪", async ({ page }) => {
+    const islandPage = await openFullyBuiltIsland(page);
+
+    await expect(islandPage.locator(".knowledge-island__ripple")).toHaveCount(0);
+    await hotSpot(page, "sea").click();
+    await expect(islandPage.locator(".knowledge-island__ripple")).toHaveCount(1);
+    // 涟漪自己会收走，不留在画面上。
+    await expect(islandPage.locator(".knowledge-island__ripple")).toHaveCount(0);
+  });
+
+  test("键盘可以操作热点：聚焦后回车同样有回应", async ({ page }) => {
+    const islandPage = await openFullyBuiltIsland(page);
+    const shellHotSpot = hotSpot(page, "shell");
+
+    await shellHotSpot.focus();
+    await page.keyboard.press("Enter");
+
+    await expect(islandPage.locator('[data-role="knowledge-island-hint"]')).toBeVisible();
+    await expect(islandPage.locator(".knowledge-island")).toHaveClass(/knowledge-island--active-shell/);
+  });
+
+  test("连点不会叠成一堆动画：同一时刻只有一个热点在回应", async ({ page }) => {
+    const islandPage = await openFullyBuiltIsland(page);
+
+    for (const id of HOT_SPOT_IDS) {
+      await hotSpot(page, id).click();
+    }
+
+    const activeStates = await islandPage.evaluate(() =>
+      [...document.querySelectorAll(".knowledge-island")]
+        .map((element) => [...element.classList].filter((name) => name.startsWith("knowledge-island--active-")))
+        .flat()
+    );
+
+    expect(activeStates).toHaveLength(1);
+  });
+
+  test("减少动态偏好下热点依然可用：反馈不只剩动画", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    const islandPage = await openFullyBuiltIsland(page);
+
+    await hotSpot(page, "rock").click();
+
+    // 动画被关掉了，但「点了有反应」这件事一点没少：
+    // 热点亮起一圈静态描边，气泡照常出现。
+    // 注意要在 1.1 秒的回应窗口内读，所以这一段紧接着点击就量。
+    const feedback = await hotSpot(page, "rock").evaluate((element) => {
+      const style = window.getComputedStyle(element);
+
+      return {
+        transitionDuration: style.transitionDuration,
+        outlineWidth: style.outlineWidth
+      };
+    });
+
+    // 减少动态下连悬停/按下的回弹过渡也一并关掉。
+    expect(feedback.transitionDuration.split(",").every((value) => Number.parseFloat(value) === 0)).toBe(true);
+    // 静态替代：描边宽度大于 0 —— 不依赖任何动画就能看出"点到了"。
+    expect(Number.parseFloat(feedback.outlineWidth)).toBeGreaterThan(0);
+    // 气泡（2400ms 的窗口，比回应动画长）照常出现。
+    await expect(islandPage.locator('[data-role="knowledge-island-hint"]')).toBeVisible();
+  });
+});
+
+

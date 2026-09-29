@@ -419,3 +419,10 @@ export function playAudioCue(cueName) {
 
   return playFallbackCue(cueName);
 }
+
+// 这个页面之前有没有发生过真实的用户交互（点过"启用音频"、答过题、点过热点……）。
+// 知识岛环境声读它来决定"能不能开始播"：
+// 浏览器不允许在用户还没交互时自动出声，所以没解锁之前一律不播。
+export function isAudioEngineUnlocked() {
+  return audioState.unlocked;
+}

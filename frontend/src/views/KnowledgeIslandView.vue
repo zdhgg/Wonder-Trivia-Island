@@ -10,9 +10,27 @@
 //   - 页面不新增任何成长规则，也不引入第二份知识岛状态。
 //   收藏册里的「我的知识岛」入口卡与首页摘要读的是同一套纯函数输入，
 //   所以三处永远是同一个阶段、同一档繁荣度、同一颗星星。
-import { computed } from "vue";
+//
+// 这一页额外做一件与成长无关的事：海浪环境声。
+//   - 开关状态读既有的 useAudioStore（记住的地方还是同一个 localStorage key），
+//     不新增 DB、API 或第二套偏好机制；
+//   - 默认是关的，而且没发生过用户交互之前一律不出声（深链直接打开也是安静的）；
+//   - 组件卸载时暂停并归零，再进来按偏好恢复；
+//   - 播放由 islandAmbience 里的单个 Audio 实例负责，快速进出不会叠出两层海浪；
+//   - 刻意不去解锁整台应用的音频引擎：点这个开关只该多出一片海，
+//     不该顺手把全站背景音乐也一起叫醒。
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { storeToRefs } from "pinia";
 import { useRouter } from "vue-router";
 import KnowledgeIslandGrowth from "../components/KnowledgeIslandGrowth.vue";
+import {
+  startIslandAmbience,
+  stopIslandAmbience,
+  subscribeIslandAmbience,
+  syncIslandAmbiencePreferences,
+  unlockIslandAmbience
+} from "../audio/islandAmbience";
+import { useAudioStore } from "../stores/useAudioStore";
 import { APP_ROUTE_NAME } from "../router/routes.js";
 import { getKnowledgeIslandStageIndexById } from "../utils/knowledgeIslandGrowth.js";
 import { KNOWLEDGE_ISLAND_PROSPERITY_TIERS } from "../utils/knowledgeIslandProsperity.js";
@@ -25,6 +43,73 @@ const props = defineProps({
 });
 
 const router = useRouter();
+const audioStore = useAudioStore();
+
+const { islandAmbienceEnabled, masterVolume } = storeToRefs(audioStore);
+
+// 「想听」「正在响」「记下来了」是三件事，控件上分别对应三个信号：
+//   data-enabled —— 记住的选择（localStorage 里那一位）；
+//   data-playing —— 此刻真的在不在响；
+//   图标 / aria-pressed —— 跟着「此刻有没有声音」走。
+// 之所以图标跟播放状态而不是跟偏好：刷新之后偏好还在，但新文档里用户还没交互过，
+// 浏览器不允许自动出声。这时如果图标显示"开"，孩子点了反而会把它关掉 ——
+// 所以图标必须诚实地说"现在没有声音"，点一下就真的把它放出来。
+const isAmbiencePlaying = ref(false);
+let unsubscribeAmbience = null;
+
+const ambienceGlyph = computed(() => (isAmbiencePlaying.value ? "🔊" : "🔇"));
+const ambienceToggleClass = computed(() => [
+  "island-page__ambience",
+  { "island-page__ambience--on": isAmbiencePlaying.value }
+]);
+
+function currentAmbiencePreferences() {
+  return {
+    islandAmbienceEnabled: islandAmbienceEnabled.value,
+    masterVolume: masterVolume.value
+  };
+}
+
+function toggleAmbience() {
+  // 正在响 → 关掉；没有在响 → 点一下就放出来（这一次点击本身就是用户手势）。
+  if (isAmbiencePlaying.value) {
+    audioStore.setIslandAmbienceEnabled(false);
+    syncIslandAmbiencePreferences(currentAmbiencePreferences());
+    return;
+  }
+
+  unlockIslandAmbience();
+  audioStore.setIslandAmbienceEnabled(true);
+  syncIslandAmbiencePreferences(currentAmbiencePreferences());
+}
+
+onMounted(() => {
+  unsubscribeAmbience = subscribeIslandAmbience((playing) => {
+    isAmbiencePlaying.value = playing;
+  });
+  // 进来的第一件事只是"按偏好恢复"，不会绕过交互闸门自己出声。
+  syncIslandAmbiencePreferences(currentAmbiencePreferences());
+  startIslandAmbience();
+});
+
+onBeforeUnmount(() => {
+  if (unsubscribeAmbience) {
+    unsubscribeAmbience();
+    unsubscribeAmbience = null;
+  }
+
+  // 离开这一页就把海浪停下来并归零：不在别的页面上继续响。
+  stopIslandAmbience();
+});
+
+// 设置页里改了总音量，这一页正在响的海浪要立刻跟着变，
+// 否则会出现"图标显示开着、其实被静音了"的错觉。
+watch(
+  () => masterVolume.value,
+  () => {
+    syncIslandAmbiencePreferences(currentAmbiencePreferences());
+  }
+);
 
 // 顶部摘要：阶段 + 繁荣度各说一次，不重复下面的成长信息网格。
 const stageName = computed(() => props.island?.currentStage?.name || "");
@@ -67,6 +152,20 @@ function goHome() {
             </span>
           </span>
         </p>
+        <button
+          :class="ambienceToggleClass"
+          type="button"
+          data-role="island-ambience-toggle"
+          :data-enabled="islandAmbienceEnabled ? 'true' : 'false'"
+          :data-playing="isAmbiencePlaying ? 'true' : 'false'"
+          :aria-pressed="isAmbiencePlaying"
+          aria-label="海浪声"
+          :title="isAmbiencePlaying ? '关掉海浪声' : '听听海浪声'"
+          @click="toggleAmbience"
+        >
+          <span class="island-page__ambience-glyph" aria-hidden="true">{{ ambienceGlyph }}</span>
+          <span class="island-page__ambience-text">海浪声</span>
+        </button>
         <button class="island-page__back" type="button" @click="goHome">返回首页</button>
       </div>
     </header>
@@ -290,6 +389,52 @@ function goHome() {
   transform: translateY(-1px);
 }
 
+/* 海浪声开关：看得清、但不抢眼。
+   它和「返回首页」并排放在同一块里，两者高度一致（都是 42px），
+   所以顶部摘要不会因为多了一个按钮而变高一行。 */
+.island-page__ambience {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 42px;
+  padding: 9px 14px;
+  border: 1.5px solid rgba(36, 50, 74, 0.14);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--color-ink-soft);
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    background-color 160ms ease;
+}
+
+.island-page__ambience:hover,
+.island-page__ambience:focus-visible {
+  border-color: rgba(124, 216, 184, 0.5);
+  background: rgba(247, 252, 249, 0.98);
+  box-shadow: 0 16px 24px -24px rgba(36, 50, 74, 0.42);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+/* 打开时给一点很浅的暖色，暗示"现在有海浪声"；关闭态保持中性灰。 */
+.island-page__ambience--on {
+  border-color: rgba(72, 154, 148, 0.34);
+  background: rgba(238, 250, 246, 0.92);
+  color: #2f7a6c;
+}
+
+.island-page__ambience-glyph {
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
 .island-page__summary {
   margin: 0;
   color: var(--color-ink-soft);
@@ -425,15 +570,23 @@ function goHome() {
   .island-page__back {
     width: 100%;
   }
+
+  /* 窄屏：开关与「返回首页」各占一行，都保持 42px 的可点高度。 */
+  .island-page__ambience {
+    width: 100%;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .island-page__back {
+  .island-page__back,
+  .island-page__ambience {
     transition: none;
   }
 
   .island-page__back:hover,
-  .island-page__back:focus-visible {
+  .island-page__back:focus-visible,
+  .island-page__ambience:hover,
+  .island-page__ambience:focus-visible {
     transform: none;
   }
 }
