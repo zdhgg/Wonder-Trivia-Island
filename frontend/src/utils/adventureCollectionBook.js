@@ -70,13 +70,16 @@ export function listRecentDailyChestClaims(growthProgress, limit = COLLECTION_BO
 
 export function buildCollectionStampSection({
   growthProgress = {},
-  recentStampLimit = COLLECTION_BOOK_RECENT_STAMP_LIMIT
+  recentStampLimit = COLLECTION_BOOK_RECENT_STAMP_LIMIT,
+  // 繁荣度用的跨章节累计星星，由调用方从闯关账本算好后传进来（不是本章星星）。
+  lifetimeStarCount = 0
 } = {}) {
   const normalizedProgress = normalizeGrowthProgress(growthProgress);
   const total = normalizedProgress.totalDailyChests;
   const recentClaims = listRecentDailyChestClaims(normalizedProgress, recentStampLimit);
-  // 知识岛阶段完全由印章数推导，不读第二个数字、不写回任何地方。
-  const knowledgeIsland = buildKnowledgeIslandGrowth(total);
+  // 知识岛阶段完全由印章数推导，不读第二个数字、不写回任何地方；
+  // 星星只追加繁荣度，不参与阶段判定。
+  const knowledgeIsland = buildKnowledgeIslandGrowth(total, { starCount: lifetimeStarCount });
 
   return {
     total,
@@ -175,6 +178,8 @@ export function buildAdventureCollectionBook({
   chapterProgress = {},
   achievements = [],
   growthProgress = {},
+  // 全部历史章节累计最好星数：只影响知识岛繁荣度，与当前正在看哪一章无关。
+  lifetimeStarCount = 0,
   recentStampLimit = COLLECTION_BOOK_RECENT_STAMP_LIMIT
 } = {}) {
   const rewardSection = buildCollectionRewardSection({ stages, chapterProgress });
@@ -187,7 +192,7 @@ export function buildAdventureCollectionBook({
     routeTitle: normalizeText(chapter?.routeTitle, 20),
     scopeLabel: buildCollectionScopeLabel(chapter),
     title: "我的探险收藏册",
-    stamps: buildCollectionStampSection({ growthProgress, recentStampLimit }),
+    stamps: buildCollectionStampSection({ growthProgress, recentStampLimit, lifetimeStarCount }),
     rewards: rewardSection,
     achievements: buildCollectionAchievementSection({ achievements })
   };

@@ -216,6 +216,8 @@ export function buildHomeGrowth({
   rewardCount = 0,
   rewardTotal = 0,
   stampCount = 0,
+  // 全部历史章节累计最好星数：只喂给知识岛繁荣度，不参与上面三个“本章指标”。
+  lifetimeStarCount = 0,
   achievements = []
 } = {}) {
   const achievementList = Array.isArray(achievements) ? achievements : [];
@@ -226,7 +228,11 @@ export function buildHomeGrowth({
   // 探险印章是长期账本里的独立累计数，不参与上面三个“本章指标”的口径。
   const normalizedStampCount = toNonNegativeInteger(stampCount);
   // 知识岛摘要和收藏册调的是同一个纯函数，所以同一个印章数在两边永远是同一个阶段。
-  const knowledgeIsland = buildKnowledgeIslandGrowth(normalizedStampCount);
+  // 注意传的是 lifetimeStarCount（跨章节累计）而不是 totalStars（本章星星）：
+  // 切章节、切年级时本章星星会变，小岛的繁荣度不能跟着变。
+  const knowledgeIsland = buildKnowledgeIslandGrowth(normalizedStampCount, {
+    starCount: lifetimeStarCount
+  });
 
   return {
     totalStars: normalizedStars,
@@ -686,6 +692,8 @@ export function buildHomeDashboard({
   practiceScope = [],
   adventureSource = {},
   growthSource = {},
+  // 跨章节累计最好星数：只给知识岛繁荣度用，与 grade / semester / 本章进度都无关。
+  lifetimeStarCount = 0,
   achievements = []
 } = {}) {
   const gradeLabel = [normalizeText(grade, 16), normalizeText(semester, 16)].filter(Boolean).join(" · ");
@@ -702,6 +710,7 @@ export function buildHomeDashboard({
   const growth = buildHomeGrowth({
     ...growthSource,
     stampCount: getExplorerStampCount(growthProgress),
+    lifetimeStarCount,
     achievements
   });
   // 行动建议由确定性规则给出（AI 欢迎文案不参与决策）；

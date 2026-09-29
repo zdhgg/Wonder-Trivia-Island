@@ -51,6 +51,7 @@ import {
 } from "../utils/growthProgress";
 import { buildAdventureCollectionBook } from "../utils/adventureCollectionBook";
 import { buildKnowledgeIslandStageTransition } from "../utils/knowledgeIslandGrowth";
+import { sumChallengeProgressBookStars } from "../utils/knowledgeIslandProsperity";
 import { createAppRouting } from "./app/useAppRouting";
 import { createHomeSelections } from "./app/useHomeSelections";
 import { createStudyRecordRuntime } from "./app/useStudyRecordRuntime";
@@ -1547,6 +1548,15 @@ export function useTriviaApp() {
     };
   });
 
+  // 全部历史章节累计最好星数：知识岛繁荣度唯一的星数来源。
+  //
+  // 口径在 knowledgeIslandProsperity.sumChallengeProgressBookStars 里写死，这里只负责喂数据：
+  //   - 遍历整本账本的 chapters，不看 selectedChallengeChapterId / homeChallengeChapter；
+  //   - 每关只取 bestResults 里已保存的最好星数，重复刷同一关不会重复累计；
+  //   - 不写回任何地方，没有第二份持久状态。
+  // 所以切换当前章节、切换 preferredGrade 之后它都不会变。
+  const lifetimeChallengeStars = computed(() => sumChallengeProgressBookStars(challengeProgressBook.value));
+
   // 岛卡顺序、进度口径完全不变（还是 CHALLENGE_CHAPTERS 原序 + 星星进度），
   // 末尾只按学习档案年级补一层视觉标记：高亮当前年级的上/下册两张，其余年级适度弱化。
   const challengeWorldData = computed(() => {
@@ -1612,6 +1622,8 @@ export function useTriviaApp() {
       dailyTasks: homeDailyTasks.value,
       // 今日宝箱的领取状态来自独立账本，任务进度仍然只来自 homeDailyTasks。
       growthProgress: growthProgress.value,
+      // 知识岛繁荣度用的是跨章节累计星数，不是本章的 homeChapterGrowthSource.totalStars。
+      lifetimeStarCount: lifetimeChallengeStars.value,
       justClaimedDailyChest: justClaimedDailyChestDateKey.value === getHomeDailyTaskDateKey(new Date()),
       knowledgeSummary: homeKnowledgeSpotlight.value.summary,
       wrongBookSummary: homeWrongBookSpotlight.value.summary,
@@ -1688,7 +1700,9 @@ export function useTriviaApp() {
       stages: collectionBookSource.value.stages,
       chapterProgress: collectionBookSource.value.chapterProgress,
       achievements: collectionBookSource.value.achievements,
-      growthProgress: growthProgress.value
+      growthProgress: growthProgress.value,
+      // 同一份跨章节累计星数：首页入口和闯关地图入口看到的繁荣度完全一致。
+      lifetimeStarCount: lifetimeChallengeStars.value
     })
   );
 

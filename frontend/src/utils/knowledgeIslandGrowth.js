@@ -6,14 +6,23 @@
 // 它不读 localStorage、不读接口、不写任何进度，也不引入第二套成长账本：
 //   - 数据库里仍然只保存一个事实：累计拿过多少枚印章（growthProgress.totalDailyChests）；
 //   - 前端负责解释这些印章对应的小岛样子。
+//
+// 繁荣度（Phase 繁荣度 MVP）：印章决定“岛上已经有哪些核心建筑”，
+// 星星只决定“这些已解锁的内容有多丰富”。两个输入互不越权：
+//   - buildKnowledgeIslandGrowth(印章数) 仍然是旧签名，不传星星时繁荣度固定为基础档；
+//   - 第二个参数只多认一个 starCount（全部历史章节累计最好星数），
+//     它只能改变繁荣度，永远不能改变 currentStage —— 星星再多也不会提前解锁下一阶段建筑。
 // 所以只要同一个 profile 从服务端取到同一份 growthProgress，阶段就能被重新算成同一个结果：
 // 这里不负责跨设备同步、也不记录“看过哪个阶段”，同步本身由 growthProgress 那一路负责。
 //
 // 这里同样没有“已读 / 庆祝过”的第二套状态：
 // 阶段变化反馈只发生在服务端确认“这次真的新领到一枚印章”的那一刻，属于临时 UI 状态。
 
+import { buildKnowledgeIslandProsperity } from "./knowledgeIslandProsperity";
+
 // 阶段阈值本轮固定：0 / 3 / 7 / 15 / 30。
 // 不动态生成、不随机、不消费印章——印章只累计，不会被花掉。
+// 繁荣度阈值（0 / 21 / 63）独立定义在 knowledgeIslandProsperity，不与阶段阈值混在一起。
 export const KNOWLEDGE_ISLAND_STAGES = Object.freeze([
   Object.freeze({
     id: "first-sight",
@@ -156,8 +165,19 @@ export function isKnowledgeIslandMaxStage(stampCount) {
 // 进度按「当前阶段阈值 → 下一阶段阈值」这个区间算，不是 stampCount / 下一阶段阈值。
 // 例：4 枚印章 → 当前 3、下一阶段 7 → 1 / 4 = 25%。
 // 孩子看到的意思是“这一阶段已经走了多少”，而不是“离总目标还差多远”。
-export function buildKnowledgeIslandGrowth(stampCount = 0) {
+//
+// 第二个参数是可选的繁荣度输入：{ starCount } = 全部历史章节累计最好星数。
+// 旧调用方只传一个参数时完全保持原行为（starCount 默认 0 → 基础档），
+// 所以首页摘要、收藏册、阶段庆祝这些旧入口不需要同步改动就能继续工作。
+//
+// 第二个参数整体可能是 null / number 之类的脏值，所以不能直接写解构默认值
+// （解构默认值只对 undefined 生效，null 会直接抛错）。这里先归一成对象再取字段，
+// 与本文件其它“展示层容错”保持同一口径：脏输入退化成 0 颗星 = 基础档。
+export function buildKnowledgeIslandGrowth(stampCount = 0, options = {}) {
+  const safeOptions = options && typeof options === "object" ? options : {};
   const normalizedStampCount = normalizeKnowledgeIslandStampCount(stampCount);
+  // 阶段只由印章数决定：繁荣度在这里只被读进来、不会回写 stampCount。
+  const prosperity = buildKnowledgeIslandProsperity(safeOptions.starCount);
   const currentIndex = resolveKnowledgeIslandStageIndex(normalizedStampCount);
   const currentStage = KNOWLEDGE_ISLAND_STAGES[currentIndex];
   const nextStage = currentIndex + 1 < KNOWLEDGE_ISLAND_STAGES.length ? KNOWLEDGE_ISLAND_STAGES[currentIndex + 1] : null;
@@ -183,6 +203,14 @@ export function buildKnowledgeIslandGrowth(stampCount = 0) {
       summary: currentStage.summary,
       features: [...currentStage.features]
     },
+    // 繁荣度：完整 ViewModel 由 knowledgeIslandProsperity 负责解释，
+    // 这里同时摊平 level / key / label，方便组件直接绑 class 和文案，不必再解一层。
+    // 再次强调：它只影响细节丰富度，currentStage / features / nextStage 都与星星无关。
+    prosperity,
+    prosperityLevel: prosperity.level,
+    prosperityKey: prosperity.key,
+    prosperityLabel: prosperity.label,
+    prosperityStarCount: prosperity.starCount,
     nextStage: nextStage
       ? {
           id: nextStage.id,

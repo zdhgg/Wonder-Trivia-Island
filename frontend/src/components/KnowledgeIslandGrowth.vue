@@ -8,6 +8,14 @@
 //
 // 画面是轻量 CSS 绘本地图：海水、浪线、沙洲、草地与小物件分层，
 // 阶段元素在同一幅小景里逐件长出来，不引入图片资产或额外渲染依赖。
+//
+// 繁荣度（星星）在本组件里的唯一职责：把「已经解锁的这些元素」画得更丰富一点。
+// 组件不判定繁荣度（那是 knowledgeIslandProsperity 的事），只读 props 上算好的 level / key。
+//
+// 最重要的不变量（改这个组件时务必保留）：
+//   每一件繁荣细节都必须挂在「该阶段的父元素」内部，或者本身是与阶段无关的
+//   贝壳 / 石头 / 云 / 海鸥 / 浪花。
+//   所以星星再多也不会让 0 枚印章的「初见小岛」提前长出草、花、椰树、帐篷、码头或灯塔。
 const props = defineProps({
   island: {
     type: Object,
@@ -24,23 +32,53 @@ function currentStageFeatures() {
 function hasIslandFeature(feature) {
   return currentStageFeatures().includes(feature);
 }
+
+// 繁荣度门槛：只控制细节，不参与任何阶段判定。
+// 非法值一律按 0（基础档）处理，展示层容错与纯函数层保持同一口径。
+function prosperityLevel() {
+  const level = Number.parseInt(String(props.island?.prosperityLevel ?? 0), 10);
+
+  return Number.isFinite(level) && level > 0 ? level : 0;
+}
+
+function isProsperityAtLeast(level) {
+  return prosperityLevel() >= level;
+}
+
+function prosperityKey() {
+  const key = String(props.island?.prosperityKey ?? "").trim();
+
+  return key || "basic";
+}
 </script>
 
 <template>
-  <div class="knowledge-island" :data-stage="island.currentStage.id" :class="`knowledge-island--${island.currentStage.id}`">
+  <div
+    class="knowledge-island"
+    :data-stage="island.currentStage.id"
+    :data-prosperity="prosperityKey()"
+    :class="[`knowledge-island--${island.currentStage.id}`, `knowledge-island--prosperity-${prosperityKey()}`]"
+  >
     <div
       class="knowledge-island__figure"
       data-role="knowledge-island-figure"
       role="img"
       :data-stage="island.currentStage.id"
-      :aria-label="`知识岛现在的样子：${island.currentStage.name}。${island.currentStage.summary}`"
+      :data-prosperity="prosperityKey()"
+      :aria-label="`知识岛现在的样子：${island.currentStage.name}，${island.prosperityLabel}。${island.currentStage.summary}`"
     >
       <!-- 天空：留出一块明亮的绘本留白，再用太阳与云朵交代远景。 -->
       <span class="knowledge-island__sun" aria-hidden="true"></span>
       <span class="knowledge-island__cloud knowledge-island__cloud--left" aria-hidden="true"></span>
       <span class="knowledge-island__cloud knowledge-island__cloud--right" aria-hidden="true"></span>
+      <!-- 繁荣才多出来的一朵远景云：云与阶段无关，所以不需要任何阶段门禁。 -->
+      <span v-if="isProsperityAtLeast(2)" class="knowledge-island__cloud knowledge-island__cloud--flourishing" aria-hidden="true"></span>
       <span class="knowledge-island__sky-dot knowledge-island__sky-dot--a" aria-hidden="true"></span>
       <span class="knowledge-island__sky-dot knowledge-island__sky-dot--b" aria-hidden="true"></span>
+      <!-- 海鸥：天空细节，繁荣度越高飞得越多，同样与阶段无关。 -->
+      <span v-if="isProsperityAtLeast(1)" class="knowledge-island__gull knowledge-island__gull--a" aria-hidden="true"></span>
+      <span v-if="isProsperityAtLeast(1)" class="knowledge-island__gull knowledge-island__gull--b" aria-hidden="true"></span>
+      <span v-if="isProsperityAtLeast(2)" class="knowledge-island__gull knowledge-island__gull--c" aria-hidden="true"></span>
 
       <!-- 海水分三层：远处的浅蓝、近处的深蓝和贴着岸边的浪花。 -->
       <span class="knowledge-island__sea" aria-hidden="true"></span>
@@ -50,10 +88,20 @@ function hasIslandFeature(feature) {
         <span class="knowledge-island__surf-line knowledge-island__surf-line--b"></span>
         <span class="knowledge-island__surf-line knowledge-island__surf-line--c"></span>
         <span class="knowledge-island__surf-line knowledge-island__surf-line--d"></span>
+        <!-- 繁荣档多出来的浪花：浪花与阶段无关，任何阶段都可加。 -->
+        <span v-if="isProsperityAtLeast(1)" class="knowledge-island__surf-line knowledge-island__surf-line--lush-a"></span>
+        <span v-if="isProsperityAtLeast(1)" class="knowledge-island__surf-line knowledge-island__surf-line--lush-b"></span>
+        <span v-if="isProsperityAtLeast(2)" class="knowledge-island__surf-line knowledge-island__surf-line--flourishing-a"></span>
+        <span v-if="isProsperityAtLeast(2)" class="knowledge-island__surf-line knowledge-island__surf-line--flourishing-b"></span>
       </span>
 
-      <!-- 最高阶段才点亮的灯塔光束。 -->
-      <span v-if="hasIslandFeature('灯光')" class="knowledge-island__beam" aria-hidden="true"></span>
+      <!-- 最高阶段才点亮的灯塔光束；繁荣度只调亮度和宽度，不负责解锁。 -->
+      <span
+        v-if="hasIslandFeature('灯光')"
+        class="knowledge-island__beam"
+        :class="`knowledge-island__beam--${prosperityKey()}`"
+        aria-hidden="true"
+      ></span>
 
       <!-- 岛影、沙滩和草地内的纹理共同组成不规则岸线。 -->
       <span class="knowledge-island__island-shadow" aria-hidden="true"></span>
@@ -62,18 +110,38 @@ function hasIslandFeature(feature) {
       <span class="knowledge-island__rock knowledge-island__rock--left" aria-hidden="true"></span>
       <span class="knowledge-island__rock knowledge-island__rock--right" aria-hidden="true"></span>
       <span class="knowledge-island__shell" aria-hidden="true"></span>
+      <!-- 繁荣细节里的贝壳与石头：这两个元素从初见小岛起就一直存在，
+           所以只挂繁荣度门禁，不挂任何阶段门禁，也就绝不会越级解锁后续建筑。 -->
+      <span v-if="isProsperityAtLeast(1)" class="knowledge-island__shell knowledge-island__shell--lush-a" aria-hidden="true"></span>
+      <span v-if="isProsperityAtLeast(1)" class="knowledge-island__shell knowledge-island__shell--lush-b" aria-hidden="true"></span>
+      <span v-if="isProsperityAtLeast(2)" class="knowledge-island__shell knowledge-island__shell--flourishing-a" aria-hidden="true"></span>
+      <span v-if="isProsperityAtLeast(2)" class="knowledge-island__shell knowledge-island__shell--flourishing-b" aria-hidden="true"></span>
+      <span v-if="isProsperityAtLeast(1)" class="knowledge-island__rock knowledge-island__rock--lush" aria-hidden="true"></span>
+      <span v-if="isProsperityAtLeast(2)" class="knowledge-island__rock knowledge-island__rock--flourishing" aria-hidden="true"></span>
 
-      <!-- 下面这些是成长元素，名称与 features 保持一一对应。 -->
+      <!-- 下面这些是成长元素，名称与 features 保持一一对应。
+           每一组内部的繁荣细节都写在这个元素的 v-if 里面：
+           父元素没解锁（阶段没到），里面的细节就一个都不会被创建。 -->
       <span v-if="hasIslandFeature('小草丛')" class="knowledge-island__grass" aria-hidden="true">
         <span class="knowledge-island__grass-blade knowledge-island__grass-blade--a"></span>
         <span class="knowledge-island__grass-blade knowledge-island__grass-blade--b"></span>
         <span class="knowledge-island__grass-blade knowledge-island__grass-blade--c"></span>
+        <span v-if="isProsperityAtLeast(1)" class="knowledge-island__grass-blade knowledge-island__grass-blade--d"></span>
+        <span v-if="isProsperityAtLeast(1)" class="knowledge-island__grass-blade knowledge-island__grass-blade--e"></span>
+        <span v-if="isProsperityAtLeast(2)" class="knowledge-island__grass-blade knowledge-island__grass-blade--f"></span>
+        <span v-if="isProsperityAtLeast(1)" class="knowledge-island__flower knowledge-island__flower--a"></span>
+        <span v-if="isProsperityAtLeast(1)" class="knowledge-island__flower knowledge-island__flower--b"></span>
+        <span v-if="isProsperityAtLeast(2)" class="knowledge-island__flower knowledge-island__flower--c"></span>
       </span>
 
       <span v-if="hasIslandFeature('嫩芽')" class="knowledge-island__sprout" aria-hidden="true">
         <span class="knowledge-island__sprout-stem"></span>
         <span class="knowledge-island__sprout-leaf knowledge-island__sprout-leaf--left"></span>
         <span class="knowledge-island__sprout-leaf knowledge-island__sprout-leaf--right"></span>
+        <span v-if="isProsperityAtLeast(1)" class="knowledge-island__sprout-leaf knowledge-island__sprout-leaf--lush-left"></span>
+        <span v-if="isProsperityAtLeast(1)" class="knowledge-island__sprout-leaf knowledge-island__sprout-leaf--lush-right"></span>
+        <span v-if="isProsperityAtLeast(2)" class="knowledge-island__sprout-leaf knowledge-island__sprout-leaf--flourishing-left"></span>
+        <span v-if="isProsperityAtLeast(2)" class="knowledge-island__sprout-leaf knowledge-island__sprout-leaf--flourishing-right"></span>
       </span>
 
       <span v-if="hasIslandFeature('椰子树')" class="knowledge-island__palm" aria-hidden="true">
@@ -83,14 +151,23 @@ function hasIslandFeature(feature) {
           <span class="knowledge-island__palm-leaf knowledge-island__palm-leaf--b"></span>
           <span class="knowledge-island__palm-leaf knowledge-island__palm-leaf--c"></span>
           <span class="knowledge-island__palm-leaf knowledge-island__palm-leaf--d"></span>
+          <span v-if="isProsperityAtLeast(1)" class="knowledge-island__palm-leaf knowledge-island__palm-leaf--e"></span>
+          <span v-if="isProsperityAtLeast(2)" class="knowledge-island__palm-leaf knowledge-island__palm-leaf--f"></span>
         </span>
         <span class="knowledge-island__palm-fruit"></span>
+        <!-- 椰子是椰树自己的细节：写在 椰子树 的 v-if 里，没到椰林营地就永远不存在。 -->
+        <span v-if="isProsperityAtLeast(1)" class="knowledge-island__palm-fruit knowledge-island__palm-fruit--lush"></span>
+        <span v-if="isProsperityAtLeast(2)" class="knowledge-island__palm-fruit knowledge-island__palm-fruit--flourishing"></span>
       </span>
 
       <span v-if="hasIslandFeature('小帐篷')" class="knowledge-island__camp" aria-hidden="true">
         <span class="knowledge-island__camp-body"></span>
         <span class="knowledge-island__camp-door"></span>
         <span class="knowledge-island__camp-flag"></span>
+        <span v-if="isProsperityAtLeast(1)" class="knowledge-island__camp-flag knowledge-island__camp-flag--lush"></span>
+        <span v-if="isProsperityAtLeast(1)" class="knowledge-island__camp-crate"></span>
+        <span v-if="isProsperityAtLeast(2)" class="knowledge-island__camp-crate knowledge-island__camp-crate--flourishing"></span>
+        <span v-if="isProsperityAtLeast(2)" class="knowledge-island__camp-campfire"></span>
       </span>
 
       <span v-if="hasIslandFeature('小码头')" class="knowledge-island__dock" aria-hidden="true">
@@ -98,12 +175,17 @@ function hasIslandFeature(feature) {
         <span class="knowledge-island__dock-plank knowledge-island__dock-plank--b"></span>
         <span class="knowledge-island__dock-post knowledge-island__dock-post--a"></span>
         <span class="knowledge-island__dock-post knowledge-island__dock-post--b"></span>
+        <span v-if="isProsperityAtLeast(1)" class="knowledge-island__dock-plank knowledge-island__dock-plank--lush"></span>
+        <span v-if="isProsperityAtLeast(1)" class="knowledge-island__dock-post knowledge-island__dock-post--lush"></span>
+        <span v-if="isProsperityAtLeast(2)" class="knowledge-island__dock-net"></span>
       </span>
 
       <span v-if="hasIslandFeature('泊岸小船')" class="knowledge-island__boat" aria-hidden="true">
         <span class="knowledge-island__boat-hull"></span>
         <span class="knowledge-island__boat-mast"></span>
         <span class="knowledge-island__boat-sail"></span>
+        <span v-if="isProsperityAtLeast(1)" class="knowledge-island__boat-rigging"></span>
+        <span v-if="isProsperityAtLeast(2)" class="knowledge-island__boat-anchor"></span>
       </span>
 
       <span v-if="hasIslandFeature('灯塔')" class="knowledge-island__lighthouse" aria-hidden="true">
@@ -112,6 +194,10 @@ function hasIslandFeature(feature) {
         <span class="knowledge-island__lighthouse-window knowledge-island__lighthouse-window--a"></span>
         <span class="knowledge-island__lighthouse-window knowledge-island__lighthouse-window--b"></span>
         <span class="knowledge-island__lighthouse-light"></span>
+        <!-- 窗灯与灯塔基座都是灯塔自己的细节：写在 灯塔 的 v-if 里。 -->
+        <span v-if="isProsperityAtLeast(1)" class="knowledge-island__lighthouse-window knowledge-island__lighthouse-window--lush"></span>
+        <span v-if="isProsperityAtLeast(2)" class="knowledge-island__lighthouse-window knowledge-island__lighthouse-window--flourishing"></span>
+        <span v-if="isProsperityAtLeast(2)" class="knowledge-island__lighthouse-base"></span>
       </span>
     </div>
 
@@ -121,6 +207,12 @@ function hasIslandFeature(feature) {
         <span class="knowledge-island__stage-name">当前：{{ island.currentStage.name }}</span>
       </p>
       <p class="knowledge-island__stamps">{{ island.stampText }}</p>
+
+      <!-- 繁荣度独立一行：文案强调它是“跨章节累计”，避免和本章星星混为一谈。 -->
+      <p class="knowledge-island__prosperity" :data-prosperity="prosperityKey()">
+        <span class="knowledge-island__prosperity-label">{{ island.prosperityLabel }}</span>
+        <span class="knowledge-island__prosperity-text">{{ island.prosperity.prosperityText }}</span>
+      </p>
 
       <div v-if="!island.isMaxStage" class="knowledge-island__progress">
         <div
@@ -827,6 +919,409 @@ function hasIslandFeature(feature) {
   box-shadow: 0 0 0 2px rgba(255, 242, 164, 0.5);
 }
 
+/* ===========================================================================
+   繁荣度细节
+   ---------------------------------------------------------------------------
+   规则：下面每一条都只影响“该阶段的元素已经存在”之后的样子。
+   与阶段无关的（贝壳 / 石头 / 云 / 海鸥 / 浪花）只挂繁荣度门禁；
+   与阶段相关的（草丛 / 嫩芽 / 椰树 / 帐篷 / 码头 / 小船 / 灯塔）全部写在
+   父元素的 v-if 内部，所以阶段没到时这些规则根本不会被渲染出来。
+   0 枚印章永远不会因为星星多而长出草、花、椰树、帐篷、码头或灯塔。
+   =========================================================================== */
+
+/* 第三朵远景云：只在天上做文章，不碰岛上的任何东西。 */
+.knowledge-island__cloud--flourishing {
+  top: 11%;
+  left: 38%;
+  transform: scale(0.5);
+  opacity: 0.66;
+}
+
+/* 海鸥：两笔就够像一只鸟，不引入动画系统。 */
+.knowledge-island__gull {
+  position: absolute;
+  width: 9px;
+  height: 4px;
+  border-top: 2px solid rgba(72, 130, 156, 0.66);
+  border-radius: 50% 50% 0 0 / 100% 100% 0 0;
+  transform: rotate(-8deg);
+  z-index: 1;
+}
+
+.knowledge-island__gull::after {
+  content: "";
+  position: absolute;
+  left: 1px;
+  top: 1px;
+  width: 7px;
+  height: 4px;
+  border-top: 2px solid rgba(72, 130, 156, 0.66);
+  border-radius: 0 0 50% 50% / 0 0 100% 100%;
+  transform: rotate(6deg);
+}
+
+.knowledge-island__gull--a {
+  top: 21%;
+  left: 63%;
+  transform: rotate(-8deg) scale(0.9);
+}
+
+.knowledge-island__gull--b {
+  top: 27%;
+  left: 70%;
+  transform: rotate(-8deg) scale(0.7);
+  opacity: 0.78;
+}
+
+.knowledge-island__gull--c {
+  top: 17%;
+  left: 52%;
+  transform: rotate(-8deg) scale(0.6);
+  opacity: 0.66;
+}
+
+/* 浪花：复用同一套 .knowledge-island__surf-line，只改位置、角度和长度。 */
+.knowledge-island__surf-line--lush-a {
+  top: 62%;
+  left: 12%;
+  width: 15%;
+  border-top-width: 2px;
+  --wave-angle: 2deg;
+  --wave-shift: 3px;
+  animation-delay: -2.6s;
+}
+
+.knowledge-island__surf-line--lush-b {
+  top: 33%;
+  left: 56%;
+  width: 20%;
+  --wave-angle: -3deg;
+  --wave-shift: 2px;
+  animation-delay: -4.4s;
+}
+
+.knowledge-island__surf-line--flourishing-a {
+  top: 70%;
+  left: 38%;
+  width: 14%;
+  border-top-width: 2px;
+  --wave-angle: 4deg;
+  --wave-shift: 3px;
+  animation-delay: -6.1s;
+}
+
+.knowledge-island__surf-line--flourishing-b {
+  top: 14%;
+  left: 66%;
+  width: 17%;
+  border-top-width: 2px;
+  --wave-angle: -5deg;
+  --wave-shift: 2px;
+  animation-delay: -0.9s;
+}
+
+/* 更多贝壳：沿着原有那只贝壳的摆放逻辑散开，避免看起来像复制粘贴。 */
+.knowledge-island__shell--lush-a {
+  right: 46%;
+  bottom: 25%;
+  width: 10px;
+  height: 7px;
+  transform: rotate(12deg);
+  opacity: 0.9;
+}
+
+.knowledge-island__shell--lush-b {
+  right: 30%;
+  bottom: 34%;
+  width: 9px;
+  height: 6px;
+  transform: rotate(-28deg);
+  opacity: 0.82;
+}
+
+.knowledge-island__shell--flourishing-a {
+  right: 52%;
+  bottom: 33%;
+  width: 11px;
+  height: 7px;
+  transform: rotate(22deg);
+  opacity: 0.88;
+}
+
+.knowledge-island__shell--flourishing-b {
+  right: 24%;
+  bottom: 27%;
+  width: 9px;
+  height: 6px;
+  transform: rotate(6deg);
+  opacity: 0.78;
+}
+
+.knowledge-island__rock--lush {
+  left: 34%;
+  bottom: 21%;
+  width: 15px;
+  height: 9px;
+  transform: rotate(8deg);
+  opacity: 0.88;
+}
+
+.knowledge-island__rock--flourishing {
+  left: 45%;
+  bottom: 25%;
+  width: 12px;
+  height: 7px;
+  transform: rotate(-18deg);
+  opacity: 0.8;
+}
+
+/* 草丛更多叶片 + 小花：只在这一阶段的草丛元素内部生效。 */
+.knowledge-island__grass-blade--d {
+  left: 15px;
+  height: 15px;
+  transform: rotate(-12deg);
+  background: #57a96a;
+}
+
+.knowledge-island__grass-blade--e {
+  right: 8px;
+  height: 16px;
+  transform: rotate(14deg);
+  background: #57a96a;
+}
+
+.knowledge-island__grass-blade--f {
+  left: 6px;
+  height: 18px;
+  transform: rotate(-34deg);
+  background: #3f9257;
+}
+
+.knowledge-island__flower {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ef8fb0;
+  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.72);
+}
+
+.knowledge-island__flower::after {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 6px;
+  width: 2px;
+  height: 5px;
+  background: #4b9f60;
+}
+
+.knowledge-island__flower--a {
+  left: 3px;
+  bottom: 14px;
+  background: #f2a0bd;
+}
+
+.knowledge-island__flower--b {
+  right: 5px;
+  bottom: 12px;
+  background: #f7c078;
+}
+
+.knowledge-island__flower--c {
+  left: 12px;
+  bottom: 6px;
+  width: 5px;
+  height: 5px;
+  background: #ef8fb0;
+}
+
+/* 嫩芽长出更多叶子：同样在 嫩芽 的 v-if 内部。 */
+.knowledge-island__sprout-leaf--lush-left {
+  bottom: 20px;
+  left: 2px;
+  width: 11px;
+  height: 6px;
+  transform: rotate(-52deg);
+  background: #3fa860;
+}
+
+.knowledge-island__sprout-leaf--lush-right {
+  bottom: 20px;
+  right: 2px;
+  width: 11px;
+  height: 6px;
+  transform: scaleX(-1) rotate(-52deg);
+  background: #3fa860;
+}
+
+.knowledge-island__sprout-leaf--flourishing-left {
+  bottom: 7px;
+  left: 5px;
+  width: 9px;
+  height: 5px;
+  transform: rotate(-10deg);
+  background: #6bc97e;
+}
+
+.knowledge-island__sprout-leaf--flourishing-right {
+  bottom: 7px;
+  right: 5px;
+  width: 9px;
+  height: 5px;
+  transform: scaleX(-1) rotate(-10deg);
+  background: #6bc97e;
+}
+
+/* 椰树：多两片叶子 + 更多椰子。 */
+.knowledge-island__palm-leaf--e {
+  transform: rotate(-58deg) scale(0.68);
+}
+
+.knowledge-island__palm-leaf--f {
+  transform: rotate(292deg) scale(0.58);
+}
+
+.knowledge-island__palm-fruit--lush {
+  left: 20px;
+  top: 22px;
+  box-shadow: 5px 3px 0 #8f683a;
+}
+
+.knowledge-island__palm-fruit--flourishing {
+  left: 14px;
+  top: 24px;
+  box-shadow: 6px 2px 0 #8f683a, 11px 5px 0 #8f683a;
+}
+
+/* 营地：第二面营旗 + 木箱 + 营火。 */
+.knowledge-island__camp-flag--lush {
+  left: 29px;
+  top: -1px;
+  height: 12px;
+}
+
+.knowledge-island__camp-crate {
+  position: absolute;
+  left: -4px;
+  bottom: 1px;
+  width: 9px;
+  height: 8px;
+  border: 1px solid rgba(122, 78, 40, 0.4);
+  border-radius: 2px;
+  background: #d59a5c;
+}
+
+.knowledge-island__camp-crate--flourishing {
+  left: -10px;
+  width: 7px;
+  height: 6px;
+  background: #c68b50;
+}
+
+.knowledge-island__camp-campfire {
+  position: absolute;
+  right: -6px;
+  bottom: 1px;
+  width: 7px;
+  height: 9px;
+  border-radius: 50% 50% 40% 40%;
+  background: radial-gradient(circle at 50% 70%, #fff0b0 0 34%, #f2a33c 62%, rgba(242, 163, 60, 0) 100%);
+  box-shadow: 0 0 6px rgba(255, 214, 128, 0.66);
+}
+
+/* 码头：多一块木板 + 第三个桩 + 渔网。 */
+.knowledge-island__dock-plank--lush {
+  top: 25px;
+  height: 7px;
+}
+
+.knowledge-island__dock-post--lush {
+  left: 50%;
+  top: 5px;
+  transform: translateX(-50%);
+}
+
+.knowledge-island__dock-net {
+  position: absolute;
+  right: -8px;
+  top: 12px;
+  width: 11px;
+  height: 13px;
+  border: 1px solid rgba(122, 84, 48, 0.4);
+  border-radius: 2px;
+  background:
+    repeating-linear-gradient(45deg, rgba(122, 84, 48, 0.28) 0 1px, transparent 1px 4px),
+    repeating-linear-gradient(-45deg, rgba(122, 84, 48, 0.28) 0 1px, transparent 1px 4px);
+  transform: rotate(8deg);
+}
+
+/* 小船：索具 + 小锚。 */
+.knowledge-island__boat-rigging {
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  width: 24px;
+  height: 1.5px;
+  background: rgba(118, 90, 72, 0.72);
+  transform: rotate(6deg);
+}
+
+.knowledge-island__boat-anchor {
+  position: absolute;
+  left: 1px;
+  bottom: 0;
+  width: 6px;
+  height: 6px;
+  border: 1.5px solid #6f5a4c;
+  border-top: 0;
+  border-radius: 0 0 6px 6px;
+}
+
+.knowledge-island__boat-anchor::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: -4px;
+  width: 1.5px;
+  height: 4px;
+  background: #6f5a4c;
+}
+
+/* 灯塔：窗灯亮起 + 塔基座 + 光束更宽更亮。 */
+.knowledge-island__lighthouse-window--lush {
+  top: 28px;
+  background: #ffe9a8;
+  box-shadow: 0 0 4px rgba(255, 226, 140, 0.86);
+}
+
+.knowledge-island__lighthouse-window--flourishing {
+  top: 43px;
+  background: #ffe9a8;
+  box-shadow: 0 0 5px rgba(255, 226, 140, 0.92);
+}
+
+.knowledge-island__lighthouse-base {
+  position: absolute;
+  left: 0;
+  bottom: -2px;
+  width: 32px;
+  height: 6px;
+  border-radius: 0 0 5px 5px;
+  background: linear-gradient(180deg, #e8dcc4 0%, #cbbb9c 100%);
+}
+
+.knowledge-island__beam--lush {
+  width: 48%;
+  opacity: 0.78;
+}
+
+.knowledge-island__beam--flourishing {
+  width: 56%;
+  height: 29%;
+  opacity: 0.92;
+}
+
 .knowledge-island__info {
   display: grid;
   gap: 6px;
@@ -868,6 +1363,45 @@ function hasIslandFeature(feature) {
   color: var(--color-ink-soft);
   font-size: 0.88rem;
   font-weight: 800;
+}
+
+.knowledge-island__prosperity {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  min-width: 0;
+  color: var(--color-ink-soft);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+/* 三档只换颜色深浅，不换结构：一眼能看出丰盛程度，但不会喧宾夺主。 */
+.knowledge-island__prosperity-label {
+  flex-shrink: 0;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(72, 154, 148, 0.28);
+  background: rgba(255, 255, 255, 0.78);
+  color: #2f7a6c;
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.knowledge-island__prosperity[data-prosperity="lush"] .knowledge-island__prosperity-label {
+  border-color: rgba(52, 138, 92, 0.32);
+  color: #2f7a4c;
+  background: rgba(240, 252, 240, 0.86);
+}
+
+.knowledge-island__prosperity[data-prosperity="flourishing"] .knowledge-island__prosperity-label {
+  border-color: rgba(198, 141, 26, 0.36);
+  color: #8a5a00;
+  background: rgba(255, 249, 226, 0.9);
+}
+
+.knowledge-island__prosperity-text {
+  min-width: 0;
 }
 
 .knowledge-island__progress {

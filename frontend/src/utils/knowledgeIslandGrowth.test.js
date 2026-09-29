@@ -682,3 +682,298 @@ describe("knowledgeIslandGrowth · 阶段变化 transition", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// 繁荣度 MVP：星星只改变“已解锁内容有多丰富”，绝不改变岛屿大阶段。
+// 阈值 0 / 21 / 63 固定在这里，knowledgeIslandProsperity.test.js 里也写死同一组。
+// ---------------------------------------------------------------------------
+const FIXED_PROSPERITY_BOUNDS = Object.freeze({ basic: 20, lushStart: 21, lushEnd: 62, flourishingStart: 63 });
+
+describe("knowledgeIslandGrowth · 繁荣度三档", () => {
+  it("0 / 20 星是基础，21 / 62 星是丰盛，63+ 星是繁荣", () => {
+    expect(buildKnowledgeIslandGrowth(0, { starCount: 0 }).prosperityKey).toBe("basic");
+    expect(buildKnowledgeIslandGrowth(0, { starCount: FIXED_PROSPERITY_BOUNDS.basic }).prosperityKey).toBe("basic");
+    expect(buildKnowledgeIslandGrowth(0, { starCount: FIXED_PROSPERITY_BOUNDS.lushStart }).prosperityKey).toBe("lush");
+    expect(buildKnowledgeIslandGrowth(0, { starCount: FIXED_PROSPERITY_BOUNDS.lushEnd }).prosperityKey).toBe("lush");
+    expect(
+      buildKnowledgeIslandGrowth(0, { starCount: FIXED_PROSPERITY_BOUNDS.flourishingStart }).prosperityKey
+    ).toBe("flourishing");
+    expect(buildKnowledgeIslandGrowth(0, { starCount: 500 }).prosperityKey).toBe("flourishing");
+  });
+
+  it("繁荣度同时给出摊平字段，组件不必再解一层", () => {
+    const growth = buildKnowledgeIslandGrowth(7, { starCount: 63 });
+
+    expect(growth.prosperityLevel).toBe(2);
+    expect(growth.prosperityKey).toBe("flourishing");
+    expect(growth.prosperityLabel).toBe("繁荣");
+    expect(growth.prosperityStarCount).toBe(63);
+    expect(growth.prosperity.prosperityText).toBe("繁荣 · 累计 63 颗闯关星星");
+  });
+
+  it("旧调用保持兼容：不传第二个参数时繁荣度固定为基础档，其它字段一字不变", () => {
+    const legacy = buildKnowledgeIslandGrowth(7);
+    const explicitBasic = buildKnowledgeIslandGrowth(7, { starCount: 0 });
+
+    expect(legacy.prosperityKey).toBe("basic");
+    expect(legacy.prosperityLevel).toBe(0);
+    expect(legacy.prosperityStarCount).toBe(0);
+
+    // 阶段 / 进度 / 文案与显式传 0 颗星完全一致。
+    expect(legacy.currentStage).toEqual(explicitBasic.currentStage);
+    expect(legacy.progressPercent).toBe(explicitBasic.progressPercent);
+    expect(legacy.nextText).toBe(explicitBasic.nextText);
+    expect(legacy.stampText).toBe(explicitBasic.stampText);
+  });
+
+  it("第二个参数非法时安全退化成基础档，不影响阶段判定", () => {
+    const growth = buildKnowledgeIslandGrowth(15, { starCount: "abc" });
+
+    expect(growth.prosperityStarCount).toBe(0);
+    expect(growth.prosperityKey).toBe("basic");
+    expect(growth.currentStage.id).toBe(stageAt(15).id);
+
+    // 第二个参数整体缺失、null、类型不对也都不抛错。
+    expect(() => buildKnowledgeIslandGrowth(7, null)).not.toThrow();
+    expect(buildKnowledgeIslandGrowth(7, null).prosperityKey).toBe("basic");
+    expect(buildKnowledgeIslandGrowth(7, 63).prosperityKey).toBe("basic");
+  });
+});
+
+describe("knowledgeIslandGrowth · 星星绝不越级解锁后续建筑", () => {
+  it("0 枚印章 + 63 星：仍然是初见小岛，阶段元素一个都不多", () => {
+    const noStars = buildKnowledgeIslandGrowth(0, { starCount: 0 });
+    const fullStars = buildKnowledgeIslandGrowth(0, { starCount: 999 });
+
+    // 仍然是第一阶段。
+    expect(fullStars.currentStage.id).toBe(stageAt(0).id);
+    expect(fullStars.currentStage.name).toBe("初见小岛");
+    expect(fullStars.currentStage.features).toEqual(noStars.currentStage.features);
+    // 阶段进度、下一阶段提示也完全不受星星影响。
+    expect(fullStars.progressValue).toBe(0);
+    expect(fullStars.progressTarget).toBe(3);
+    expect(fullStars.nextText).toBe(noStars.nextText);
+    expect(fullStars.remainingToNext).toBe(3);
+
+    // 繁荣度确实变了——但只是细节丰富度。
+    expect(fullStars.prosperityKey).toBe("flourishing");
+    expect(noStars.prosperityKey).toBe("basic");
+
+    // 关键：0 枚印章时，后续阶段的核心植被 / 建筑一个都不在 features 里。
+    for (const lockedFeature of ["嫩芽", "小草丛", "椰子树", "小帐篷", "小码头", "泊岸小船", "灯塔", "灯光"]) {
+      expect(fullStars.currentStage.features).not.toContain(lockedFeature);
+    }
+  });
+
+  it("任意印章数下，星星都不改变阶段、features、进度或下一阶段", () => {
+    // 覆盖 0 / 3 / 7 / 15 / 30 五个阶段边界以及中间值。
+    for (const stampCount of [0, 1, 2, 3, 4, 6, 7, 14, 15, 29, 30, 31, 100]) {
+      const basic = buildKnowledgeIslandGrowth(stampCount, { starCount: 0 });
+      const lush = buildKnowledgeIslandGrowth(stampCount, { starCount: 30 });
+      const flourishing = buildKnowledgeIslandGrowth(stampCount, { starCount: 63 });
+
+      for (const compared of [lush, flourishing]) {
+        // 阶段判定与现在完全一致。
+        expect(compared.currentStage).toEqual(basic.currentStage);
+        expect(compared.nextStage).toEqual(basic.nextStage);
+        expect(compared.stampCount).toBe(basic.stampCount);
+        // 星星只改变细节丰富度。
+        expect(compared.progressValue).toBe(basic.progressValue);
+        expect(compared.progressTarget).toBe(basic.progressTarget);
+        expect(compared.progressPercent).toBe(basic.progressPercent);
+        expect(compared.remainingToNext).toBe(basic.remainingToNext);
+        expect(compared.nextText).toBe(basic.nextText);
+        expect(compared.stampText).toBe(basic.stampText);
+        expect(compared.stageHintText).toBe(basic.stageHintText);
+        expect(compared.isMaxStage).toBe(basic.isMaxStage);
+        // 繁荣度确实按三档变化。
+        expect(compared.prosperityKey).not.toBe(basic.prosperityKey);
+      }
+    }
+  });
+
+  it("0 / 3 / 7 / 15 / 30 枚印章的阶段判定与本轮之前完全一致", () => {
+    // 写死期望值：防止有人顺手改了阶段阈值。
+    const expectedStageIds = [
+      "first-sight",
+      "sprout-coast",
+      "palm-camp",
+      "explorer-dock",
+      "knowledge-lighthouse"
+    ];
+
+    FIXED_THRESHOLDS.forEach((threshold, index) => {
+      const growth = buildKnowledgeIslandGrowth(threshold, { starCount: 999 });
+
+      expect(growth.currentStage.id).toBe(expectedStageIds[index]);
+      // 三档繁荣度下阶段都一样。
+      expect(buildKnowledgeIslandGrowth(threshold, { starCount: 0 }).currentStage.id).toBe(expectedStageIds[index]);
+      expect(buildKnowledgeIslandGrowth(threshold, { starCount: 30 }).currentStage.id).toBe(expectedStageIds[index]);
+    });
+  });
+
+  it("阶段只增不减：星星不会把后面阶段的元素“借给”前面的阶段", () => {
+    // 每个阶段在最高繁荣度下都不能出现比它更后面的阶段才有的元素。
+    // 注意 沙滩 / 海浪 是每一阶段都有的公共元素，不属于“后面阶段独有的”，要排除掉。
+    for (let index = 0; index < KNOWLEDGE_ISLAND_STAGES.length; index += 1) {
+      const stage = KNOWLEDGE_ISLAND_STAGES[index];
+      const growth = buildKnowledgeIslandGrowth(stage.threshold, { starCount: 999 });
+      const laterOnlyFeatures = KNOWLEDGE_ISLAND_STAGES.slice(index + 1)
+        .flatMap((laterStage) => laterStage.features)
+        .filter((feature) => !stage.features.includes(feature));
+
+      expect(laterOnlyFeatures.length).toBeGreaterThanOrEqual(0);
+      for (const feature of laterOnlyFeatures) {
+        expect(growth.currentStage.features).not.toContain(feature);
+      }
+    }
+  });
+
+  it("后面阶段独有的元素在 0 / 3 / 7 / 15 / 30 边界上都不会提前出现", () => {
+    // 逐阶段写死“这一步才有的元素”，再确认它在之前的阶段（含最高繁荣度）里永远不存在。
+    const stageOnlyFeatures = Object.freeze({
+      "first-sight": [],
+      "sprout-coast": ["嫩芽", "小草丛"],
+      "palm-camp": ["椰子树", "小帐篷"],
+      "explorer-dock": ["小码头", "泊岸小船"],
+      "knowledge-lighthouse": ["灯塔", "灯光"]
+    });
+
+    KNOWLEDGE_ISLAND_STAGES.forEach((stage, index) => {
+      for (const feature of stageOnlyFeatures[stage.id]) {
+        // 上一阶段（及更早）在最高繁荣度下都不能提前拥有它。
+        for (let earlierIndex = 0; earlierIndex < index; earlierIndex += 1) {
+          const earlierGrowth = buildKnowledgeIslandGrowth(KNOWLEDGE_ISLAND_STAGES[earlierIndex].threshold, {
+            starCount: 999
+          });
+
+          expect(earlierGrowth.currentStage.features).not.toContain(feature);
+        }
+
+        // 当前阶段一到就必须真的拥有它。
+        expect(buildKnowledgeIslandGrowth(stage.threshold, { starCount: 0 }).currentStage.features).toContain(feature);
+      }
+    });
+  });
+});
+
+describe("knowledgeIslandGrowth · 繁荣度只看累计星星", () => {
+  it("繁荣度只取决于 starCount，与印章数无关（同一星数永远同一档）", () => {
+    for (const starCount of [0, 20, 21, 62, 63, 200]) {
+      const prosperityKeys = [0, 3, 7, 15, 30, 100].map(
+        (stampCount) => buildKnowledgeIslandGrowth(stampCount, { starCount }).prosperityKey
+      );
+
+      expect(new Set(prosperityKeys).size).toBe(1);
+    }
+  });
+
+  it("累计星星只增不减：新开 0 星章节不会让小岛退化", () => {
+    // 同一本历史账本，追加一个全是 0 星的章节前后，累计星数与繁荣度都不变。
+    const history = buildKnowledgeIslandGrowth(3, { starCount: 42 });
+
+    expect(history.prosperityKey).toBe("lush");
+
+    const afterNewChapter = buildKnowledgeIslandGrowth(3, { starCount: 42 });
+
+    expect(afterNewChapter.prosperityStarCount).toBe(42);
+    expect(afterNewChapter.prosperityKey).toBe(history.prosperityKey);
+    expect(afterNewChapter.currentStage.id).toBe(history.currentStage.id);
+  });
+});
+
+describe("knowledgeIslandGrowth · 首页与收藏册的繁荣度同口径", () => {
+  // 两个真实入口都吃同一个 lifetimeStarCount，而不是各自那一章的星星。
+  function readHomeSummaryProsperity(stampCount, lifetimeStarCount, chapterStars) {
+    const dashboard = buildHomeDashboard({
+      growthSource: { totalStars: chapterStars, starTotal: 21 },
+      growthProgress: buildGrowthProgress({ stampCount }),
+      lifetimeStarCount
+    });
+
+    return dashboard.growth.knowledgeIsland;
+  }
+
+  function readCollectionBookProsperity(stampCount, lifetimeStarCount, chapterStars) {
+    const book = buildAdventureCollectionBook({
+      chapter: CHAPTER,
+      stages: STAGES,
+      chapterProgress: { bestResults: { "stage-1": { starCount: chapterStars } } },
+      achievements: [],
+      growthProgress: buildGrowthProgress({ stampCount }),
+      lifetimeStarCount
+    });
+
+    return book.stamps.knowledgeIsland;
+  }
+
+  it("同一枚印章数 + 同一份累计星星下，首页摘要与收藏册得到完全相同的繁荣度", () => {
+    for (const stampCount of [0, 3, 7, 15, 30]) {
+      for (const lifetimeStarCount of [0, 20, 21, 62, 63, 120]) {
+        const home = readHomeSummaryProsperity(stampCount, lifetimeStarCount, 3);
+        const book = readCollectionBookProsperity(stampCount, lifetimeStarCount, 3);
+
+        expect(home.prosperityKey).toBe(book.prosperityKey);
+        expect(home.prosperityLevel).toBe(book.prosperityLevel);
+        expect(home.prosperityLabel).toBe(book.prosperityLabel);
+        expect(home.prosperityStarCount).toBe(book.prosperityStarCount);
+        expect(home.currentStage.id).toBe(book.currentStage.id);
+      }
+    }
+  });
+
+  it("不传 lifetimeStarCount 时两处都是基础档，行为与本轮之前一致", () => {
+    const home = readHomeSummaryProsperity(7, undefined, 3);
+    const book = readCollectionBookProsperity(7, undefined, 3);
+
+    expect(home.prosperityKey).toBe("basic");
+    expect(book.prosperityKey).toBe("basic");
+  });
+
+  it("切 activeChapterId（本章星星变了）时，lifetime 星星与繁荣度都不变", () => {
+    // 本章星星从 0 变到 21：首页三个本章指标要跟着变，
+    // 但知识岛繁荣度吃的是 lifetimeStarCount，必须纹丝不动。
+    const before = readHomeSummaryProsperity(15, 42, 0);
+    const after = readHomeSummaryProsperity(15, 42, 21);
+
+    expect(before.prosperityStarCount).toBe(after.prosperityStarCount);
+    expect(before.prosperityKey).toBe(after.prosperityKey);
+    expect(before.currentStage.id).toBe(after.currentStage.id);
+    expect(after.prosperityKey).toBe("lush");
+  });
+
+  it("本章星星再多也不会把知识岛顶到繁荣：只有 lifetimeStarCount 能", () => {
+    // 本章满星 21 颗仍然是丰盛。
+    const chapterMaxed = readHomeSummaryProsperity(0, 21, 21);
+
+    expect(chapterMaxed.prosperityKey).toBe("lush");
+
+    // 本章星星被误当成累计星星传进去，最多也只能到本章的 21 颗 → 丰盛，不会到繁荣。
+    expect(readHomeSummaryProsperity(0, 63, 21).prosperityKey).toBe("flourishing");
+  });
+
+  it("0 枚印章 + 63 颗累计星星：两处都还是初见小岛，繁荣只是细节", () => {
+    for (const readIsland of [readHomeSummaryProsperity, readCollectionBookProsperity]) {
+      const island = readIsland(0, 63, 0);
+
+      expect(island.currentStage.id).toBe(stageAt(0).id);
+      expect(island.currentStage.name).toBe("初见小岛");
+      expect(island.prosperityKey).toBe("flourishing");
+
+      for (const lockedFeature of ["嫩芽", "小草丛", "椰子树", "小帐篷", "小码头", "泊岸小船", "灯塔", "灯光"]) {
+        expect(island.currentStage.features).not.toContain(lockedFeature);
+      }
+    }
+  });
+
+  it("非法 lifetimeStarCount 安全退化成基础档，两处都不抛错", () => {
+    for (const brokenStarCount of [undefined, null, "abc", NaN, -10, {}]) {
+      const home = readHomeSummaryProsperity(7, brokenStarCount, 3);
+      const book = readCollectionBookProsperity(7, brokenStarCount, 3);
+
+      expect(home.prosperityStarCount).toBe(0);
+      expect(home.prosperityKey).toBe("basic");
+      expect(book.prosperityKey).toBe("basic");
+    }
+  });
+});
