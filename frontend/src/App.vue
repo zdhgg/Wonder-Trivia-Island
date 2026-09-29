@@ -60,6 +60,66 @@ export default {
       return app.challengeWorldData.value.reduce((sum, chapter) => sum + (chapter.starsEarned || 0), 0);
     });
 
+    // 🏝️ 闯关路线的场景分区：装饰按路线区段组织，而不是在地图上随机贴图标。
+    // range 只决定装饰摆在哪一段路线上，不参与解锁、星级或进度判定；
+    // 景观本身（沙滩 / 礁石 / 小码头 / 帆船 / 灯塔 / 终点）全部由 CSS 绘制，
+    // glyph 只复用这张地图原本就在用的那一组 emoji，不再新增贴纸。
+    const CHALLENGE_SCENERY_ZONES = [
+      {
+        id: "beach",
+        stations: "1-2",
+        label: "第 1-2 站 · 启航沙滩",
+        range: [1, 2],
+        props: [],
+        markers: [
+          { name: "palm", glyph: "🌴" },
+          { name: "shell", glyph: "🐚" }
+        ]
+      },
+      {
+        id: "reef",
+        stations: "3-4",
+        label: "第 3-4 站 · 珊瑚礁港",
+        range: [3, 4],
+        props: ["dock"],
+        markers: [{ name: "octopus", glyph: "🐙" }]
+      },
+      {
+        id: "sea",
+        stations: "5-6",
+        label: "第 5-6 站 · 远洋航道",
+        range: [5, 6],
+        props: ["lighthouse"],
+        markers: [
+          { name: "sail", glyph: "⛵" },
+          { name: "wave", glyph: "🌊" }
+        ]
+      },
+      {
+        id: "finish",
+        stations: "7",
+        label: "第 7 站 · 灯塔终点",
+        range: [7, 7],
+        props: ["flag", "chest"],
+        markers: []
+      }
+    ];
+
+    // 已通关的区段稍鲜亮、还没推进到的区段适度弱化。
+    // 这里只读取既有的 bestStarCount 作为纯视觉提示，不写回、不改动任何进度数据。
+    const challengeSceneryZones = computed(() => {
+      const stages = app.challengeStages.value;
+      return CHALLENGE_SCENERY_ZONES.map((zone) => {
+        const zoneStages = stages.filter(
+          (stage) => stage.order >= zone.range[0] && stage.order <= zone.range[1]
+        );
+        return {
+          ...zone,
+          isCleared: zoneStages.length > 0 && zoneStages.every((stage) => stage.bestStarCount > 0)
+        };
+      });
+    });
+
     async function toggleGlobalMute() {
       if (isMuted.value) {
         // 还原静音前的主音量，而不是一律拉满
@@ -100,6 +160,7 @@ export default {
       isQuizActive,
       isMuted,
       globalStarsEarned,
+      challengeSceneryZones,
       toggleGlobalMute,
       handleHomeNavigation,
       openToolsWorkspace
@@ -311,6 +372,48 @@ export default {
           <div class="challenge-route__rail" aria-hidden="true">
             <span class="challenge-route__rail-progress" :style="challengeRouteProgressStyle"></span>
           </div>
+
+          <!-- 🏝️ 远景层：淡色光晕、远岛与云，只负责纵深，不参与叙事 -->
+          <div class="challenge-route__backdrop" aria-hidden="true">
+            <span class="challenge-route__glow"></span>
+            <span class="challenge-route__islet challenge-route__islet--far"></span>
+            <span class="challenge-route__islet challenge-route__islet--near"></span>
+            <span class="challenge-route__cloud challenge-route__cloud--one"></span>
+            <span class="challenge-route__cloud challenge-route__cloud--two"></span>
+            <span class="challenge-route__cloud challenge-route__cloud--three"></span>
+            <span class="challenge-route__swells"></span>
+          </div>
+
+          <!-- 🌊 中景层：装饰按路线区段组织，1-2 站沙滩、3-4 站礁港、5-6 站远洋、7 站终点。
+               整层 pointer-events:none，z-index 低于关卡卡片，不拦截任何点击。 -->
+          <div class="challenge-route__scenery" aria-hidden="true">
+            <div
+              v-for="zone in challengeSceneryZones"
+              :key="zone.id"
+              :class="[
+                'challenge-scenery-zone',
+                `challenge-scenery-zone--${zone.id}`,
+                { 'challenge-scenery-zone--cleared': zone.isCleared }
+              ]"
+              :data-stations="zone.stations"
+              :data-label="zone.label"
+            >
+              <span
+                v-for="prop in zone.props"
+                :key="prop"
+                :class="['challenge-scenery-prop', `challenge-scenery-prop--${prop}`]"
+              ></span>
+              <span
+                v-for="marker in zone.markers"
+                :key="marker.name"
+                class="challenge-scenery-marker"
+                :data-marker="marker.name"
+              >{{ marker.glyph }}</span>
+            </div>
+          </div>
+
+          <!-- 🌊 前景层：贴着底边的一排浪花，把整片海收口 -->
+          <div class="challenge-route__shore" aria-hidden="true"></div>
 
           <button
             v-for="stage in challengeStages"

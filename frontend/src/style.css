@@ -1513,8 +1513,11 @@ select {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 16px;
-  min-height: 480px;
-  padding: 34px 20px 220px;
+  /* 内容盒高度与改动前完全一致（480-34-220 = 226 → 500-34-240 = 226），
+     所以关卡卡片的高度、拉伸行为一字未改；
+     多出来的 20px 全部让给底部景观带，把原先的空白色块换成海面。 */
+  min-height: 500px;
+  padding: 34px 20px 240px;
   border: 3px solid #b3e6fc;
   border-radius: 40px;
   background:
@@ -1527,17 +1530,457 @@ select {
     0 30px 60px -25px rgba(36, 50, 74, 0.26);
 }
 
-.challenge-route::after {
-  content: "🌴  🏝️  ⛵  🌊  🐚  🐙";
+/* ═══════════════════════════════════════════════════════════════════════════
+   🏝️ 闯关路线场景装饰
+   装饰不再是地图底部中央的一排随机 emoji，而是沿路线铺开的三层景观：
+   远景（光晕 / 远岛 / 云）→ 中景（按 1-2 / 3-4 / 5-6 / 7 站分区的景观）→ 前景（浪花）。
+   中景层的网格轨道与 .challenge-route 的 7 列完全一致，因此每段景观天然对齐
+   它所服务的那几站，屏幕变宽变窄都不会漂移。
+   整层 pointer-events:none、z-index 恒低于关卡卡片，不拦截点击也不遮挡文字。
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── 远景层 ───────────────────────────────────────────────────────────── */
+.challenge-route__backdrop {
   position: absolute;
-  bottom: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 1.8rem;
-  letter-spacing: 48px;
-  opacity: 0.82;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
   pointer-events: none;
-  filter: drop-shadow(0 4px 6px rgba(36, 50, 74, 0.16));
+}
+
+.challenge-route__glow {
+  position: absolute;
+  top: 6%;
+  right: 5%;
+  width: clamp(150px, 24%, 320px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 238, 184, 0.6) 0%, rgba(255, 238, 184, 0) 68%);
+}
+
+.challenge-route__islet {
+  position: absolute;
+  border-radius: 54% 46% 44% 56% / 100% 100% 14% 14%;
+  background: linear-gradient(180deg, rgba(150, 214, 233, 0.55) 0%, rgba(122, 200, 227, 0.2) 100%);
+}
+
+/* 远岛脚下的水线，让它浮在海面上而不是贴片 */
+.challenge-route__islet::after {
+  content: "";
+  position: absolute;
+  left: -8%;
+  right: -8%;
+  bottom: -20%;
+  height: 38%;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.challenge-route__islet--far {
+  left: 5%;
+  top: 54%;
+  width: clamp(104px, 13%, 172px);
+  height: clamp(40px, 5%, 66px);
+  opacity: 0.46;
+}
+
+.challenge-route__islet--near {
+  right: 7%;
+  top: 44%;
+  width: clamp(78px, 9.5%, 126px);
+  height: clamp(30px, 3.8%, 48px);
+  opacity: 0.3;
+}
+
+.challenge-route__cloud {
+  position: absolute;
+  width: clamp(78px, 11%, 168px);
+  height: clamp(22px, 3.4%, 40px);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.78);
+  filter: blur(7px);
+  opacity: 0.72;
+}
+
+.challenge-route__cloud::before,
+.challenge-route__cloud::after {
+  content: "";
+  position: absolute;
+  bottom: 16%;
+  border-radius: 50%;
+  background: inherit;
+}
+
+.challenge-route__cloud::before {
+  left: 15%;
+  width: 50%;
+  height: 168%;
+}
+
+.challenge-route__cloud::after {
+  right: 11%;
+  width: 38%;
+  height: 132%;
+}
+
+.challenge-route__cloud--one {
+  left: 16%;
+  top: 7%;
+}
+
+.challenge-route__cloud--two {
+  right: 22%;
+  top: 11%;
+  transform: scale(0.76);
+  opacity: 0.6;
+}
+
+.challenge-route__cloud--three {
+  left: 44%;
+  top: 3%;
+  transform: scale(0.6);
+  opacity: 0.5;
+}
+
+/* 中远海的浪纹：把卡片区与景观区之间的水面填成海，而不是空白。
+   两层不同周期的浪线叠在一起，避免大片纯色渐变。 */
+.challenge-route__swells {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 28%;
+  bottom: 0;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      rgba(255, 255, 255, 0) 0 15px,
+      rgba(255, 255, 255, 0.34) 15px 18px,
+      rgba(255, 255, 255, 0) 18px 33px
+    ),
+    repeating-linear-gradient(
+      0deg,
+      rgba(255, 255, 255, 0) 0 61px,
+      rgba(255, 255, 255, 0.3) 61px 66px,
+      rgba(255, 255, 255, 0) 66px 127px
+    ),
+    linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(150, 220, 246, 0.26) 44%, rgba(112, 200, 234, 0.36) 100%);
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 20%, #000 100%);
+  mask-image: linear-gradient(180deg, transparent 0%, #000 20%, #000 100%);
+}
+
+/* ── 中景层：网格轨道与路线 7 列对齐 ──────────────────────────────────── */
+.challenge-route__scenery {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-rows: 1fr;
+  gap: 16px;
+  padding: 0 20px 26px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.challenge-scenery-zone {
+  grid-row: 1;
+  position: relative;
+  align-self: end;
+  height: clamp(168px, 40%, 236px);
+  /* 还没推进到的区段适度弱化，已通关的区段稍鲜亮 */
+  opacity: 0.62;
+  transition: opacity 320ms ease;
+}
+
+.challenge-scenery-zone--cleared {
+  opacity: 0.92;
+}
+
+.challenge-scenery-zone--beach {
+  grid-column: 1 / span 2;
+  /* 沙滩：暖色沙洲 + 一点点细沙颗粒 */
+  background:
+    radial-gradient(5px 3px at 22% 42%, rgba(233, 201, 123, 0.55) 0 60%, transparent 61%),
+    radial-gradient(4px 2.5px at 47% 36%, rgba(233, 201, 123, 0.45) 0 60%, transparent 61%),
+    radial-gradient(5px 3px at 66% 50%, rgba(233, 201, 123, 0.5) 0 60%, transparent 61%);
+}
+
+.challenge-scenery-zone--reef {
+  grid-column: 3 / span 2;
+  /* 礁石：几块不同深浅的礁体，都从水线下方探出来半个身子。
+     半径必须写死——用 closest-side 时圆心落在底边，最近边距离为 0，
+     整块礁石会直接消失。 */
+  background:
+    radial-gradient(46px 30px at 24% 100%, #7fb7c9 0 94%, rgba(127, 183, 201, 0) 100%),
+    radial-gradient(34px 22px at 47% 100%, #6ba3bd 0 94%, rgba(107, 163, 189, 0) 100%),
+    radial-gradient(28px 19px at 70% 100%, #d78fae 0 94%, rgba(215, 143, 174, 0) 100%);
+}
+
+.challenge-scenery-zone--sea {
+  grid-column: 5 / span 2;
+}
+
+.challenge-scenery-zone--finish {
+  grid-column: 7 / span 1;
+  /* 终点湾：一点暖金色，把第 7 站和前面的海域区分开（同样写死半径） */
+  background: radial-gradient(
+    74px 30px at 50% 100%,
+    rgba(255, 224, 150, 0.75) 0 92%,
+    rgba(255, 224, 150, 0) 100%
+  );
+}
+
+/* 每个区段脚下的水线：柔和的浪花辉光，把沙洲、礁石和道具统一按到同一片水上。
+   刻意不用等距重复的点阵——等距点阵会读成一条机械的装饰边，而不是海。 */
+.challenge-scenery-zone::after {
+  content: "";
+  position: absolute;
+  left: -6%;
+  right: -6%;
+  bottom: 0;
+  height: 26px;
+  background: radial-gradient(
+    62% 100% at 50% 100%,
+    rgba(255, 255, 255, 0.85) 0%,
+    rgba(255, 255, 255, 0.45) 46%,
+    rgba(255, 255, 255, 0) 100%
+  );
+}
+
+.challenge-scenery-zone--reef::after,
+.challenge-scenery-zone--sea::after {
+  opacity: 0.66;
+}
+
+/* ── 景观道具（全部 CSS 绘制，不引入新资源） ─────────────────────────── */
+.challenge-scenery-prop {
+  position: absolute;
+  display: block;
+  filter: drop-shadow(0 4px 5px rgba(36, 50, 74, 0.16));
+}
+
+/* 小码头：甲板 + 两条支腿 */
+.challenge-scenery-prop--dock {
+  left: 55%;
+  bottom: 44px;
+  width: 62px;
+  height: 9px;
+  border-radius: 3px;
+  transform: rotate(-3deg);
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.3) 0 2px, rgba(0, 0, 0, 0) 2px 11px),
+    linear-gradient(180deg, #dda062 0%, #b87a45 100%);
+}
+
+.challenge-scenery-prop--dock::before,
+.challenge-scenery-prop--dock::after {
+  content: "";
+  position: absolute;
+  top: 5px;
+  width: 5px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #a06c3c 0%, #7d4f2a 100%);
+}
+
+.challenge-scenery-prop--dock::before {
+  left: 9px;
+  height: 17px;
+}
+
+.challenge-scenery-prop--dock::after {
+  right: 11px;
+  height: 12px;
+}
+
+/* 灯塔：灯室是元素本体，塔身与礁座用伪元素，
+   这样塔身的 clip-path 不会把灯室和礁座一起裁掉 */
+.challenge-scenery-prop--lighthouse {
+  right: 9%;
+  bottom: 56px;
+  width: 22px;
+  height: 18px;
+  border-radius: 5px 5px 2px 2px;
+  background: linear-gradient(180deg, #fff6d0 0%, #ffd45e 100%);
+  box-shadow: 0 0 20px 7px rgba(255, 209, 102, 0.6);
+}
+
+.challenge-scenery-prop--lighthouse::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 16px;
+  width: 19px;
+  height: 58px;
+  transform: translateX(-50%);
+  border-radius: 2px;
+  clip-path: polygon(22% 0, 78% 0, 100% 100%, 0 100%);
+  background: repeating-linear-gradient(180deg, #fffaf0 0 10px, #ef7c81 10px 20px);
+}
+
+.challenge-scenery-prop--lighthouse::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 70px;
+  width: 46px;
+  height: 15px;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: radial-gradient(closest-side, #7cb4c9 0 76%, rgba(124, 180, 201, 0) 100%);
+}
+
+/* 终点旗：旗杆 + 格纹旗面 + 暖光基座 */
+.challenge-scenery-prop--flag {
+  right: 16%;
+  bottom: 34px;
+  width: 4px;
+  height: 78px;
+  border-radius: 2px;
+  transform: rotate(2deg);
+  transform-origin: bottom center;
+  background: linear-gradient(180deg, #f7fafc 0%, #c3d3de 100%);
+}
+
+.challenge-scenery-prop--flag::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 3px;
+  width: 30px;
+  height: 19px;
+  border-radius: 2px 5px 5px 2px;
+  background:
+    linear-gradient(45deg, #24324a 25%, rgba(0, 0, 0, 0) 25% 75%, #24324a 75%),
+    linear-gradient(45deg, #24324a 25%, #fffdf5 25% 75%, #24324a 75%);
+  background-size: 10px 10px;
+  background-position: 0 0, 5px 5px;
+  box-shadow: 0 3px 6px rgba(36, 50, 74, 0.2);
+  transform-origin: left center;
+  animation: scenery-flag-wave 2.8s ease-in-out infinite;
+}
+
+.challenge-scenery-prop--flag::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -6px;
+  width: 22px;
+  height: 9px;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(255, 224, 150, 0.55) 0 70%, rgba(255, 224, 150, 0) 100%);
+}
+
+@keyframes scenery-flag-wave {
+  0%,
+  100% {
+    transform: skewY(0deg) scaleX(1);
+  }
+
+  50% {
+    transform: skewY(-5deg) scaleX(0.92);
+  }
+}
+
+/* 终点宝箱：箱体 + 箱盖 + 金色锁扣 */
+.challenge-scenery-prop--chest {
+  right: 46%;
+  bottom: 12px;
+  width: 36px;
+  height: 26px;
+  border-radius: 4px 4px 6px 6px;
+  background: linear-gradient(180deg, #b5713c 0 46%, #8a5228 46% 100%);
+  box-shadow:
+    inset 0 -2px 0 rgba(0, 0, 0, 0.12),
+    0 4px 6px rgba(36, 50, 74, 0.18);
+}
+
+.challenge-scenery-prop--chest::before {
+  content: "";
+  position: absolute;
+  left: -2px;
+  right: -2px;
+  top: -9px;
+  height: 12px;
+  border-radius: 8px 8px 2px 2px;
+  background: linear-gradient(180deg, #d0894a 0%, #a8663a 100%);
+}
+
+.challenge-scenery-prop--chest::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -1px;
+  width: 9px;
+  height: 13px;
+  transform: translateX(-50%);
+  border-radius: 2px;
+  background: linear-gradient(180deg, #ffe08a 0%, #e0a83a 100%);
+  box-shadow: 0 0 9px rgba(255, 206, 90, 0.65);
+}
+
+/* ── 复用的既有 emoji：各自待在对应区段里，而不是地图中央 ────────────── */
+.challenge-scenery-marker {
+  position: absolute;
+  bottom: 26px;
+  font-size: 1.3rem;
+  line-height: 1;
+  user-select: none;
+  filter: drop-shadow(0 4px 5px rgba(36, 50, 74, 0.16));
+}
+
+/* 各区段的道具刻意错开高低，而不是排成一条基线上的贴纸：
+   高的是椰树、灯塔、终点旗，低的是贝壳、章鱼、宝箱，
+   这样景观才有纵深，读起来才像一段海岸而不是一排图标。 */
+.challenge-scenery-marker[data-marker="palm"] {
+  left: 11%;
+  bottom: 62px;
+  font-size: 2rem;
+}
+
+.challenge-scenery-marker[data-marker="shell"] {
+  left: 34%;
+  bottom: 22px;
+  font-size: 1.15rem;
+  transform: rotate(-14deg);
+}
+
+.challenge-scenery-marker[data-marker="octopus"] {
+  left: 20%;
+  bottom: 18px;
+  font-size: 1.5rem;
+}
+
+.challenge-scenery-marker[data-marker="sail"] {
+  left: 17%;
+  bottom: 46px;
+  font-size: 1.8rem;
+}
+
+.challenge-scenery-marker[data-marker="wave"] {
+  left: 44%;
+  bottom: 16px;
+  font-size: 1.3rem;
+}
+
+/* ── 前景层：贴底的一排浪花，把整片海收口。
+   刻意叠两层不同周期、不同偏移的浪点：单层等距点阵会读成一条
+   机械的装饰边（像一串珠子），错位叠加才像真实的浪花线。 ─────────── */
+.challenge-route__shore {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 0;
+  height: 34px;
+  pointer-events: none;
+  background:
+    radial-gradient(closest-side at 50% 50%, rgba(255, 255, 255, 0.9) 0 68%, rgba(255, 255, 255, 0) 100%)
+      0 2px / 34px 11px repeat-x,
+    radial-gradient(closest-side at 50% 50%, rgba(255, 255, 255, 0.55) 0 66%, rgba(255, 255, 255, 0) 100%)
+      9px 9px / 47px 14px repeat-x,
+    linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.5) 100%);
+  opacity: 0.8;
 }
 
 .challenge-route__rail {
@@ -2776,6 +3219,12 @@ select {
     gap: 8px;
   }
 
+  /* 场景层的列间距跟着路线一起收窄，分区才不会和卡片错位 */
+  .challenge-route__scenery {
+    gap: 8px;
+    padding: 0 20px 22px;
+  }
+
   .challenge-focus__stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2964,6 +3413,14 @@ select {
     overflow: visible;
   }
 
+  /* 单列竖排路线：卡片几乎占满整行宽度，两侧没有留给景观的空地，
+     此时若仍按区段摆放，装饰会压在卡片上。因此窄屏只保留远景层
+     （光晕 / 云 / 远岛 / 浪纹 / 前景浪花）——海还在，路线依然清晰，
+     且天然不存在漂移或横向溢出。 */
+  .challenge-route__scenery {
+    display: none;
+  }
+
   .challenge-route__rail {
     top: 24px;
     bottom: 24px;
@@ -3035,6 +3492,10 @@ select {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .challenge-scenery-prop--flag::before {
+    animation: none;
+  }
+
   .site-nav__quick-button,
   .site-nav__quick-button:hover,
   .manage-entry__card,
