@@ -285,6 +285,9 @@ function clearTimers() {
 
   rippleTimers.forEach((timer) => window.clearTimeout(timer));
   rippleTimers.clear();
+  // 定时器被清掉的同时要把涟漪本身也收走：
+  // 只清定时器不清元素的话，阶段切换时那一圈涟漪会永远留在画面上。
+  ripples.value = [];
 }
 
 function showHint(text) {
@@ -1325,11 +1328,16 @@ watch(
    壳肋用 repeating-conic-gradient 从壳脐往上发散，
    角度步长固定成"隔一条亮一条"，远处看也还是一把扇子。 */
 /* 西岸这几件东西的落点是分开摆的，不是挤在一处：
-   贝壳在低处靠水，石头在高处靠沙，其它贝壳 / 礁石再错开。
-   这样点贝壳不会点到石头，点石头也不会点到贝壳。 */
+   圆石压在街区最左下的水边，贝壳落在街区最右下方的沙滩上，中间留出整条街区，
+   其它贝壳 / 礁石再按高度错开。
+   这样点贝壳不会点到石头，点石头也不会点到贝壳。
+   这不只是构图好看 —— 贝壳和石头各自都挂着一块 44px 的可点范围，
+   390 窄屏上西岸街区只有几十像素宽（60 上下），两块热区并排放不下，
+   必须把它们顶到街区两头才分得开；挤在一处就等于误触。
+   （可点范围可以比图形大，所以贝壳本身仍然不必画到 40px。） */
 .knowledge-island__shell {
-  left: 62%;
-  bottom: 2%;
+  left: 96%;
+  bottom: 6%;
   width: calc(var(--ki-u) * 15 * var(--ki-unit, 1));
   height: calc(var(--ki-u) * 13 * var(--ki-unit, 1));
   margin-left: calc(calc(var(--ki-u) * -7.5) * var(--ki-unit, 1));
@@ -1369,22 +1377,22 @@ watch(
 }
 
 .knowledge-island__shell--lush-a {
-  left: 26%;
-  bottom: 44%;
+  left: 30%;
+  bottom: 48%;
   opacity: 0.92;
   transform: rotate(14deg) scale(0.86);
 }
 
 .knowledge-island__shell--lush-b {
-  left: 52%;
-  bottom: 26%;
+  left: 62%;
+  bottom: 30%;
   opacity: 0.84;
   transform: rotate(-30deg) scale(0.76);
 }
 
 .knowledge-island__shell--flourishing {
-  left: 42%;
-  bottom: 72%;
+  left: 46%;
+  bottom: 80%;
   opacity: 0.9;
   transform: rotate(24deg) scale(0.8);
 }
@@ -1395,8 +1403,8 @@ watch(
      - 礁石（--lush / --flourishing）：棱角分明的暗色礁岩，顶上带一小撮海草，
        形状用 clip-path 切出尖角，和圆石的圆弧轮廓一眼能分开。 */
 .knowledge-island__rock--main {
-  left: 6%;
-  bottom: 34%;
+  left: 4%;
+  bottom: 8%;
   width: calc(var(--ki-u) * 21 * var(--ki-unit, 1));
   height: calc(var(--ki-u) * 15 * var(--ki-unit, 1));
   margin-left: calc(calc(var(--ki-u) * -10.5) * var(--ki-unit, 1));
@@ -1424,8 +1432,8 @@ watch(
 
 /* 礁石：尖角 + 亮顶暗底 + 顶上一撮海草，和圆石完全不是一个轮廓。 */
 .knowledge-island__rock--lush {
-  left: 36%;
-  bottom: 40%;
+  left: 34%;
+  bottom: 46%;
   width: calc(var(--ki-u) * 19 * var(--ki-unit, 1));
   height: calc(var(--ki-u) * 20 * var(--ki-unit, 1));
   margin-left: calc(calc(var(--ki-u) * -9.5) * var(--ki-unit, 1));
@@ -1449,8 +1457,8 @@ watch(
 }
 
 .knowledge-island__rock--flourishing {
-  left: 68%;
-  bottom: 52%;
+  left: 72%;
+  bottom: 58%;
   width: calc(var(--ki-u) * 12 * var(--ki-unit, 1));
   height: calc(var(--ki-u) * 9 * var(--ki-unit, 1));
   margin-left: calc(calc(var(--ki-u) * -6) * var(--ki-unit, 1));
@@ -2414,13 +2422,11 @@ watch(
   z-index: 3;
   /* 触屏友好：把小小的贝壳 / 石头 / 海鸥撑成一块好点的小方块，
      但仍然以元素本身为中心，所以不会伸到旁边的元素上去。
-     下限跟着画面盒宽度走（画面盒是 inline-size 容器，10cqw 就是它宽度的 10%）：
-       - 独立页大画面 → 10cqw 远大于 44px，取 44px，手指点得准；
-       - 390 窄屏 / 庆祝弹层里的小卡片 → 自动收到 30 上下，
-         这样贝壳和石头两块热区在西岸那条窄街上才不会挤到一起（挤到就是误触）。
-     30px 上下仍然明显大于 WCAG 2.2 的 24px 最小目标。 */
-  min-width: min(44px, 10cqw);
-  min-height: min(44px, 10cqw);
+     热区可以比图形大 —— 贝壳在 390 上只有十几像素，可点范围必须是 44px 才够手指点。
+     分开放不下的问题靠「圆石靠左、贝壳靠右」这件视觉布局来解决，
+     不在这里把可点范围越缩越小。 */
+  min-width: 44px;
+  min-height: 44px;
 }
 
 /* 悬停 / 按下只给一点点回弹，提示"这里可以点"，不做持续动画。 */
