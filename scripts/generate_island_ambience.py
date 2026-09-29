@@ -1,9 +1,11 @@
-"""生成知识岛页面的「轻柔海浪环境声」循环。
+"""生成知识岛页面的环境声素材（两条）。
 
-为什么不直接找一个现成的海浪 mp3：
+为什么不直接找一个现成的海浪 / 海鸥 mp3：
 本仓库里所有音频素材都是自带的合成结果（见 generate_audio_assets.py），
 音频来源清楚、可复现、不会带进第三方版权。所以这里同样用纯 Python 合成，
 不引入任何来源不明的外部资源。
+
+== 1) island-waves-loop.wav：轻柔海浪环境声（12 秒无缝循环）==
 
 声音是怎么做出来的（全部是"周期 = 循环长度"的分量，保证循环点天然对齐）：
   1) 底噪层：白噪声过一级单极点低通，得到"海面隆隆的底"；
@@ -20,8 +22,18 @@
     输出[X-1]    = 原始头部[X-1]，正好接在输出[X-2] 后面 → 折缝处也连续。
 两处接缝都是连续的，所以循环听不出接点。
 
+== 2) island-gull-cry.wav：一声很短、柔和的海鸥叫（约 0.78 秒，不循环）==
+
+它是"偶尔点缀"，不是主角，所以刻意做得很克制：
+  - 三声下行的短促喉音（1240 → 1050 → 880 Hz），每声都在往下滑，
+    这是海鸥 "kew" 的基本形状；
+  - 基频 + 一点二次谐波再加一点气声，听着是嗓子而不是电子音；
+  - 轻饱和（tanh）压掉尖锐的峰值，避免刺耳；
+  - 每一段都用升余弦包络，首尾必然是 0，所以不会咔一声；
+  - 整体音量很低，运行时还会再乘一个很小的系数（见 islandAmbience.js）。
+
 用法：
-    python scripts/generate_island_waves.py
+    python scripts/generate_island_ambience.py
 """
 
 from __future__ import annotations
@@ -42,14 +54,24 @@ FOAM_PEAK = 0.26
 NORMALIZE_PEAK = 0.52
 # 交叉淡化长度：海浪比音效需要更长的过渡，太短会听得出接缝。
 CROSSFADE_SECONDS = 1.5
-OUTPUT_PATH = (
-    Path(__file__).resolve().parents[1]
-    / "frontend"
-    / "src"
-    / "assets"
-    / "audio"
-    / "island-waves-loop.wav"
+AUDIO_DIR = Path(__file__).resolve().parents[1] / "frontend" / "src" / "assets" / "audio"
+WAVES_OUTPUT_PATH = AUDIO_DIR / "island-waves-loop.wav"
+
+# ---- 海鸥叫 ----
+# 只有 0.78 秒，而且运行时只被极低音量地偶尔放一下，
+# 所以这里把峰值压得很低：它是"远处一声"，不是"耳边叫"。
+GULL_CRY_SECONDS = 0.78
+GULL_CRY_PEAK = 0.5
+GULL_CRY_VOLUME = 0.5
+GULL_CRY_BREATH = 0.16
+GULL_CRY_SATURATION = 1.5
+# 三声下行：(起始秒, 时长秒, 起始频率, 滑到起始频率的多少倍)
+GULL_CRY_NOTES = (
+    (0.00, 0.19, 1240.0, 0.82),
+    (0.21, 0.19, 1050.0, 0.83),
+    (0.42, 0.20, 880.0, 0.84),
 )
+GULL_CRY_OUTPUT_PATH = AUDIO_DIR / "island-gull-cry.wav"
 
 # 一级单极点低通系数。系数越小越暗：约等于 fc ≈ SAMPLE_RATE * a / (2π)。
 BED_LP_COEFFICIENT = 0.055
@@ -162,13 +184,13 @@ def decorrelate(left_channel: list[float], right_channel: list[float]) -> None:
         right_channel[index] = right_channel[index] * (1.0 - blend) + left_channel[index] * blend
 
 
-def normalize_and_write(path: Path, left_channel: list[float], right_channel: list[float]) -> None:
-    peak = max(
+def normalize_and_write(path: Path, left_channel: list[float], right_channel: list[float], peak: float) -> None:
+    measured_peak = max(
         max((abs(sample) for sample in left_channel), default=0.0),
         max((abs(sample) for sample in right_channel), default=0.0),
         0.001,
     )
-    normalization_gain = NORMALIZE_PEAK / peak
+    normalization_gain = peak / measured_peak
     pcm_frames = bytearray()
 
     for left_sample, right_sample in zip(left_channel, right_channel):
@@ -199,10 +221,80 @@ def create_island_waves_loop() -> tuple[list[float], list[float]]:
     )
 
 
+def add_gull_note(
+    channel: list[float],
+    rng: random.Random,
+    *,
+    start: float,
+    duration: float,
+    frequency: float,
+    bend_ratio: float,
+) -> None:
+    """一声下行的海鸥喉音。
+
+    包络用升余弦：p=0 与 p=1 处必然是 0，所以三声叠在一起也不会有咔哒声。
+    """
+    note_start = max(0, int(start * SAMPLE_RATE))
+    note_end = min(len(channel), int((start + duration) * SAMPLE_RATE))
+    length = note_end - note_start
+
+    if length <= 0:
+        return
+
+    phase = 0.0
+
+    for index in range(length):
+        progress = index / max(1, length - 1)
+        # 音高从 frequency 一路滑到 frequency * bend_ratio：海鸥叫是往下走的。
+        current_frequency = frequency * (1.0 + (bend_ratio - 1.0) * progress)
+        phase += 2.0 * math.pi * current_frequency / SAMPLE_RATE
+
+        # 基频 + 一点二次谐波 = 有喉音的嗓子，而不是纯正的电子音。
+        tone = math.sin(phase) + 0.26 * math.sin(2.0 * phase)
+        # 一点气声，让它别太"合成"。
+        tone += rng.uniform(-1.0, 1.0) * GULL_CRY_BREATH
+        # 轻饱和压掉刺耳的峰值。
+        tone = math.tanh(tone * GULL_CRY_SATURATION) / GULL_CRY_SATURATION
+
+        envelope = 0.5 - 0.5 * math.cos(2.0 * math.pi * progress)
+        channel[note_start + index] += tone * (envelope**1.6) * GULL_CRY_VOLUME
+
+
+def create_island_gull_cry() -> tuple[list[float], list[float]]:
+    total = int(GULL_CRY_SECONDS * SAMPLE_RATE)
+    # 固定种子：每次生成的字节完全一样，素材可复现。
+    rng = random.Random(20260932)
+    channel = [0.0] * total
+
+    for start, duration, frequency, bend_ratio in GULL_CRY_NOTES:
+        add_gull_note(
+            channel,
+            rng,
+            start=start,
+            duration=duration,
+            frequency=frequency,
+            bend_ratio=bend_ratio,
+        )
+
+    # 尾部淡出：保证最后一定落在 0 上（不循环，播完就彻底安静）。
+    fade_samples = int(0.12 * SAMPLE_RATE)
+
+    for index in range(fade_samples):
+        position = total - fade_samples + index
+        channel[position] *= math.cos((index / max(1, fade_samples - 1)) * math.pi * 0.5)
+
+    # 同一份信号给两路：一只远处的海鸥本来就是在正前方。
+    return channel, list(channel)
+
+
 def main() -> None:
     left_channel, right_channel = create_island_waves_loop()
-    normalize_and_write(OUTPUT_PATH, left_channel, right_channel)
-    print(f"Success! Island waves loop written to {OUTPUT_PATH}")
+    normalize_and_write(WAVES_OUTPUT_PATH, left_channel, right_channel, NORMALIZE_PEAK)
+    print(f"Success! Island waves loop written to {WAVES_OUTPUT_PATH}")
+
+    gull_left, gull_right = create_island_gull_cry()
+    normalize_and_write(GULL_CRY_OUTPUT_PATH, gull_left, gull_right, GULL_CRY_PEAK)
+    print(f"Success! Island gull cry written to {GULL_CRY_OUTPUT_PATH}")
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@
     "e2e": "playwright test",
     "e2e:ui": "playwright test --ui",
     "audio:generate": "python scripts/generate_audio_assets.py",
-    "audio:island-waves": "python scripts/generate_island_waves.py",
+    "audio:island-ambience": "python scripts/generate_island_ambience.py",
     "audio:study-manifest": "node --experimental-specifier-resolution=node scripts/export_study_narration_manifest.mjs",
     "audio:study-coverage": "node scripts/check_study_narration_coverage.mjs",
     "audio:study-import": "node scripts/import_study_narration_assets.mjs",

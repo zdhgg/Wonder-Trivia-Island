@@ -10,6 +10,7 @@
 //   4) stop 之后真的暂停并归零，再进来按偏好恢复。
 // 另外还锁住一条"克制"：点这个开关不应该把整台应用的背景音乐也叫醒。
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ISLAND_GULL_CRY_SCHEDULE } from "./audioConfig";
 
 // audioEngine 只被用到 isAudioEngineUnlocked()，这里用假的替换掉，
 // 免得为了测"没交互过就不播"而去真的构造 WebAudio。
@@ -27,6 +28,9 @@ vi.mock("../audio/audioEngine", () => ({
 
 const DEFAULT_MASTER_VOLUME = 0.72;
 const ISLAND_WAVES_VOLUME = 0.16;
+const FIRST_DELAY_MS = ISLAND_GULL_CRY_SCHEDULE.firstDelayMs;
+const GULL_MIN_MS = ISLAND_GULL_CRY_SCHEDULE.minDelayMs;
+const GULL_MAX_MS = ISLAND_GULL_CRY_SCHEDULE.maxDelayMs;
 
 class FakeAudio {
   static instances = [];
@@ -252,5 +256,174 @@ describe("知识岛海浪环境声", () => {
 
     // 失败之后不再新建实例。
     expect(FakeAudio.instances).toHaveLength(1);
+  });
+});
+
+describe("知识岛海鸥叫的调度", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    // 固定随机源：间隔必须是可预测的，测试才锁得住。
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  function startWithWaves() {
+    ambience.syncIslandAmbiencePreferences(preferences());
+    ambience.startIslandAmbience();
+  }
+
+  it("进页面后先只听一会儿海，第一声不急着来", async () => {
+    ambience = await loadAmbienceModule();
+    startWithWaves();
+
+    // 只挂了一个待触发的定时器（不会攒出一串）。
+    expect(ambience.getPendingGullCryCount()).toBe(1);
+
+    // 第一声之前，海鸥一个实例都还没建出来。
+    expect(FakeAudio.instances).toHaveLength(1);
+
+    // 走完首声延迟之前仍然不叫。
+    vi.advanceTimersByTime(FIRST_DELAY_MS - 1);
+    expect(FakeAudio.instances).toHaveLength(1);
+
+    // 到点了才叫。
+    vi.advanceTimersByTime(1);
+    expect(FakeAudio.instances).toHaveLength(2);
+  });
+
+  it("叫完之后换成随机间隔，而不是固定节拍", async () => {
+    ambience = await loadAmbienceModule();
+    startWithWaves();
+
+    vi.advanceTimersByTime(FIRST_DELAY_MS);
+    expect(FakeAudio.instances).toHaveLength(2);
+
+    // 同一个海鸥实例复用：不会每叫一声就新建一个。
+    const cryAudio = FakeAudio.instances[1];
+    expect(cryAudio.playCalls).toBe(1);
+    // 叫声很短、不循环。
+    expect(cryAudio.loop).toBe(false);
+    // 正在叫的时候不排下一声：下一声要等它真的播完（ended）。
+    expect(ambience.getPendingGullCryCount()).toBe(0);
+
+    // 模拟这一声播完（真实浏览器里由 ended 事件驱动，不是掐着秒表）。
+    cryAudio.paused = true;
+    cryAudio.emit("ended");
+
+    // 播完才排下一次，而且只排一个。
+    expect(ambience.getPendingGullCryCount()).toBe(1);
+
+    // 随机间隔 = min + 0.5 × (max - min)；它和首声延迟不是同一个旋钮。
+    const expectedGapMs = GULL_MIN_MS + 0.5 * (GULL_MAX_MS - GULL_MIN_MS);
+    expect(expectedGapMs).toBeGreaterThan(FIRST_DELAY_MS);
+
+    vi.advanceTimersByTime(expectedGapMs - 1);
+    expect(cryAudio.playCalls).toBe(1);
+
+    vi.advanceTimersByTime(1);
+    // 还是同一个实例，只是又叫了一次。
+    expect(FakeAudio.instances).toHaveLength(2);
+    expect(cryAudio.playCalls).toBe(2);
+  });
+
+  it("上一声还没结束就不接着叫，不会叠成一串", async () => {
+    ambience = await loadAmbienceModule();
+    startWithWaves();
+
+    vi.advanceTimersByTime(FIRST_DELAY_MS);
+    const cryAudio = FakeAudio.instances[1];
+    expect(cryAudio.playCalls).toBe(1);
+
+    // 偏好被反复同步也不会攒出一串待触发的叫声。
+    ambience.syncIslandAmbiencePreferences(preferences());
+    ambience.syncIslandAmbiencePreferences(preferences());
+    expect(ambience.getPendingGullCryCount()).toBe(1);
+
+    // FakeAudio 不会自己结束（paused 一直是 false），所以这里手工再触发一次调度：
+    // 真实场景是"定时器到点时上一声还在响"，这里验证的正是那道闸门。
+    vi.advanceTimersByTime(GULL_MIN_MS + 0.5 * (GULL_MAX_MS - GULL_MIN_MS));
+
+    // 一声都没有叠上去，也没多建实例。
+    expect(cryAudio.playCalls).toBe(1);
+    expect(FakeAudio.instances).toHaveLength(2);
+  });
+
+  it("play 事件晚到一步（真实浏览器就是这样）：海鸥仍然会被排上", async () => {
+    // 浏览器里 play() 会同步把 paused 翻成 false，但 "play" 事件是稍后才派发的。
+    // 如果调度闸门看的是那个事件驱动的播放标志，用户点开开关的那一瞬间
+    // 标志还是 false —— 于是第一次排程就被跳过，海鸥永远不叫。
+    // 这里把事件推迟到下一个宏任务，复现这个真实时序。
+    const nativePlay = FakeAudio.prototype.play;
+
+    FakeAudio.prototype.play = function play() {
+      this.playCalls += 1;
+      this.paused = false;
+      globalThis.setTimeout(() => this.emit("play"), 0);
+      return Promise.resolve();
+    };
+
+    try {
+      ambience = await loadAmbienceModule();
+      startWithWaves();
+
+      expect(FakeAudio.instances[0].paused).toBe(false);
+      expect(ambience.getPendingGullCryCount()).toBe(1);
+    } finally {
+      FakeAudio.prototype.play = nativePlay;
+    }
+  });
+
+  it("离开页面：定时器全部清掉，海鸥也停", async () => {
+    ambience = await loadAmbienceModule();
+    startWithWaves();
+    vi.advanceTimersByTime(FIRST_DELAY_MS);
+
+    const cryAudio = FakeAudio.instances[1];
+    cryAudio.pauseCalls = 0;
+
+    ambience.stopIslandAmbience();
+
+    // 彻底清理：没有任何待触发的定时器，海鸥被暂停并归零。
+    expect(ambience.getPendingGullCryCount()).toBe(0);
+
+    if (cryAudio) {
+      expect(cryAudio.paused).toBe(true);
+      expect(cryAudio.currentTime).toBe(0);
+    }
+
+    // 离开之后再怎么走时间，也不会再叫。
+    const instanceCount = FakeAudio.instances.length;
+    vi.advanceTimersByTime(GULL_MAX_MS * 2);
+    expect(FakeAudio.instances).toHaveLength(instanceCount);
+  });
+
+  it("反复进出 5 次：海浪与海鸥各自仍然只有一个实例", async () => {
+    ambience = await loadAmbienceModule();
+
+    for (let round = 0; round < 5; round += 1) {
+      ambience.unlockIslandAmbience();
+      startWithWaves();
+      ambience.stopIslandAmbience();
+    }
+
+    expect(ambience.getPendingGullCryCount()).toBe(0);
+    // 5 轮里只有海浪一个实例（海鸥还没到点就被清掉了）。
+    expect(FakeAudio.instances).toHaveLength(1);
+  });
+
+  it("全局静音时海鸥也不会被排上", async () => {
+    ambience = await loadAmbienceModule();
+    ambience.syncIslandAmbiencePreferences(preferences({ masterVolume: 0 }));
+    ambience.startIslandAmbience();
+
+    expect(ambience.getPendingGullCryCount()).toBe(0);
+
+    // 恢复音量并起播后，调度才重新开始。
+    ambience.syncIslandAmbiencePreferences(preferences());
+    expect(ambience.getPendingGullCryCount()).toBe(1);
   });
 });

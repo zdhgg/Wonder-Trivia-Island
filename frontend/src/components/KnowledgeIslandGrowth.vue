@@ -790,24 +790,32 @@ watch(
   /* ===========================================================================
      环境生命感（第五层，纯表现）
      ---------------------------------------------------------------------------
-     小岛应该"轻轻动起来、听起来像一个海岛"，但不能抢主体，所以这一层的规矩是：
+     小岛应该"轻轻动起来、听起来像一个海岛"，但不能抢主体。这一层的分级是：
        1. 全部用 CSS animation，不用 JS 高频定时器驱动画面；
        2. 全部只动 transform / opacity —— 不动 width / height / top / left，
           所以绝不会引起重排，也不会把画面推出边界造成横向溢出；
-       3. 具体物件仍然以「点击才回应」为主：这里动的全是环境
-          （海、云、天上偶尔飞过的海鸥、光晕）和极轻的静物摆动；
+       3. 具体物件仍然以「点击才回应」为主：这里动的全是环境与极轻的静物；
        4. 节奏与幅度统一挂在这几个变量上，繁荣度只改"动得多快、动多大"，
           绝不参与任何阶段、印章或解锁判定。
-     基础档是默认值（最克制），下面两档只是把节奏收快一点、幅度放大一点。
+
+     分成两档，不要让所有东西同时明显运动：
+       - 看得见的生命感：海浪 + 阶段核心元素（嫩芽草叶 / 小船 / 灯塔 / 椰叶）。
+         它们的周期都在 5～21 秒之间，一眼能看出"它在动"，但幅度都很小。
+       - 潜意识级的氛围：云（周期近百秒、位移不大）与太阳光晕（13 秒、只有明暗）。
+         它们只负责"这是海上"，不负责"有东西在动"。
      =========================================================================== */
-  --ki-ambient-wave: 26s;   /* 岸边浪纹的横向漂移 */
-  --ki-ambient-swell: 30s;  /* 整条浪带的缓慢起伏 */
-  --ki-ambient-cloud: 108s; /* 云漂移（一轮要长到不像在循环） */
+  --ki-ambient-wave: 17s;   /* 岸边浪纹的横向漂移 */
+  --ki-ambient-swell: 21s;  /* 整条浪带的缓慢起伏 */
+  --ki-ambient-cloud: 96s;  /* 云漂移（一轮要长到不像在循环） */
   --ki-ambient-flyby: 78s;  /* 海鸥掠过的完整周期（含长时间不出现） */
-  --ki-ambient-sun: 13s;    /* 太阳光晕的呼吸 */
+  --ki-ambient-sun: 13s;    /* 太阳光晕的呼吸（刻意保持很轻） */
+  /* 摆动周期刻意留在"慢动作"里：这一层是"看得见的生命感"，但不是"到处都在动"。
+     看得见主要靠幅度（±3.2° × 繁荣度系数），而不是靠加快节奏 ——
+     一加快，几样东西一起摆就会显得画面很吵。 */
   --ki-ambient-sway: 9.5s;  /* 嫩芽 / 草丛轻摆 */
-  --ki-ambient-bob: 8s;     /* 小船轻摇 */
-  --ki-ambient-beam: 19s;   /* 灯塔光束缓慢扫动 */
+  --ki-ambient-bob: 6.4s;   /* 小船轻摇 */
+  --ki-ambient-beam: 17s;   /* 灯塔光束缓慢扫动 */
+  --ki-ambient-frond: 10s;  /* 椰叶轻摆（比草丛更慢更小，只是背景） */
   /* 幅度系数：所有环境动画的位移 / 角度都乘它，繁荣度越高动得越多一点。 */
   --ki-ambient-amp: 1;
 
@@ -825,27 +833,29 @@ watch(
 /* 丰盛：稍微多一点动态 —— 节奏快一档、幅度大一点点。
    仍然只是"多一点"，不是换一套动画。 */
 .knowledge-island--prosperity-lush {
-  --ki-ambient-wave: 23s;
-  --ki-ambient-swell: 26s;
-  --ki-ambient-cloud: 96s;
+  --ki-ambient-wave: 15s;
+  --ki-ambient-swell: 19s;
+  --ki-ambient-cloud: 86s;
   --ki-ambient-flyby: 68s;
-  --ki-ambient-sun: 11.5s;
+  --ki-ambient-sun: 12.5s;
   --ki-ambient-sway: 8.4s;
-  --ki-ambient-bob: 7s;
-  --ki-ambient-beam: 16.5s;
+  --ki-ambient-bob: 5.7s;
+  --ki-ambient-beam: 15s;
+  --ki-ambient-frond: 9s;
   --ki-ambient-amp: 1.35;
 }
 
 /* 繁荣：动态稍丰富。同样只是变量不同，动画本身与解锁规则一个字都没改。 */
 .knowledge-island--prosperity-flourishing {
-  --ki-ambient-wave: 20s;
-  --ki-ambient-swell: 22s;
-  --ki-ambient-cloud: 84s;
+  --ki-ambient-wave: 13s;
+  --ki-ambient-swell: 17s;
+  --ki-ambient-cloud: 76s;
   --ki-ambient-flyby: 58s;
-  --ki-ambient-sun: 10s;
+  --ki-ambient-sun: 12s;
   --ki-ambient-sway: 7.4s;
-  --ki-ambient-bob: 6.2s;
-  --ki-ambient-beam: 14s;
+  --ki-ambient-bob: 5.1s;
+  --ki-ambient-beam: 13s;
+  --ki-ambient-frond: 8.2s;
   --ki-ambient-amp: 1.7;
 }
 
@@ -985,8 +995,9 @@ watch(
 
 /* 三朵云各走各的：左边一朵慢慢往右飘，右边一朵反向飘得更慢，
    繁荣档多出来的那朵走得稍快一点。
-   周期与幅度都极小（每轮只移动 ±10 个设计单位），所以看不出在循环，
-   而且三朵云的漂移范围都远在 400 设计单位之内。 */
+   周期仍然很长（一轮近百秒），但每一轮移动 ±18 个设计单位 ——
+   慢到不会有人盯着它看，可是在几十秒里回头一瞥就能确认"它确实挪了"。
+   三朵云的漂移范围都留在 400 设计单位之内，最左一朵最远也只到 3.4。 */
 .knowledge-island__cloud--left {
   top: calc(var(--ki-u) * 26);
   left: calc(var(--ki-u) * 34);
@@ -1018,12 +1029,12 @@ watch(
 
 @keyframes knowledge-island-cloud-drift {
   from {
-    transform: translateX(calc(var(--ki-u) * -10 * var(--ki-ambient-amp) * var(--ki-cloud-direction)))
+    transform: translateX(calc(var(--ki-u) * -18 * var(--ki-ambient-amp) * var(--ki-cloud-direction)))
       scale(var(--ki-cloud-scale));
   }
 
   to {
-    transform: translateX(calc(var(--ki-u) * 10 * var(--ki-ambient-amp) * var(--ki-cloud-direction)))
+    transform: translateX(calc(var(--ki-u) * 18 * var(--ki-ambient-amp) * var(--ki-cloud-direction)))
       scale(var(--ki-cloud-scale));
   }
 }
@@ -1201,26 +1212,31 @@ watch(
   height: 14%;
   opacity: 0.76;
   z-index: 4;
-  /* 整条浪带非常缓慢地轻轻起伏：位移只有 ±0.9 个设计单位，
-     远小于浪带自身 14% 的高度，所以不会露出海面、也不会碰到岛。
+  /* 整条浪带非常缓慢地轻轻起伏：位移 ±2.3 个设计单位。
+     浪带自身高 14%（约 31.5 设计单位），所以这点位移远远够不到岸、也露不出海面。
      动的是这一整层而不是海面本身——海面不跟着晃，晃的只是贴着岸的那几道浪。 */
   animation: knowledge-island-sea-swell var(--ki-ambient-swell) ease-in-out infinite alternate;
 }
 
 @keyframes knowledge-island-sea-swell {
   from {
-    transform: translateY(calc(var(--ki-u) * -0.9 * var(--ki-ambient-amp)));
+    transform: translateY(calc(var(--ki-u) * -2.3 * var(--ki-ambient-amp)));
   }
 
   to {
-    transform: translateY(calc(var(--ki-u) * 0.9 * var(--ki-ambient-amp)));
+    transform: translateY(calc(var(--ki-u) * 2.3 * var(--ki-ambient-amp)));
   }
 }
 
-/* 岸边只留几段手绘浪线：宽度、间距、角度各不相同，避免规则矩形的瓷砖感。 */
+/* 岸边只留几段手绘浪线：宽度、间距、角度各不相同，避免规则矩形的瓷砖感。
+   这是「一眼看得出海在动」的主力，所以行程给得比环境层大得多：
+   --wave-shift 是每一段各自的横向行程（9～15 设计单位），
+   关键帧从 -shift 走到 +shift，一轮总行程 18～30 个设计单位 ≈ 画布宽度的 5%～7.5%
+   ——停下来看得出它在挪，又不会让人觉得整片海在乱晃。
+   每一段还各自带一个负 delay，所以它们从一开始就是错开的，不会齐步走。 */
 .knowledge-island__surf-line {
   --wave-angle: 0deg;
-  --wave-shift: calc(var(--ki-u) * 3);
+  --wave-shift: calc(var(--ki-u) * 11);
   position: absolute;
   display: block;
   height: calc(var(--ki-u) * 11);
@@ -1228,8 +1244,7 @@ watch(
   border-radius: 50%;
   transform: translateX(0) rotate(var(--wave-angle));
   transform-origin: left center;
-  /* 岸边浪纹只做非常缓慢的横向漂移：周期由繁荣度变量给出（基础档 26s 一轮），
-     每一段浪纹还各自带一个负 delay，所以它们从一开始就是错开的。 */
+  /* 基础档 17s 一轮（繁荣档 13s），配上面 9～15 设计单位的行程，海浪是活的。 */
   animation: knowledge-island-wave-drift var(--ki-ambient-wave) ease-in-out infinite alternate;
 }
 
@@ -1250,7 +1265,7 @@ watch(
   left: 4%;
   width: 17%;
   --wave-angle: -4deg;
-  --wave-shift: calc(var(--ki-u) * 2);
+  --wave-shift: calc(var(--ki-u) * 15);
 }
 
 .knowledge-island__surf-line--b {
@@ -1259,7 +1274,7 @@ watch(
   width: 24%;
   border-top-width: calc(var(--ki-u) * 2);
   --wave-angle: 3deg;
-  --wave-shift: calc(var(--ki-u) * 4);
+  --wave-shift: calc(var(--ki-u) * 9);
   animation-delay: -1.8s;
 }
 
@@ -1268,7 +1283,7 @@ watch(
   left: 54%;
   width: 19%;
   --wave-angle: -2deg;
-  --wave-shift: calc(var(--ki-u) * 3);
+  --wave-shift: calc(var(--ki-u) * 12);
   animation-delay: -3.4s;
 }
 
@@ -1278,7 +1293,7 @@ watch(
   width: 13%;
   border-top-width: calc(var(--ki-u) * 2);
   --wave-angle: 5deg;
-  --wave-shift: calc(var(--ki-u) * 2);
+  --wave-shift: calc(var(--ki-u) * 15);
   animation-delay: -5.2s;
 }
 
@@ -1288,7 +1303,7 @@ watch(
   width: 15%;
   border-top-width: calc(var(--ki-u) * 2);
   --wave-angle: 2deg;
-  --wave-shift: calc(var(--ki-u) * 3);
+  --wave-shift: calc(var(--ki-u) * 12);
   animation-delay: -2.6s;
 }
 
@@ -1297,7 +1312,7 @@ watch(
   left: 56%;
   width: 20%;
   --wave-angle: -3deg;
-  --wave-shift: calc(var(--ki-u) * 2);
+  --wave-shift: calc(var(--ki-u) * 9);
   animation-delay: -4.4s;
 }
 
@@ -1307,7 +1322,7 @@ watch(
   width: 14%;
   border-top-width: calc(var(--ki-u) * 2);
   --wave-angle: 4deg;
-  --wave-shift: calc(var(--ki-u) * 3);
+  --wave-shift: calc(var(--ki-u) * 12);
   animation-delay: -6.1s;
 }
 
@@ -1317,7 +1332,7 @@ watch(
   width: 17%;
   border-top-width: calc(var(--ki-u) * 2);
   --wave-angle: -5deg;
-  --wave-shift: calc(var(--ki-u) * 2);
+  --wave-shift: calc(var(--ki-u) * 15);
   animation-delay: -0.9s;
 }
 
@@ -1648,9 +1663,10 @@ watch(
 }
 
 /* ---------- 中央绿地：嫩芽 / 草丛 / 花 ---------- */
-/* 阶段专属生命感之一：萌芽海岸之后，嫩芽与草丛轻轻摆一下。
+/* 阶段核心生命感之一：萌芽海岸之后，嫩芽与草丛轻轻摆一下 —— 这一档要"看得出"。
    摆的是整个容器（容器本身没有基础 transform，所以不会顶掉叶子自己的角度），
-   支点放在底部，幅度只有 ±1.4° × 繁荣度系数——是"有风"，不是"被吹"。 */
+   支点放在底部，幅度 ±3.2° × 繁荣度系数、一轮 9.5 秒。
+   「看得出」靠的是幅度，周期仍然留在慢动作里 —— 是"有风在吹"，不是"被吹倒了"。 */
 .knowledge-island__sprout {
   left: 26%;
   bottom: 6%;
@@ -1662,11 +1678,11 @@ watch(
 
 @keyframes knowledge-island-sway {
   from {
-    transform: rotate(calc(-1.4deg * var(--ki-ambient-amp)));
+    transform: rotate(calc(-3.2deg * var(--ki-ambient-amp)));
   }
 
   to {
-    transform: rotate(calc(1.4deg * var(--ki-ambient-amp)));
+    transform: rotate(calc(3.2deg * var(--ki-ambient-amp)));
   }
 }
 
@@ -1747,19 +1763,56 @@ watch(
   transform-origin: bottom center;
 }
 
+/* 草叶自己再轻轻抖一下（比整丛的摆动更小、更快，三片各自错开）。
+   关键帧里把每片自己的静止角度也写进去，所以动画前后它都还站在原来的姿态上；
+   减少动态时 animation: none，静止角度由下面各条规则的 transform 兜住。 */
 .knowledge-island__grass-blade--a {
   left: calc(var(--ki-u) * 2);
   transform: rotate(-25deg);
+  animation: knowledge-island-blade-a calc(var(--ki-ambient-sway) * 0.86) ease-in-out infinite alternate;
+}
+
+@keyframes knowledge-island-blade-a {
+  from {
+    transform: rotate(-25deg);
+  }
+
+  to {
+    transform: rotate(calc(-25deg + 2.4deg * var(--ki-ambient-amp)));
+  }
 }
 
 .knowledge-island__grass-blade--b {
   left: calc(var(--ki-u) * 9);
   height: calc(var(--ki-u) * 19);
+  transform: rotate(2deg);
+  animation: knowledge-island-blade-b calc(var(--ki-ambient-sway) * 0.71) ease-in-out infinite alternate-reverse;
+}
+
+@keyframes knowledge-island-blade-b {
+  from {
+    transform: rotate(2deg);
+  }
+
+  to {
+    transform: rotate(calc(2deg - 2.9deg * var(--ki-ambient-amp)));
+  }
 }
 
 .knowledge-island__grass-blade--c {
   right: calc(var(--ki-u) * 1);
   transform: rotate(29deg);
+  animation: knowledge-island-blade-c calc(var(--ki-ambient-sway) * 0.94) ease-in-out infinite alternate;
+}
+
+@keyframes knowledge-island-blade-c {
+  from {
+    transform: rotate(29deg);
+  }
+
+  to {
+    transform: rotate(calc(29deg - 2.1deg * var(--ki-ambient-amp)));
+  }
 }
 
 /* 丰盛档多出来的第二丛草：不是把原来那丛变高，而是旁边多了一丛。 */
@@ -1843,12 +1896,28 @@ watch(
   transform-origin: bottom center;
 }
 
+/* 椰树冠：整顶椰叶作为一个整体轻轻摆一下。
+   刻意比草丛更慢（10 秒一轮）、幅度更小（±2°）——椰林营地之后它一直都在，
+   如果它也跟着大幅摆，画面就太吵了；它只负责"这里有海风"。
+   摆的是树冠这个容器（它本身没有基础 transform），支点落在树干顶端。 */
 .knowledge-island__palm-crown {
   position: absolute;
   left: 0;
   top: 0;
   width: calc(var(--ki-u) * 32);
   height: calc(var(--ki-u) * 26);
+  transform-origin: 50% 92%;
+  animation: knowledge-island-frond-sway var(--ki-ambient-frond) ease-in-out infinite alternate;
+}
+
+@keyframes knowledge-island-frond-sway {
+  from {
+    transform: rotate(calc(-2deg * var(--ki-ambient-amp)));
+  }
+
+  to {
+    transform: rotate(calc(2deg * var(--ki-ambient-amp)));
+  }
 }
 
 .knowledge-island__palm-leaf {
@@ -2139,22 +2208,22 @@ watch(
   bottom: -18%;
   width: calc(var(--ki-u) * 26 * var(--ki-unit, 1));
   height: calc(var(--ki-u) * 29 * var(--ki-unit, 1));
-  /* 阶段专属生命感之二：探险码头之后，小船轻轻摇一下。
-     支点放在船身中下方，位移 ±0.7、倾角 ±0.9°，都是设计单位级的小数，
-     所以它始终停在码头的位置附近，不会漂出港口街区。 */
+  /* 阶段核心生命感之二：探险码头之后，小船明显地轻摇一下。
+     支点放在船身中下方，一轮 6.4 秒，位移 ±1.7、倾角 ±2.4°（都乘繁荣度系数）。
+     船高 29 设计单位，所以它始终停在码头附近，不会漂出港口街区。 */
   transform-origin: 50% 88%;
   animation: knowledge-island-boat-bob var(--ki-ambient-bob) ease-in-out infinite alternate;
 }
 
 @keyframes knowledge-island-boat-bob {
   from {
-    transform: translateY(calc(var(--ki-u) * 0.7 * var(--ki-ambient-amp)))
-      rotate(calc(-0.9deg * var(--ki-ambient-amp)));
+    transform: translateY(calc(var(--ki-u) * 1.7 * var(--ki-ambient-amp)))
+      rotate(calc(-2.4deg * var(--ki-ambient-amp)));
   }
 
   to {
-    transform: translateY(calc(var(--ki-u) * -0.7 * var(--ki-ambient-amp)))
-      rotate(calc(0.9deg * var(--ki-ambient-amp)));
+    transform: translateY(calc(var(--ki-u) * -1.7 * var(--ki-ambient-amp)))
+      rotate(calc(2.4deg * var(--ki-ambient-amp)));
   }
 }
 
@@ -2305,23 +2374,26 @@ watch(
   height: calc(var(--ki-u) * 20 * var(--ki-unit, 1));
   background: linear-gradient(90deg, rgba(255, 226, 132, 0.95), rgba(255, 238, 160, 0.55) 40%, rgba(255, 238, 160, 0));
   clip-path: polygon(0 36%, 100% 0, 100% 100%, 0 64%);
-  /* 阶段专属生命感之三：知识灯塔之后，光束除了缓慢明暗呼吸，还非常缓慢地左右扫一下。
+  /* 阶段核心生命感之三：知识灯塔之后，光束除了缓慢明暗呼吸，还左右扫一下。
+     这是最高阶段最该被认出来的标志，所以扫得比别的都明显：
+     一轮约 19.5 秒、摆幅 ±4.6°（乘繁荣度系数）——光是"扫过去又扫回来"，
+     但很慢、也很柔，不会变成探照灯那样来回闪。
      两条动画动的是不同属性（一条 opacity、一条 transform），互不覆盖。
-     支点钉在灯塔的窗口上（left center），所以扫的是光束自己，光的起点始终不动。 */
+     支点钉在灯塔的窗口上（left center），所以光束的起点始终不动。 */
   transform-origin: left center;
   animation:
     knowledge-island-beam var(--ki-ambient-beam) ease-in-out infinite,
-    knowledge-island-beam-sweep calc(var(--ki-ambient-beam) * 1.6) ease-in-out infinite alternate;
+    knowledge-island-beam-sweep calc(var(--ki-ambient-beam) * 1.15) ease-in-out infinite alternate;
   z-index: -1;
 }
 
 @keyframes knowledge-island-beam-sweep {
   from {
-    transform: rotate(calc(-2.2deg * var(--ki-ambient-amp)));
+    transform: rotate(calc(-4.6deg * var(--ki-ambient-amp)));
   }
 
   to {
-    transform: rotate(calc(2.2deg * var(--ki-ambient-amp)));
+    transform: rotate(calc(4.6deg * var(--ki-ambient-amp)));
   }
 }
 
@@ -2860,15 +2932,19 @@ watch(
 
   /* ---- 环境生命感：减少动态下全部关掉 ----
      这一组是"自己微动"的环境层（海、云、掠过的海鸥、光晕、灯塔光束）
-     以及极轻的静物摆动（嫩芽 / 草丛 / 小船）。
+     以及阶段核心元素（嫩芽 / 草叶 / 椰叶 / 小船）。
      它们没有交互反馈要表达，所以直接停掉不会损失任何信息：
-     画面仍然是完整的一幅画，只是静止。 */
+     画面仍然是完整的一幅画，只是静止。
+     草叶与小船各自有独立的静止 transform（见各自规则），
+     所以 animation: none 之后它们还站在原来该在的姿态上。 */
   .knowledge-island__surf,
   .knowledge-island__sun::after,
   .knowledge-island__cloud,
   .knowledge-island__gull--flyby,
   .knowledge-island__sprout,
   .knowledge-island__grass,
+  .knowledge-island__grass-blade,
+  .knowledge-island__palm-crown,
   .knowledge-island__boat {
     animation: none;
   }

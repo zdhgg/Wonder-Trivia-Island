@@ -4,17 +4,31 @@ export const DEFAULT_AUDIO_PREFERENCES = Object.freeze({
   sfxVolume: 0.9,
   musicEnabled: true,
   sfxEnabled: true,
-  // 知识岛页面的海浪环境声单独记一个开关。
+  // 知识岛页面的「海岛声音」单独记一个开关（海浪 + 偶尔一声海鸥）。
   // 默认 false：这一页不应该在孩子还没点过任何东西时自己发出声音，
   // 它是"想听才听"的背景，不是必须存在的功能。
   islandAmbienceEnabled: false
 });
 
-// 海浪环境声的输出音量系数。
-// 它乘在 masterVolume × musicVolume 之上，所以设置里的总音量与静音仍然对它生效
-// （muteAll() 把它一起按掉），而这一层再额外压低，保证它只是"垫在下面"的海声。
+// 知识岛「专属环境声」两条素材各自的输出音量系数。
+// 它乘在 masterVolume 之上，所以设置里的总音量与「全部静音」仍然对它们生效
+// （muteAll() 会把它们一起按掉），而这一层再额外压低，保证它只是"垫在下面"的海声。
+//
+// 海鸥叫比海浪低一档：它只是偶尔的一声点缀，不能盖过海本身。
 export const ISLAND_AMBIENCE_VOLUME = Object.freeze({
-  islandWaves: 0.16
+  islandWaves: 0.16,
+  islandGullCry: 0.5
+});
+
+// 海鸥叫的调度：不是频繁事件，而是"几十秒偶尔一声"。
+//   firstDelayMs —— 这一份文档里的第一声不急着来（先只听一会儿海），
+//     避免刚进页面就被吓一跳；
+//   min/maxDelayMs —— 之后每一声之间的随机间隔，几十秒量级，所以听不出规律。
+// 用随机而不是固定间隔，是为了避免"每 N 秒准点叫一声"那种机械感。
+export const ISLAND_GULL_CRY_SCHEDULE = Object.freeze({
+  firstDelayMs: 14000,
+  minDelayMs: 34000,
+  maxDelayMs: 68000
 });
 
 export const AUDIO_CUES = Object.freeze({

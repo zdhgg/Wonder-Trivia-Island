@@ -15,6 +15,12 @@ const audioState = {
   musicLoopActive: false,
   backgroundAudio: null,
   backgroundAudioPrimed: false,
+  // 页面级「临时借用」：知识岛页面进入时会把系统背景音乐让出来。
+  // 下面两个字段只描述"借"这件事本身，不碰用户任何偏好：
+  //   suppressed   —— 借出期间为 true，syncBackgroundAudio() 会一直保持暂停；
+  //   wasPlaying   —— 借出之前背景音乐到底在不在播，离开时按它原样恢复。
+  backgroundSuppressed: false,
+  backgroundWasPlaying: false,
   activeCueAudios: new Set(),
   settings: { ...DEFAULT_AUDIO_PREFERENCES },
   unlocked: false
@@ -264,6 +270,7 @@ function syncBackgroundAudio() {
   backgroundAudio.volume = getMusicOutputVolume();
 
   if (
+    audioState.backgroundSuppressed ||
     !audioState.unlocked ||
     !audioState.settings.musicEnabled ||
     audioState.settings.masterVolume <= 0 ||
@@ -425,4 +432,65 @@ export function playAudioCue(cueName) {
 // 浏览器不允许在用户还没交互时自动出声，所以没解锁之前一律不播。
 export function isAudioEngineUnlocked() {
   return audioState.unlocked;
+}
+
+// ---------------------------------------------------------------------------
+// 系统背景音乐的「临时借用」
+// ---------------------------------------------------------------------------
+// 知识岛有自己的一整套声音（海浪 + 偶尔一声海鸥）。让系统的循环 BGM 和它一起响
+// 会显得繁杂，所以进入知识岛时把 BGM 让出来，离开时原样还回去。
+//
+// 这里刻意只做「暂停 / 恢复」这一个动作，绝不碰用户的偏好：
+//   - 不改 musicEnabled、不改 musicVolume、不写任何持久状态；
+//   - 进入前 BGM 本来就没在播（还没解锁、被静音、用户自己关过），
+//     离开时就绝不会被擅自打开 —— 这由 backgroundWasPlaying 记住；
+//   - 恢复时走正常的 syncBackgroundAudio()，所以全局静音仍然是最高优先级。
+// 反复进出不会叠加：suspend 是幂等的 —— 重复调用不会覆盖「进入前在不在播」
+// （那会让第二次进入把 true 记成 false，结果离开时 BGM 再也回不来），
+// resume 之后状态归零，所以下一次进入会重新记一次当时的状态。
+export function suspendBackgroundMusic() {
+  const backgroundAudio = audioState.backgroundAudio;
+
+  // 只在第一次借出时记状态。已经借出过的话，音频此刻是我们自己暂停的，
+  // 再读一次 !paused 只会得到 false。
+  if (!audioState.backgroundSuppressed) {
+    // 只看已经存在的那个元素，不去新建：
+    // 新建会带上 preload="auto"，等于凭空多拉一次背景音乐的请求。
+    audioState.backgroundWasPlaying = Boolean(backgroundAudio) && !backgroundAudio.paused;
+  }
+
+  audioState.backgroundSuppressed = true;
+
+  if (backgroundAudio && !backgroundAudio.paused) {
+    backgroundAudio.pause();
+  }
+
+  return audioState.backgroundWasPlaying;
+}
+
+export function resumeBackgroundMusic() {
+  const shouldResume = audioState.backgroundWasPlaying;
+
+  audioState.backgroundSuppressed = false;
+  audioState.backgroundWasPlaying = false;
+
+  // 进入前没在播 → 现在也不擅自打开。
+  if (shouldResume) {
+    syncBackgroundAudio();
+  }
+
+  return shouldResume;
+}
+
+// 测试与界面用的只读探针：背景音乐此刻是不是真的在响。
+// 被知识岛借出期间返回 false。
+export function isBackgroundMusicPlaying() {
+  const backgroundAudio = audioState.backgroundAudio;
+
+  return Boolean(backgroundAudio) && !backgroundAudio.paused;
+}
+
+// 背景音乐此刻是不是被知识岛借走了。
+export function isBackgroundMusicSuppressed() {
+  return audioState.backgroundSuppressed;
 }

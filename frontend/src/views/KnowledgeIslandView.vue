@@ -11,18 +11,24 @@
 //   收藏册里的「我的知识岛」入口卡与首页摘要读的是同一套纯函数输入，
 //   所以三处永远是同一个阶段、同一档繁荣度、同一颗星星。
 //
-// 这一页额外做一件与成长无关的事：海浪环境声。
+// 这一页额外做一件与成长无关的事：让知识岛有一整套「专属环境声」。
 //   - 开关状态读既有的 useAudioStore（记住的地方还是同一个 localStorage key），
 //     不新增 DB、API 或第二套偏好机制；
 //   - 默认是关的，而且没发生过用户交互之前一律不出声（深链直接打开也是安静的）；
 //   - 组件卸载时暂停并归零，再进来按偏好恢复；
-//   - 播放由 islandAmbience 里的单个 Audio 实例负责，快速进出不会叠出两层海浪；
-//   - 刻意不去解锁整台应用的音频引擎：点这个开关只该多出一片海，
-//     不该顺手把全站背景音乐也一起叫醒。
+//   - 播放由 islandAmbience 负责，每种素材各一个实例，快速进出不会叠播；
+//   - 刻意不去解锁整台应用的音频引擎：点这个开关只该多出海的声音。
+//
+// 还有一个「借」的动作：系统背景音乐和海浪一起响会显繁杂，
+// 所以进入这一页时把系统 BGM 临时让出来，离开时原样还回去。
+// 这是 route/page 生命周期内的临时 pause/resume，
+// 不是修改用户的全局背景音乐设置 —— 用户的 BGM 开关、音量、偏好一个字都不动，
+// 而且进入前 BGM 本来就没播的话，离开时也不会被擅自打开。
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { storeToRefs } from "pinia";
 import { useRouter } from "vue-router";
 import KnowledgeIslandGrowth from "../components/KnowledgeIslandGrowth.vue";
+import { resumeBackgroundMusic, suspendBackgroundMusic } from "../audio/audioEngine";
 import {
   startIslandAmbience,
   stopIslandAmbience,
@@ -84,6 +90,9 @@ function toggleAmbience() {
 }
 
 onMounted(() => {
+  // 先把系统背景音乐让出来，再放海的声音：两者不同时响。
+  // 这一步只暂停，不改用户的任何偏好。
+  suspendBackgroundMusic();
   unsubscribeAmbience = subscribeIslandAmbience((playing) => {
     isAmbiencePlaying.value = playing;
   });
@@ -98,8 +107,11 @@ onBeforeUnmount(() => {
     unsubscribeAmbience = null;
   }
 
-  // 离开这一页就把海浪停下来并归零：不在别的页面上继续响。
+  // 离开这一页就把海浪与海鸥彻底停掉（定时器也一并清干净）。
   stopIslandAmbience();
+  // 再把系统背景音乐还回去：进入前在播就继续播，没在播就仍然没在播。
+  // 顺序很重要 —— 先静音这一页，再恢复别的页面的声音。
+  resumeBackgroundMusic();
 });
 
 // 设置页里改了总音量，这一页正在响的海浪要立刻跟着变，
@@ -159,12 +171,12 @@ function goHome() {
           :data-enabled="islandAmbienceEnabled ? 'true' : 'false'"
           :data-playing="isAmbiencePlaying ? 'true' : 'false'"
           :aria-pressed="isAmbiencePlaying"
-          aria-label="海浪声"
-          :title="isAmbiencePlaying ? '关掉海浪声' : '听听海浪声'"
+          aria-label="海岛声音"
+          :title="isAmbiencePlaying ? '关掉海岛声音' : '听听海岛的声音'"
           @click="toggleAmbience"
         >
           <span class="island-page__ambience-glyph" aria-hidden="true">{{ ambienceGlyph }}</span>
-          <span class="island-page__ambience-text">海浪声</span>
+          <span class="island-page__ambience-text">海岛声音</span>
         </button>
         <button class="island-page__back" type="button" @click="goHome">返回首页</button>
       </div>
@@ -389,7 +401,7 @@ function goHome() {
   transform: translateY(-1px);
 }
 
-/* 海浪声开关：看得清、但不抢眼。
+/* 「海岛声音」开关：看得清、但不抢眼。
    它和「返回首页」并排放在同一块里，两者高度一致（都是 42px），
    所以顶部摘要不会因为多了一个按钮而变高一行。 */
 .island-page__ambience {
