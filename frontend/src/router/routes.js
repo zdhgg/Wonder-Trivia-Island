@@ -11,6 +11,7 @@ export const APP_ROUTE_NAME = Object.freeze({
   WRONG_BOOK: "wrong-book",
   GROWTH_BOOK: "growth-book",
   GROWTH_PLANS: "growth-plans",
+  KNOWLEDGE_ISLAND: "knowledge-island",
   TOOLS: "tools",
   SETTINGS: "settings"
 });
@@ -20,7 +21,8 @@ export const ROUTER_DRIVEN_PAGE_ROUTE_NAMES = Object.freeze([
   APP_ROUTE_NAME.TOOLS,
   APP_ROUTE_NAME.SETTINGS,
   APP_ROUTE_NAME.GROWTH_BOOK,
-  APP_ROUTE_NAME.GROWTH_PLANS
+  APP_ROUTE_NAME.GROWTH_PLANS,
+  APP_ROUTE_NAME.KNOWLEDGE_ISLAND
 ]);
 
 export function isRouterDrivenPageRoute(routeName) {
@@ -113,6 +115,12 @@ export const APP_ROUTES = Object.freeze([
     path: "/growth-plans",
     name: APP_ROUTE_NAME.GROWTH_PLANS,
     component: () => import("../views/GrowthPlansView.vue")
+  },
+  {
+    // 知识岛有自己的一页：岛屿是长期成长的主场景，不再塞在收藏册的小模块里。
+    path: "/knowledge-island",
+    name: APP_ROUTE_NAME.KNOWLEDGE_ISLAND,
+    component: () => import("../views/KnowledgeIslandView.vue")
   },
   {
     path: "/tools/:section?",

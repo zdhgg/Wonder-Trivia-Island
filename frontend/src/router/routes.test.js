@@ -96,11 +96,18 @@ describe("app routes", () => {
     expect(findRoute(APP_ROUTE_NAME.GROWTH_PLANS).path).toBe("/growth-plans");
   });
 
+  it("知识岛有自己的独立页面，路径不带参数，可以直接深链打开", () => {
+    expect(findRoute(APP_ROUTE_NAME.KNOWLEDGE_ISLAND).path).toBe("/knowledge-island");
+    // 独立页面必须挂真实组件：深链进来时不能是占位组件（否则点进去是空白）。
+    expect(typeof findRoute(APP_ROUTE_NAME.KNOWLEDGE_ISLAND).component).toBe("function");
+  });
+
   it("isRouterDrivenPageRoute 只认得已迁移的页面", () => {
     expect(isRouterDrivenPageRoute(APP_ROUTE_NAME.TOOLS)).toBe(true);
     expect(isRouterDrivenPageRoute(APP_ROUTE_NAME.SETTINGS)).toBe(true);
     expect(isRouterDrivenPageRoute(APP_ROUTE_NAME.GROWTH_BOOK)).toBe(true);
     expect(isRouterDrivenPageRoute(APP_ROUTE_NAME.GROWTH_PLANS)).toBe(true);
+    expect(isRouterDrivenPageRoute(APP_ROUTE_NAME.KNOWLEDGE_ISLAND)).toBe(true);
     expect(isRouterDrivenPageRoute(APP_ROUTE_NAME.WRONG_BOOK)).toBe(false);
     expect(isRouterDrivenPageRoute(undefined)).toBe(false);
     expect(isRouterDrivenPageRoute("")).toBe(false);

@@ -6,8 +6,17 @@ const {
   HOME_ISLAND_ROW_LABEL,
   KNOWLEDGE_ISLAND_FIGURE,
   KNOWLEDGE_ISLAND_FILL,
+  KNOWLEDGE_ISLAND_PAGE_NEXT,
+  KNOWLEDGE_ISLAND_PAGE_STAGE_COUNT,
+  KNOWLEDGE_ISLAND_PAGE_STAR_COUNT,
+  KNOWLEDGE_ISLAND_PAGE_TITLE,
+  KNOWLEDGE_ISLAND_PAGE_URL,
   KNOWLEDGE_ISLAND_REGION,
   KNOWLEDGE_ISLAND_TRACK,
+  COLLECTION_ISLAND_ENTRY,
+  COLLECTION_ISLAND_ENTRY_LABEL,
+  collectionIslandMetaText,
+  collectionIslandStageText,
   homeIslandText,
   islandStampText,
   sectionCountText
@@ -308,8 +317,45 @@ function islandSection(dialog) {
   return dialog.getByRole("region", { name: KNOWLEDGE_ISLAND_REGION });
 }
 
-async function readIslandFigure(page, dialog) {
-  return islandSection(dialog).locator(KNOWLEDGE_ISLAND_FIGURE).evaluate((figure) => ({
+// 知识岛独立页面：深链直接打开，页面本身就是一块 role=region「我的知识岛」。
+async function openKnowledgeIslandPage(page) {
+  // 从 /#/ 到 /#/knowledge-island 只改 hash，浏览器不会重载应用，
+  // 所以可能还开着的收藏册弹窗会跟着留到这一页。先把它收掉，
+  // 保证这里量到的就是这个页面本身（真实使用里 openKnowledgeIslandView 也会顺手关掉它）。
+  const closeButton = page.getByRole("button", { name: "关闭我的探险收藏册" });
+
+  if (await closeButton.isVisible()) {
+    await closeButton.click();
+  }
+
+  await page.goto(KNOWLEDGE_ISLAND_PAGE_URL);
+  await page
+    .getByRole("region", { name: KNOWLEDGE_ISLAND_REGION })
+    .waitFor({ state: "visible", timeout: 15_000 });
+
+  return page.getByRole("region", { name: KNOWLEDGE_ISLAND_REGION });
+}
+
+// 页面上的「当前阶段 / 印章 / 繁荣度 / 累计星星 / 下一枚印章」逐项读出来。
+async function readIslandPageSummary(page) {
+  return page.evaluate(() => {
+    const text = (selector) => document.querySelector(selector)?.innerText.trim() || "";
+
+    return {
+      stageName: text(".island-page__hero-stage strong"),
+      prosperityLabel: text(".island-page__hero-prosperity"),
+      stampCount: text('[data-role="island-page-stamp-count"]'),
+      starCount: text('[data-role="island-page-star-count"]'),
+      nextText: text('[data-role="island-page-next"]'),
+      figureStage: document.querySelector('[data-role="knowledge-island-figure"]')?.getAttribute("data-stage") || "",
+      figureProsperity:
+        document.querySelector('[data-role="knowledge-island-figure"]')?.getAttribute("data-prosperity") || ""
+    };
+  });
+}
+
+async function readIslandFigure(page, container) {
+  return container.locator(KNOWLEDGE_ISLAND_FIGURE).evaluate((figure) => ({
     // evaluate() 只回传序列化后的数据，所以显式读属性，不依赖 dataset 对象。
     stage: figure.getAttribute("data-stage"),
     box: figure.getBoundingClientRect().toJSON(),
@@ -317,7 +363,7 @@ async function readIslandFigure(page, dialog) {
   }));
 }
 
-// 390 窄屏也不许出现横向溢出：整页、弹窗、知识岛卡片三层都量一遍。
+// 390 窄屏也不许出现横向溢出：整页、弹窗、入口卡三层都量一遍。
 async function readHorizontalOverflow(page) {
   return page.evaluate(() => {
     const root = document.documentElement;
@@ -336,44 +382,51 @@ async function readHorizontalOverflow(page) {
 }
 
 test.describe("知识岛成长", () => {
-  test("A. 0 枚：收藏册有「我的知识岛」，第一阶段正确，0 枚印章也不是空白", async ({ page }) => {
+  test("A. 0 枚：收藏册留一张入口卡，独立页面是完整的第一阶段小岛", async ({ page }) => {
     await openHomeWithStampCount(page, 0);
 
     const expectation = await readIslandExpectation(page, 0);
     const dialog = await openCollectionBookFromHome(page);
     const island = islandSection(dialog);
 
+    // 收藏册：只留入口卡。阶段、繁荣度、印章数都还在，但不再塞整幅大画面。
     await expect(island).toBeVisible();
-    await expect(island).toContainText(`当前：${expectation.stageName}`);
     await expect(island).toContainText(sectionCountText(0));
-    await expect(island).toContainText(islandStampText(0));
-    // 下一阶段提示必须在。
-    await expect(island).toContainText(expectation.nextText);
-    await expect(expectation.nextText).toContain("再攒 3 枚");
+    await expect(island).toContainText(collectionIslandStageText(expectation.stageName, "基础"));
+    await expect(island).toContainText(collectionIslandMetaText(0, 0));
+    await expect(island).toContainText(expectation.scopeText);
+    await expect(island.locator(COLLECTION_ISLAND_ENTRY)).toBeVisible();
+    await expect(island.locator(KNOWLEDGE_ISLAND_FIGURE)).toHaveCount(0);
 
-    // 岛不是空白：画面真的画出来了，而且已经有岛上元素。
-    const figure = await readIslandFigure(page, dialog);
-
-    expect(figure.stage).toBe(expectation.stageId);
-    expect(figure.box.width).toBeGreaterThan(120);
-    expect(figure.box.height).toBeGreaterThan(40);
-    expect(figure.visibleChildren).toBeGreaterThan(0);
-
-    // 0 枚时进度条在起点，没有充值出来的假进度。
-    const track = island.locator(KNOWLEDGE_ISLAND_TRACK);
-
-    await expect(track).toHaveAttribute("aria-valuenow", "0");
-    await expect(track).toHaveAttribute("aria-valuemax", "3");
-    await expect(island.locator(KNOWLEDGE_ISLAND_FILL)).toHaveCSS("width", "0px");
-
-    // 还没有印章：不显示任何领取日期，但仍然给出儿童化的空状态说明。
+    // 还没有印章：不显示任何领取日期，但仍然给出儿童化空状态说明。
     await expect(island.locator(".collection-book__stamp")).toHaveCount(0);
     await expect(island).toContainText("还没有探险印章");
+
+    // 独立页面：岛不是空白，画面真的画出来了，而且已经有岛上元素。
+    const islandPage = await openKnowledgeIslandPage(page);
+
+    await expect(islandPage.getByRole("heading", { name: KNOWLEDGE_ISLAND_PAGE_TITLE })).toBeVisible();
+    const figure = await readIslandFigure(page, islandPage);
+
+    expect(figure.stage).toBe(expectation.stageId);
+    // hero 尺寸：这一页上画面必须真的比收藏册里那一小块大得多。
+    expect(figure.box.width).toBeGreaterThan(400);
+    expect(figure.box.height).toBeGreaterThan(200);
+    expect(figure.visibleChildren).toBeGreaterThan(0);
+
+    const summary = await readIslandPageSummary(page);
+
+    expect(summary.figureStage).toBe(expectation.stageId);
+    expect(summary.stampCount).toBe("0 枚");
+    // 0 枚时没有假进度：仍然明说还要再攒 3 枚。
+    expect(summary.nextText).toBe(expectation.nextText);
+    await expect(summary.nextText).toContain("再攒 3 枚");
+
     // 第一阶段是一座朴素的小岛：后面的阶段元素都还没出现。
-    await expect(island.locator(".knowledge-island__sprout")).toHaveCount(0);
-    await expect(island.locator(".knowledge-island__palm")).toHaveCount(0);
-    await expect(island.locator(".knowledge-island__dock")).toHaveCount(0);
-    await expect(island.locator(".knowledge-island__lighthouse")).toHaveCount(0);
+    await expect(islandPage.locator(".knowledge-island__sprout")).toHaveCount(0);
+    await expect(islandPage.locator(".knowledge-island__palm")).toHaveCount(0);
+    await expect(islandPage.locator(".knowledge-island__dock")).toHaveCount(0);
+    await expect(islandPage.locator(".knowledge-island__lighthouse")).toHaveCount(0);
   });
 
   test("B. 3 枚：阶段切换，对应新视觉元素出现", async ({ page }) => {
@@ -386,22 +439,31 @@ test.describe("知识岛成长", () => {
 
     // 3 枚已经不在第一阶段了。
     expect(expectation.stageId).not.toBe(firstStageExpectation.stageId);
-    await expect(island).toContainText(`当前：${expectation.stageName}`);
     await expect(island).toContainText(sectionCountText(3));
-    // 这一阶段刚重新开始：0 / 4。
-    await expect(island).toContainText(expectation.progressText);
-    await expect(island).toContainText("再攒 4 枚印章");
+    await expect(island).toContainText(collectionIslandStageText(expectation.stageName, "基础"));
 
-    const figure = await readIslandFigure(page, dialog);
+    const islandPage = await openKnowledgeIslandPage(page);
+    const figure = await readIslandFigure(page, islandPage);
 
     expect(figure.stage).toBe(expectation.stageId);
+
+    const summary = await readIslandPageSummary(page);
+
+    expect(summary.figureStage).toBe(expectation.stageId);
+    expect(summary.stageName).toContain(expectation.stageName);
+    expect(summary.stampCount).toBe("3 枚");
+    // 这一阶段刚重新开始：0 / 4。
+    await expect(islandPage).toContainText(expectation.progressText);
+    expect(summary.nextText).toBe(expectation.nextText);
+    await expect(summary.nextText).toContain("再攒 4 枚印章");
+
     // 新阶段才有嫩芽和小草丛：0 枚时没有，3 枚时有。
-    await expect(island.locator(".knowledge-island__sprout")).toHaveCount(1);
-    await expect(island.locator(".knowledge-island__grass")).toHaveCount(1);
-    await expect(island.locator(".knowledge-island__palm")).toHaveCount(0);
+    await expect(islandPage.locator(".knowledge-island__sprout")).toHaveCount(1);
+    await expect(islandPage.locator(".knowledge-island__grass")).toHaveCount(1);
+    await expect(islandPage.locator(".knowledge-island__palm")).toHaveCount(0);
   });
 
-  test("C. 7 枚：进入下一阶段，首页摘要与收藏册阶段一致", async ({ page }) => {
+  test("C. 7 枚：进入下一阶段，首页摘要、收藏册入口卡与独立页面完全一致", async ({ page }) => {
     await openHomeWithStampCount(page, 7);
 
     const expectation = await readIslandExpectation(page, 7);
@@ -416,14 +478,21 @@ test.describe("知识岛成长", () => {
     const dialog = await openCollectionBookFromHome(page);
     const island = islandSection(dialog);
 
-    await expect(island).toContainText(`当前：${expectation.stageName}`);
     await expect(island).toContainText(sectionCountText(7));
+    await expect(island).toContainText(collectionIslandStageText(expectation.stageName, "基础"));
 
-    const figure = await readIslandFigure(page, dialog);
+    const islandPage = await openKnowledgeIslandPage(page);
+    const figure = await readIslandFigure(page, islandPage);
 
     expect(figure.stage).toBe(expectation.stageId);
-    await expect(island.locator(".knowledge-island__palm")).toHaveCount(1);
-    await expect(island.locator(".knowledge-island__dock")).toHaveCount(0);
+    await expect(islandPage.locator(".knowledge-island__palm")).toHaveCount(1);
+    await expect(islandPage.locator(".knowledge-island__dock")).toHaveCount(0);
+
+    const summary = await readIslandPageSummary(page);
+
+    expect(summary.stampCount).toBe("7 枚");
+    expect(summary.starCount).toBe("0 颗");
+    expect(summary.nextText).toBe(expectation.nextText);
   });
 
   test("D. 15 枚：进入探险码头，出现小码头与小船", async ({ page }) => {
@@ -433,48 +502,58 @@ test.describe("知识岛成长", () => {
     const dialog = await openCollectionBookFromHome(page);
     const island = islandSection(dialog);
 
-    await expect(island).toContainText(`当前：${expectation.stageName}`);
     await expect(island).toContainText(sectionCountText(15));
-    await expect(island).toContainText("再攒 15 枚印章");
 
-    const figure = await readIslandFigure(page, dialog);
+    const islandPage = await openKnowledgeIslandPage(page);
+    const figure = await readIslandFigure(page, islandPage);
 
     expect(figure.stage).toBe(expectation.stageId);
-    await expect(island.locator(".knowledge-island__dock")).toHaveCount(1);
-    await expect(island.locator(".knowledge-island__boat")).toHaveCount(1);
-    await expect(island.locator(".knowledge-island__lighthouse")).toHaveCount(0);
+    await expect(islandPage.locator(".knowledge-island__dock")).toHaveCount(1);
+    await expect(islandPage.locator(".knowledge-island__boat")).toHaveCount(1);
+    await expect(islandPage.locator(".knowledge-island__lighthouse")).toHaveCount(0);
+
+    const summary = await readIslandPageSummary(page);
+
+    expect(summary.stampCount).toBe("15 枚");
+    await expect(summary.nextText).toContain("再攒 15 枚印章");
   });
 
   test("E. 30 枚：最高阶段，不再显示「再攒 X 枚」，进度不出现错误值", async ({ page }) => {
     await openHomeWithStampCount(page, 30);
 
     const expectation = await readIslandExpectation(page, 30);
-    const dialog = await openCollectionBookFromHome(page);
-    const island = islandSection(dialog);
 
-    expect(expectation.isMaxStage).toBe(true);
-    await expect(island).toContainText(`当前：${expectation.stageName}`);
-    await expect(island).toContainText(sectionCountText(30));
-    await expect(island).toContainText("现在的小岛已经非常热闹啦");
-    await expect(island).not.toContainText("再攒");
-    // 最高阶段不说“满级”。
-    await expect(island).not.toContainText("满级");
-    // 没有下一阶段就不画进度条，避免出现 0 / 0 这种错误进度。
-    await expect(island.locator(KNOWLEDGE_ISLAND_TRACK)).toHaveCount(0);
-
-    const figure = await readIslandFigure(page, dialog);
-
-    expect(figure.stage).toBe(expectation.stageId);
-    await expect(island.locator(".knowledge-island__lighthouse")).toHaveCount(1);
-
-    // 首页摘要同样不再说“再攒”。
+    // 首页摘要同样不再说“再攒”（先在首页断言，再离开首页）。
     const islandRow = page.getByRole("region", { name: "我的成长" }).getByRole("button", { name: HOME_ISLAND_ROW_LABEL });
 
     await expect(islandRow).toContainText("现在的小岛已经非常热闹啦");
     await expect(islandRow).not.toContainText("再攒");
+
+    const dialog = await openCollectionBookFromHome(page);
+    const island = islandSection(dialog);
+
+    expect(expectation.isMaxStage).toBe(true);
+    await expect(island).toContainText(sectionCountText(30));
+    await expect(island).toContainText(collectionIslandStageText(expectation.stageName, "基础"));
+    // 最高阶段不说“满级”。
+    await expect(island).not.toContainText("满级");
+
+    const islandPage = await openKnowledgeIslandPage(page);
+    const figure = await readIslandFigure(page, islandPage);
+
+    expect(figure.stage).toBe(expectation.stageId);
+    await expect(islandPage.locator(".knowledge-island__lighthouse")).toHaveCount(1);
+
+    const summary = await readIslandPageSummary(page);
+
+    await expect(summary.nextText).toContain("现在的小岛已经非常热闹啦");
+    expect(summary.nextText).not.toContain("再攒");
+    // 没有下一阶段就不画进度条，避免出现 0 / 0 这种错误进度。
+    await expect(islandPage.locator(KNOWLEDGE_ISLAND_TRACK)).toHaveCount(0);
+    await expect(islandPage.locator(KNOWLEDGE_ISLAND_PAGE_NEXT)).toContainText("现在的小岛已经非常热闹啦");
   });
 
-  test("F. 首页入口打开现有收藏册，看到同一个阶段；不新增 route", async ({ page }) => {
+  test("F. 首页那一行进入知识岛独立页面；收藏册入口卡也进同一页", async ({ page }) => {
     await openHomeWithStampCount(page, 15);
 
     const expectation = await readIslandExpectation(page, 15);
@@ -483,52 +562,66 @@ test.describe("知识岛成长", () => {
 
     await expect(islandRow).toBeVisible();
     await expect(islandRow).toContainText(expectation.stageName);
-    await islandRow.click();
-
-    // 打开的仍然是原来的收藏册弹窗，路由不变、没有新的知识岛页面。
-    const dialog = collectionBookDialog(page);
-
-    await expect(dialog).toBeVisible();
-    await expect(page).toHaveURL(/#\/$/);
-    await expect(islandSection(dialog)).toContainText(`当前：${expectation.stageName}`);
 
     // 首页三个本章指标一个都没少。
     await expect(growth).toContainText("本章星星");
     await expect(growth).toContainText("航海收藏");
     await expect(growth).toContainText("成就");
+
+    await islandRow.click();
+
+    // 首页那一行直接进知识岛自己的页面，不再绕收藏册弹窗。
+    await expect(page).toHaveURL(/#\/knowledge-island$/);
+    await expect(page.getByRole("region", { name: KNOWLEDGE_ISLAND_REGION })).toBeVisible();
+    await expect(page.getByRole("heading", { name: KNOWLEDGE_ISLAND_PAGE_TITLE })).toBeVisible();
+    await expect(page.locator(KNOWLEDGE_ISLAND_PAGE_STAGE_COUNT)).toHaveText("15 枚");
+
+    // 页面上的「返回首页」能回到首页。
+    await page.getByRole("button", { name: "返回首页" }).first().click();
+    await expect(page).toHaveURL(/#\/$/);
+
+    // 收藏册里的入口卡指向同一个页面。
+    const dialog = await openCollectionBookFromHome(page);
+    const island = islandSection(dialog);
+
+    await expect(island).toContainText(collectionIslandStageText(expectation.stageName, "基础"));
+    await island.locator(COLLECTION_ISLAND_ENTRY).click();
+    await expect(page).toHaveURL(/#\/knowledge-island$/);
+    // 打开页面时收藏册弹窗顺带收掉，不会盖在页面上。
+    await expect(collectionBookDialog(page)).toHaveCount(0);
+    await expect(page.locator(KNOWLEDGE_ISLAND_PAGE_STAGE_COUNT)).toHaveText("15 枚");
   });
 
-  test("G. 390 窄屏：知识岛卡片不横向溢出，进度条完整，最近领取可读", async ({ page }) => {
+  test("G. 390 窄屏：知识岛页面与收藏册入口卡都不横向溢出", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await openHomeWithStampCount(page, 7);
 
+    // 收藏册弹窗：入口卡不溢出，入口按钮与最近领取都还在。
     const dialog = await openCollectionBookFromHome(page);
     const island = islandSection(dialog);
-    const overflow = await readHorizontalOverflow(page);
+    const dialogOverflow = await readHorizontalOverflow(page);
 
-    expect(overflow.documentWidth).toBeLessThanOrEqual(overflow.viewportWidth);
-    expect(overflow.cardRight).toBeLessThanOrEqual(overflow.viewportWidth);
-    expect(overflow.islandRight).toBeLessThanOrEqual(overflow.viewportWidth);
-
-    // 岛屿画面完整（不是被压成 0 宽），进度条完整（宽度不是 0）。
-    const figure = await readIslandFigure(page, dialog);
-
-    expect(figure.box.width).toBeGreaterThan(120);
-    await expect(island.locator(KNOWLEDGE_ISLAND_TRACK)).toBeVisible();
-
-    const trackWidth = await island
-      .locator(KNOWLEDGE_ISLAND_TRACK)
-      .evaluate((track) => Math.round(track.getBoundingClientRect().width));
-
-    expect(trackWidth).toBeGreaterThan(60);
-
-    // 阶段文字 / 下一变化 / 最近领取都还在，而且没有被裁掉。
-    await expect(island).toContainText("当前：");
-    await expect(island).toContainText("再攒");
+    expect(dialogOverflow.documentWidth).toBeLessThanOrEqual(dialogOverflow.viewportWidth);
+    expect(dialogOverflow.cardRight).toBeLessThanOrEqual(dialogOverflow.viewportWidth);
+    await expect(island.locator(COLLECTION_ISLAND_ENTRY)).toBeVisible();
     await expect(island.locator(".collection-book__stamp").first()).toBeVisible();
 
-    const clipped = await island.evaluate((section) =>
-      [...section.querySelectorAll(".knowledge-island__stage-name, .knowledge-island__stamps, .knowledge-island__next")]
+    // 知识岛独立页面：整页不横向溢出，画面与文字都完整。
+    const islandPage = await openKnowledgeIslandPage(page);
+    const pageOverflow = await readHorizontalOverflow(page);
+
+    expect(pageOverflow.documentWidth).toBeLessThanOrEqual(pageOverflow.viewportWidth);
+    expect(pageOverflow.islandRight).toBeLessThanOrEqual(pageOverflow.viewportWidth);
+    // 390 窄屏上画面仍然完整（不是被压成 0 宽）。
+    expect(pageOverflow.islandWidth).toBeGreaterThan(300);
+
+    const figure = await readIslandFigure(page, islandPage);
+
+    expect(figure.box.width).toBeGreaterThan(240);
+    expect(figure.box.height).toBeGreaterThan(120);
+
+    const clipped = await islandPage.evaluate((section) =>
+      [...section.querySelectorAll(".island-page__stat-value, .island-page__stat-label, .island-page__lead")]
         .filter((element) => element.scrollWidth > element.clientWidth + 1).length
     );
 
@@ -599,11 +692,8 @@ test.describe("知识岛成长", () => {
 
         return {
           scopeLabel: text(".collection-book__scope"),
-          islandStage: text(".knowledge-island__stage-name"),
-          islandStampText: text(".knowledge-island__stamps"),
-          islandNextText: text(".knowledge-island__next"),
-          islandProgressText: text(".knowledge-island__progress-text"),
-          islandFigureStage: document.querySelector(".knowledge-island__figure")?.getAttribute("data-stage") || "",
+          islandCardStage: text(".collection-book__island-stage"),
+          islandCardMeta: text(".collection-book__island-meta"),
           islandScopeNote: text(".collection-book__scope-note"),
           recentStampDates: [...document.querySelectorAll(".collection-book__stamp-date")].map((el) => el.innerText.trim()),
           rewardsText: document.querySelectorAll(".collection-book__reward--earned").length,
@@ -620,13 +710,23 @@ test.describe("知识岛成长", () => {
     await expect(islandA).toContainText(expectation.scopeText);
     const bookA = await readBook();
 
-    expect(bookA.islandFigureStage).toBe(expectation.stageId);
+    expect(bookA.islandCardStage).toContain(expectation.stageName);
     expect(bookA.rewardsText).toBe(2);
     expect(bookA.achievementsText).toBe(2);
     expect(bookA.islandScopeNote).toBe(expectation.scopeText);
     await dialog.getByRole("button", { name: "关闭我的探险收藏册" }).click();
 
+    // 知识岛独立页面在章节 A 时的样子（页面与收藏册入口卡是同一座岛）。
+    const islandPageA = await openKnowledgeIslandPage(page);
+    const pageA = await readIslandPageSummary(page);
+
+    expect(pageA.figureStage).toBe(expectation.stageId);
+    expect(pageA.stampCount).toBe("7 枚");
+    await expect(islandPageA.locator(KNOWLEDGE_ISLAND_PAGE_STAR_COUNT)).toBeVisible();
+
     // 切到章节 B：闯关页 → 世界大地图 → 五年级上册。
+    await page.goto("/");
+    await page.getByRole("region", { name: "我的成长" }).waitFor({ state: "visible", timeout: 15_000 });
     await page.getByRole("region", { name: "今天的探险" }).getByRole("button").click();
     await expect(page.getByRole("heading", { name: "奇妙海岛闯关" })).toBeVisible();
     await page.getByRole("button", { name: "🗺️ 世界大地图" }).click();
@@ -640,17 +740,29 @@ test.describe("知识岛成长", () => {
 
     const bookB = await readBook();
 
-    // 知识岛：跨章节，逐字段与章节 A 完全一致。
-    expect(bookB.islandStage).toBe(bookA.islandStage);
-    expect(bookB.islandStampText).toBe(bookA.islandStampText);
-    expect(bookB.islandNextText).toBe(bookA.islandNextText);
-    expect(bookB.islandProgressText).toBe(bookA.islandProgressText);
-    expect(bookB.islandFigureStage).toBe(bookA.islandFigureStage);
+    // 知识岛：跨章节，入口卡与章节 A 完全一致。
+    expect(bookB.islandCardStage).toBe(bookA.islandCardStage);
+    expect(bookB.islandCardMeta).toBe(bookA.islandCardMeta);
     expect(bookB.islandScopeNote).toBe(bookA.islandScopeNote);
     expect(bookB.recentStampDates).toEqual(bookA.recentStampDates);
-    expect(bookB.islandStampText).toBe(expectation.stampText);
-    expect(bookB.islandNextText).toBe(expectation.nextText);
+    expect(bookB.islandCardMeta).toContain("7 枚探险印章");
     await expect(islandSection(dialog)).toContainText(expectation.scopeText);
+    await dialog.getByRole("button", { name: "关闭我的探险收藏册" }).click();
+
+    // 切章之后知识岛独立页面同样逐字段不变：阶段、印章、繁荣度、累计星星、下一阶段。
+    await openKnowledgeIslandPage(page);
+    const pageB = await readIslandPageSummary(page);
+
+    expect(pageB.figureStage).toBe(pageA.figureStage);
+    expect(pageB.stageName).toBe(pageA.stageName);
+    expect(pageB.prosperityLabel).toBe(pageA.prosperityLabel);
+    expect(pageB.stampCount).toBe(pageA.stampCount);
+    expect(pageB.starCount).toBe(pageA.starCount);
+    expect(pageB.nextText).toBe(pageA.nextText);
+    expect(pageB.figureProsperity).toBe(pageA.figureProsperity);
+    expect(pageB.nextText).toBe(expectation.nextText);
+    // 切的是章节，不是知识岛：换章不会顺手改掉 lifetime prosperity。
+    expect(pageB.figureProsperity).toBe(pageA.figureProsperity);
 
     // 本章两块：随章节变化，顶部作用域也跟着换。
     expect(bookB.scopeLabel).not.toBe(bookA.scopeLabel);
@@ -661,8 +773,139 @@ test.describe("知识岛成长", () => {
     expect(bookB.rewardsText).not.toBe(bookA.rewardsText);
     expect(bookB.achievementsText).not.toBe(bookA.achievementsText);
     // 下面两块仍然明确写着“本章”。
+    await page.goto("/#/challenge");
+    await page.getByRole("button", { name: /我的探险收藏册/ }).click();
+    dialog = collectionBookDialog(page);
+    await expect(dialog).toBeVisible();
     await expect(dialog.getByRole("region", { name: "本章航海收藏" })).toBeVisible();
     await expect(dialog.getByRole("region", { name: "本章成就" })).toBeVisible();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 场景 7.5：知识岛独立页面（长期成长的主场景）
+//
+// 这一组只做三件事：独立页面能深链打开、页面与收藏册/首页是同一份数据、
+// 以及宽屏 / 窄屏都不横向溢出。成长规则本身不在这里重测。
+// ---------------------------------------------------------------------------
+
+// 带星星的账本：每一关 3 星，清通 n 关 = 3n 颗跨章节累计星星。
+async function openHomeWithStampAndStars(page, { stampCount, clearedStageCount = 0 }) {
+  const profileId = randomUUID();
+
+  await seedHomeStorage(page);
+  await page.addInitScript(
+    ({ progressKey, chapterEntries }) => {
+      window.localStorage.setItem(progressKey, JSON.stringify(chapterEntries));
+    },
+    {
+      progressKey: CHALLENGE_PROGRESS_STORAGE_KEY,
+      chapterEntries: {
+        activeChapterId: "chapter-grade-3-upper",
+        chapters: {
+          "chapter-grade-3-upper": buildChapterEntry({ clearedStageCount, earnedRewardCount: clearedStageCount })
+        }
+      }
+    }
+  );
+  await page.context().addCookies([
+    { name: PROFILE_COOKIE_NAME, value: profileId, url: "http://127.0.0.1:3101", httpOnly: true, sameSite: "Lax" }
+  ]);
+  seedStoredStampCount(profileId, stampCount);
+  await page.goto("/");
+  await page.getByRole("region", { name: "我的成长" }).waitFor({ state: "visible", timeout: 15_000 });
+
+  return profileId;
+}
+
+test.describe("知识岛独立页面", () => {
+  test("深链可以直接打开，刷新后仍然是同一座岛", async ({ page }) => {
+    await openHomeWithStampCount(page, 7);
+
+    const islandPage = await openKnowledgeIslandPage(page);
+
+    await expect(islandPage.getByRole("heading", { name: KNOWLEDGE_ISLAND_PAGE_TITLE })).toBeVisible();
+    await expect(islandPage.locator(KNOWLEDGE_ISLAND_FIGURE)).toBeVisible();
+    const before = await readIslandPageSummary(page);
+
+    await page.reload();
+    await page.getByRole("region", { name: KNOWLEDGE_ISLAND_REGION }).waitFor({ state: "visible", timeout: 15_000 });
+
+    expect((await readIslandPageSummary(page)).figureStage).toBe(before.figureStage);
+  });
+
+  test("页面把阶段、印章、繁荣度、累计星星、下一枚印章都说清楚", async ({ page }) => {
+    // 7 枚印章 + 7 关全通 = 21 颗累计星星 → 繁荣度进入「丰盛」。
+    await openHomeWithStampAndStars(page, { stampCount: 7, clearedStageCount: 7 });
+
+    const expectation = await readIslandExpectation(page, 7);
+    const islandPage = await openKnowledgeIslandPage(page);
+    const summary = await readIslandPageSummary(page);
+
+    expect(summary.stageName).toContain(expectation.stageName);
+    expect(summary.stampCount).toBe("7 枚");
+    expect(summary.prosperityLabel).toBe("丰盛");
+    expect(summary.starCount).toBe("21 颗");
+    expect(summary.figureProsperity).toBe("lush");
+    expect(summary.nextText).toBe(expectation.nextText);
+
+    // 页面固定的那一句说明也在。
+    await expect(islandPage).toContainText("印章让小岛成长，星星让小岛更加繁荣。");
+  });
+
+  test("0 枚印章 + 高星：繁荣度到顶也不会提前长出后续建筑", async ({ page }) => {
+    // 7 关全通 = 21 颗星（丰盛档），但一枚印章都没有。
+    await openHomeWithStampAndStars(page, { stampCount: 0, clearedStageCount: 7 });
+
+    const islandPage = await openKnowledgeIslandPage(page);
+    const summary = await readIslandPageSummary(page);
+
+    // 阶段仍然停在第一阶段。
+    expect(summary.figureStage).toBe("first-sight");
+    expect(summary.stampCount).toBe("0 枚");
+    expect(summary.starCount).toBe("21 颗");
+    expect(summary.prosperityLabel).toBe("丰盛");
+
+    // 后续阶段的建筑一个都不许出现。
+    await expect(islandPage.locator(".knowledge-island__sprout")).toHaveCount(0);
+    await expect(islandPage.locator(".knowledge-island__grass")).toHaveCount(0);
+    await expect(islandPage.locator(".knowledge-island__palm")).toHaveCount(0);
+    await expect(islandPage.locator(".knowledge-island__camp")).toHaveCount(0);
+    await expect(islandPage.locator(".knowledge-island__dock")).toHaveCount(0);
+    await expect(islandPage.locator(".knowledge-island__boat")).toHaveCount(0);
+    await expect(islandPage.locator(".knowledge-island__lighthouse")).toHaveCount(0);
+  });
+
+  test("1440 / 820 / 390：岛屿是页面视觉中心，且都不横向溢出", async ({ page }) => {
+    await openHomeWithStampAndStars(page, { stampCount: 30, clearedStageCount: 7 });
+
+    for (const width of [1440, 820, 390]) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+
+      const islandPage = await openKnowledgeIslandPage(page);
+      const metrics = await page.evaluate(() => {
+        const figure = document.querySelector('[data-role="knowledge-island-figure"]');
+        const figureBox = figure.getBoundingClientRect();
+
+        return {
+          viewportWidth: window.innerWidth,
+          documentWidth: document.documentElement.scrollWidth,
+          figureWidth: Math.round(figureBox.width),
+          figureHeight: Math.round(figureBox.height),
+          // 岛屿在页面里占多宽：证明它是视觉主体，而不是角落里的一小块。
+          figureShare: Math.round((figureBox.width / window.innerWidth) * 100),
+          islandRight: Math.round(document.querySelector(".knowledge-island").getBoundingClientRect().right)
+        };
+      });
+
+      expect(metrics.documentWidth, `${width} 宽出现横向溢出`).toBeLessThanOrEqual(metrics.viewportWidth);
+      expect(metrics.islandRight, `${width} 宽知识岛卡片超出视口`).toBeLessThanOrEqual(metrics.viewportWidth);
+      expect(metrics.figureHeight, `${width} 宽画面被压扁`).toBeGreaterThan(120);
+      // 宽屏上画面必须明显是主体；390 上也要占满大部分宽度。
+      expect(metrics.figureShare).toBeGreaterThanOrEqual(width === 390 ? 80 : 70);
+      await expect(islandPage.locator(KNOWLEDGE_ISLAND_FIGURE)).toBeVisible();
+      await expect(islandPage.locator(".knowledge-island__lighthouse")).toHaveCount(1);
+    }
   });
 });
 
@@ -752,7 +995,7 @@ test.describe("知识岛阶段变化反馈", () => {
     });
   }
 
-  test("「去看看我的知识岛」：先关反馈层，再打开现有收藏册，显示同一个新阶段", async ({ page }) => {
+  test("「去看看我的知识岛」：先关反馈层，再打开知识岛独立页面，显示同一个新阶段", async ({ page }) => {
     await openHomeReadyToClaim(page, 2);
 
     const expectation = await readIslandExpectation(page, 3);
@@ -762,20 +1005,17 @@ test.describe("知识岛阶段变化反馈", () => {
 
     await celebrationDialog(page).getByRole("button", { name: "去看看我的知识岛" }).click();
 
-    // 反馈层关掉，收藏册打开，仍然是首页 route（没有新页面 / 新 route）。
+    // 反馈层关掉，直接进知识岛页面（不再绕收藏册弹窗）。
     await expect(celebrationDialog(page)).toHaveCount(0);
-    await expect(page).toHaveURL(/#\/$/);
-    const dialog = collectionBookDialog(page);
-
-    await expect(dialog).toBeVisible();
+    await expect(page).toHaveURL(/#\/knowledge-island$/);
     // 同一时刻只有一个 overlay。
     await expect(page.locator(".island-celebration-overlay")).toHaveCount(0);
 
-    const island = islandSection(dialog);
+    const islandPage = page.getByRole("region", { name: KNOWLEDGE_ISLAND_REGION });
 
-    await expect(island).toContainText(`当前：${expectation.stageName}`);
-    await expect(island).toContainText(sectionCountText(3));
-    await expect(island.locator(KNOWLEDGE_ISLAND_FIGURE)).toHaveAttribute("data-stage", "sprout-coast");
+    await expect(islandPage).toContainText(`当前：${expectation.stageName}`);
+    await expect(islandPage.locator(KNOWLEDGE_ISLAND_PAGE_STAGE_COUNT)).toHaveText("3 枚");
+    await expect(islandPage.locator(KNOWLEDGE_ISLAND_FIGURE)).toHaveAttribute("data-stage", "sprout-coast");
   });
 
   test("点遮罩可以关闭反馈层，不会误开收藏册", async ({ page }) => {
@@ -791,7 +1031,7 @@ test.describe("知识岛阶段变化反馈", () => {
     await expect(collectionBookDialog(page)).toHaveCount(0);
   });
 
-  test("刷新不重放：关掉反馈后 reload，不再出现庆祝，但收藏册仍是新阶段", async ({ page }) => {
+  test("刷新不重放：关掉反馈后 reload，不再出现庆祝，但知识岛仍是新阶段", async ({ page }) => {
     await openHomeReadyToClaim(page, 2);
 
     const expectation = await readIslandExpectation(page, 3);
@@ -808,11 +1048,19 @@ test.describe("知识岛阶段变化反馈", () => {
     await expect(celebrationDialog(page)).toHaveCount(0);
     await expect(page.getByRole("region", { name: "今日宝箱" })).toContainText("今日已领取");
 
+    // 收藏册入口卡如实显示 3 枚 / 新阶段。
     const dialog = await openCollectionBookFromHome(page);
     const island = islandSection(dialog);
 
-    await expect(island).toContainText(`当前：${expectation.stageName}`);
+    await expect(island).toContainText(collectionIslandStageText(expectation.stageName, "基础"));
     await expect(island).toContainText(sectionCountText(3));
+    await dialog.getByRole("button", { name: "关闭我的探险收藏册" }).click();
+
+    // 知识岛独立页面同样是新阶段。
+    const islandPage = await openKnowledgeIslandPage(page);
+
+    await expect(islandPage).toContainText(`当前：${expectation.stageName}`);
+    await expect(islandPage.locator(KNOWLEDGE_ISLAND_PAGE_STAGE_COUNT)).toHaveText("3 枚");
   });
 
   test("服务端 alreadyClaimed：今天已领过时不产生任何反馈，印章数也不会被顶高", async ({ page }) => {
@@ -841,15 +1089,20 @@ test.describe("知识岛阶段变化反馈", () => {
     await expect(page.getByRole("region", { name: "我的成长" })).toContainText("已经攒了 3 枚探险印章");
     await expect(page.getByRole("region", { name: "我的成长" })).not.toContainText("已经攒了 4 枚探险印章");
 
-    // 收藏册同样如实显示 3 枚 / 萌芽海岸（不是 4 枚）。
+    // 收藏册入口卡与知识岛页面同样如实显示 3 枚 / 萌芽海岸（不是 4 枚）。
     const expectation = await readIslandExpectation(page, 3);
     const dialog = await openCollectionBookFromHome(page);
     const island = islandSection(dialog);
 
-    await expect(island).toContainText(`当前：${expectation.stageName}`);
-    await expect(island).toContainText("已经攒了 3 枚探险印章");
-    await expect(island).not.toContainText("已经攒了 4 枚探险印章");
-    await expect(island.locator(KNOWLEDGE_ISLAND_FIGURE)).toHaveAttribute("data-stage", "sprout-coast");
+    await expect(island).toContainText(collectionIslandStageText(expectation.stageName, "基础"));
+    await expect(island).toContainText(collectionIslandMetaText(3, 0));
+    await expect(island).not.toContainText("4 枚探险印章");
+    await dialog.getByRole("button", { name: "关闭我的探险收藏册" }).click();
+
+    const islandPage = await openKnowledgeIslandPage(page);
+
+    await expect(islandPage.locator(KNOWLEDGE_ISLAND_PAGE_STAGE_COUNT)).toHaveText("3 枚");
+    await expect(islandPage.locator(KNOWLEDGE_ISLAND_FIGURE)).toHaveAttribute("data-stage", "sprout-coast");
   });
 
   test("390 窄屏：反馈层不横向溢出、按钮完整可点、岛屿完整", async ({ page }) => {
@@ -902,11 +1155,13 @@ test.describe("知识岛阶段变化反馈", () => {
     expect(await readCelebrationFeatureNames(page)).toEqual(["椰子树", "小帐篷"]);
 
     await dialog.getByRole("button", { name: "去看看我的知识岛" }).click();
-    await expect(collectionBookDialog(page)).toBeVisible();
+    // 反馈层里的这个入口现在直接进知识岛独立页面。
+    await expect(page).toHaveURL(/#\/knowledge-island$/);
+    await expect(page.locator(KNOWLEDGE_ISLAND_FIGURE)).toBeVisible();
 
-    const collectionWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+    const islandPageWidth = await page.evaluate(() => document.documentElement.scrollWidth);
 
-    expect(collectionWidth).toBeLessThanOrEqual(390);
+    expect(islandPageWidth).toBeLessThanOrEqual(390);
   });
 });
 

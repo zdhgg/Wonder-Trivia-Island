@@ -48,6 +48,7 @@ const emit = defineEmits([
   "start-weak-point-practice",
   "open-backpack",
   "open-entry",
+  "open-island",
   "claim-daily-chest"
 ]);
 
@@ -179,6 +180,7 @@ function handleTeacherTip(tip) {
         :milestone-entry="props.homeDashboard.milestoneEntry"
         @open-backpack="emit('open-backpack')"
         @open-entry="emit('open-entry', $event)"
+        @open-island="emit('open-island')"
       />
     </div>
 

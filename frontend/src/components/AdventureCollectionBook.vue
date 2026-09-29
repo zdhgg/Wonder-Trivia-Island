@@ -4,8 +4,10 @@
 // 组件只负责展示与关闭，不做任何数据判定：
 // 知识岛 / 印章 / 航海收藏 / 成就四块内容全部由 utils 里的纯函数算好，
 // 章节作用域由调用方（useTriviaApp.openBackpack(chapterId)）决定。
-import KnowledgeIslandGrowth from "./KnowledgeIslandGrowth.vue";
-
+//
+// 第一块「我的知识岛」现在只是一张入口卡：整座岛搬到了独立页面 /knowledge-island，
+// 这里保留「现在长什么样 + 还差多少 + 去看一眼」，
+// 免得在一个本来就装很多东西的弹窗里再塞一幅放不下的大画面。
 const props = defineProps({
   modelValue: {
     type: Boolean,
@@ -17,7 +19,7 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(["update:modelValue"]);
+const emit = defineEmits(["update:modelValue", "open-island"]);
 
 function close() {
   emit("update:modelValue", false);
@@ -52,12 +54,34 @@ function close() {
             <span class="collection-book__section-count">{{ book.stamps.countText }}</span>
           </header>
 
-          <!-- 作用域澄清：顶部“年级 · 学期 · 路线”是本章作用域，
-               这一行只说明知识岛是长期、跨章节累计的，不属于任何一章。
-               放在岛屿画面之后：先说清楚“现在长什么样”，再补一句它属于长期成长。 -->
-          <KnowledgeIslandGrowth :island="book.stamps.knowledgeIsland">
-            <p class="collection-book__scope-note">{{ book.stamps.knowledgeIsland.islandScopeText }}</p>
-          </KnowledgeIslandGrowth>
+          <!-- 我的知识岛：这里只留一张入口卡。
+               岛屿画面搬到独立页面（#/knowledge-island）去了：收藏册是弹窗，
+               再塞一幅完整的大场景只会让两边都看不清。
+               文案全部来自同一份 knowledgeIsland ViewModel，所以这里显示的
+               阶段 / 繁荣度 / 印章数与知识岛页面永远一致。 -->
+          <div class="collection-book__island-card">
+            <span class="collection-book__island-glyph" aria-hidden="true">
+              {{ book.stamps.knowledgeIsland.currentStage.glyph }}
+            </span>
+            <div class="collection-book__island-copy">
+              <p class="collection-book__island-stage">
+                当前：{{ book.stamps.knowledgeIsland.currentStage.name }} · {{ book.stamps.knowledgeIsland.prosperityLabel }}
+              </p>
+              <p class="collection-book__island-meta">
+                {{ book.stamps.knowledgeIsland.stampCount }} 枚探险印章 ·
+                {{ book.stamps.knowledgeIsland.prosperityStarCount }} 颗星
+              </p>
+              <p class="collection-book__scope-note">{{ book.stamps.knowledgeIsland.islandScopeText }}</p>
+            </div>
+            <button
+              class="collection-book__island-go"
+              type="button"
+              data-role="collection-island-entry"
+              @click="emit('open-island')"
+            >
+              去看看我的小岛 →
+            </button>
+          </div>
 
           <p class="collection-book__hint">{{ book.stamps.islandHintText }}</p>
 

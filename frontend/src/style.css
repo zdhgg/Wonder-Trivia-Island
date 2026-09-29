@@ -3951,7 +3951,7 @@ select {
 
 /* 知识岛的作用域提示：很轻的一行，只用来区分“长期跨章节”与下面两块的“本章”。
    顶部 scopeLabel（年级 · 学期 · 路线）保持不变。
-   它同时是 KnowledgeIslandGrowth 卡片里的插槽内容，所以只占内容宽度。 */
+   整座岛已经搬到独立页面，这行现在挂在收藏册的入口卡里。 */
 .collection-book__scope-note {
   margin: 0;
   padding: 3px 10px;
@@ -3963,6 +3963,86 @@ select {
   font-size: 0.76rem;
   font-weight: 900;
   line-height: 1.5;
+}
+
+/* 知识岛入口卡：收藏册里不再展示完整岛屿，只说清楚「现在什么样」并把人带去那一页。 */
+.collection-book__island-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px 12px;
+  padding: 14px 16px;
+  border: 2px solid rgba(83, 177, 173, 0.3);
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0) 46%),
+    linear-gradient(150deg, #eefaf7 0%, #f7fdfa 100%);
+}
+
+.collection-book__island-glyph {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.88);
+  font-size: 1.45rem;
+  line-height: 1;
+}
+
+.collection-book__island-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.collection-book__island-stage {
+  margin: 0;
+  min-width: 0;
+  color: var(--color-ink);
+  font-family: "ZCOOL KuaiLe", "Baloo 2", "Trebuchet MS", sans-serif;
+  font-size: 1.05rem;
+  line-height: 1.3;
+}
+
+.collection-book__island-meta {
+  margin: 0;
+  min-width: 0;
+  color: var(--color-ink-soft);
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.collection-book__island-go {
+  grid-column: 1 / -1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  margin-top: 2px;
+  padding: 10px 18px;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(124, 216, 184, 0.98) 0%, rgba(86, 176, 214, 0.98) 100%);
+  color: #10394a;
+  font: inherit;
+  font-size: 0.94rem;
+  font-weight: 900;
+  cursor: pointer;
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.collection-book__island-go:hover,
+.collection-book__island-go:focus-visible {
+  outline: none;
+  transform: translateY(-1px);
+  box-shadow: 0 14px 22px -18px rgba(31, 107, 81, 0.85);
+}
+
+.collection-book__island-card .collection-book__scope-note {
+  margin-top: 2px;
 }
 
 .collection-book__empty {

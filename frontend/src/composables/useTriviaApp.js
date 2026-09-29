@@ -50,7 +50,7 @@ import {
   writeGrowthProgressCache
 } from "../utils/growthProgress";
 import { buildAdventureCollectionBook } from "../utils/adventureCollectionBook";
-import { buildKnowledgeIslandStageTransition } from "../utils/knowledgeIslandGrowth";
+import { buildKnowledgeIslandGrowth, buildKnowledgeIslandStageTransition } from "../utils/knowledgeIslandGrowth";
 import { sumChallengeProgressBookStars } from "../utils/knowledgeIslandProsperity";
 import { createAppRouting } from "./app/useAppRouting";
 import { createHomeSelections } from "./app/useHomeSelections";
@@ -1557,6 +1557,20 @@ export function useTriviaApp() {
   // 所以切换当前章节、切换 preferredGrade 之后它都不会变。
   const lifetimeChallengeStars = computed(() => sumChallengeProgressBookStars(challengeProgressBook.value));
 
+  // 知识岛独立页面要的那一份岛屿 ViewModel。
+  //
+  // 它不是第二份状态，只是把首页摘要 / 收藏册入口卡已经在用的同一个纯函数
+  // （buildKnowledgeIslandGrowth）再算一次，喂给 KnowledgeIslandView：
+  //   - 印章数仍然只有 growthProgress.totalDailyChests 一个来源；
+  //   - 星星仍然只有 lifetimeChallengeStars（跨章节累计）一个来源；
+  //   - 阶段依旧只由印章数决定，星星只改繁荣度。
+  // 换句话说：页面、收藏册、首页三处显示的永远是同一个阶段、同一档繁荣度。
+  const knowledgeIsland = computed(() =>
+    buildKnowledgeIslandGrowth(growthProgress.value.totalDailyChests, {
+      starCount: lifetimeChallengeStars.value
+    })
+  );
+
   // 岛卡顺序、进度口径完全不变（还是 CHALLENGE_CHAPTERS 原序 + 星星进度），
   // 末尾只按学习档案年级补一层视觉标记：高亮当前年级的上/下册两张，其余年级适度弱化。
   const challengeWorldData = computed(() => {
@@ -2011,6 +2025,22 @@ export function useTriviaApp() {
     }
   }
 
+  // 知识岛独立页面：同样是路由驱动页面。
+  // 首页那一行「我的知识岛」摘要和收藏册里的入口卡都走这里，
+  // 两处打开的是同一个页面、同一座岛，不再绕道收藏册弹窗。
+  function openKnowledgeIslandView() {
+    closeQuizSettings();
+    closeAudioSettings();
+    wrongBookFocusTag.value = "";
+    resetQuizPracticeContext();
+    // 从收藏册进来时顺手把弹窗收掉，避免弹窗盖在知识岛页面上。
+    closeBackpack();
+
+    if (route.name !== APP_ROUTE_NAME.KNOWLEDGE_ISLAND) {
+      void router.push({ name: APP_ROUTE_NAME.KNOWLEDGE_ISLAND });
+    }
+  }
+
   // 首页「我的成长」里的成长入口统一走这里（HomeGrowthSummary 只报 id，不认路由）。
   function openHomeGrowthEntry(entryId = "") {
     switch (String(entryId || "")) {
@@ -2264,11 +2294,11 @@ export function useTriviaApp() {
     knowledgeIslandStageCelebration.value = null;
   }
 
-  // 「去看看我的知识岛」：先关反馈层，再打开现有的探险收藏册。
-  // 不新增 route、不新增页面；章节用现有的 homeCollectionChapterId（首页那一章）。
+  // 「去看看我的知识岛」：先关反馈层，再打开知识岛独立页面。
+  // 不再绕道收藏册弹窗——那里面现在只留了一张入口卡。
   function openKnowledgeIslandFromCelebration() {
     closeKnowledgeIslandStageCelebration();
-    openBackpack(homeCollectionChapterId.value);
+    openKnowledgeIslandView();
   }
 
   function closeLockedStageModal() {
@@ -2999,6 +3029,9 @@ export function useTriviaApp() {
     homeCollectionChapterId,
     collectionBookChapter,
     collectionBook,
+    // 知识岛独立页面用的那一份 ViewModel（与收藏册入口卡、首页摘要同源）。
+    knowledgeIsland,
+    openKnowledgeIslandView,
     knowledgeIslandStageCelebration,
     closeKnowledgeIslandStageCelebration,
     openKnowledgeIslandFromCelebration,

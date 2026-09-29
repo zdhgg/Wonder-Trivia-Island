@@ -175,7 +175,7 @@ export default {
       'page-shell',
       {
         'page-shell--immersive': isImmersiveView,
-        'page-shell--wide': [VIEW_MODE.SETTINGS, VIEW_MODE.TOOLS].includes(currentView)
+        'page-shell--wide': [VIEW_MODE.SETTINGS, VIEW_MODE.TOOLS].includes(currentView) || isWideRouterDrivenPage
       }
     ]"
   >
@@ -250,6 +250,7 @@ export default {
         @open-knowledge-study="openStudyMapView"
         @open-wrong-review="openWrongBookView"
         @open-backpack="openBackpack(homeCollectionChapterId)"
+        @open-island="openKnowledgeIslandView"
         @open-entry="openHomeGrowthEntry"
         @claim-daily-chest="claimDailyChest"
       />
@@ -698,11 +699,16 @@ export default {
       @reset="resetDraftQuizSettings"
     />
 
-    <!-- 📖 我的探险收藏册：全局弹窗，首页与闯关地图共用 -->
-    <AdventureCollectionBook v-model="isBackpackOpen" :book="collectionBook" />
+    <!-- 📖 我的探险收藏册：全局弹窗，首页与闯关地图共用。
+         里面的「我的知识岛」现在是一张入口卡，点它去独立页面。 -->
+    <AdventureCollectionBook
+      v-model="isBackpackOpen"
+      :book="collectionBook"
+      @open-island="openKnowledgeIslandView"
+    />
 
     <!-- 🏝️ 知识岛阶段变化反馈：只有真实领取刚好跨过阶段阈值时才出现，
-         属于临时 UI 状态（不持久化）。点「去看看我的知识岛」会先关掉它再打开上面的收藏册。 -->
+         属于临时 UI 状态（不持久化）。点「去看看我的知识岛」会先关掉它，再打开知识岛独立页面。 -->
     <KnowledgeIslandStageCelebration
       :celebration="knowledgeIslandStageCelebration"
       @close="closeKnowledgeIslandStageCelebration"

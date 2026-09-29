@@ -230,7 +230,10 @@ test.describe("探险收藏册", () => {
     let islandSection = dialog.getByRole("region", { name: KNOWLEDGE_ISLAND_REGION });
 
     await expect(islandSection).toContainText("累计 1 枚探险印章");
-    await expect(islandSection).toContainText("已经攒了 1 枚探险印章");
+    // 知识岛本身已经搬到独立页面，收藏册里留的是入口卡：阶段 + 印章 / 星星。
+    await expect(islandSection).toContainText("1 枚探险印章 · 0 颗星");
+    await expect(islandSection.locator(".collection-book__island-stage")).toContainText("当前：");
+    await expect(islandSection.getByRole("button", { name: "去看看我的小岛 →" })).toBeVisible();
     await expect(islandSection).toContainText(getTodayStampLabel());
 
     // 再刷新一次：印章来自服务端账本，不该丢。

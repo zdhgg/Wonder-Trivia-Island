@@ -9,6 +9,7 @@ import {
   formatCollectionStampDate,
   listRecentDailyChestClaims
 } from "./adventureCollectionBook.js";
+import { buildKnowledgeIslandGrowth } from "./knowledgeIslandGrowth.js";
 
 // 收藏册只做“已有成长数据的收藏化展示”，所以测试也都直接喂真实形状的数据。
 const GRADE_THREE_UPPER = Object.freeze({
@@ -133,6 +134,50 @@ describe("adventureCollectionBook · 探险印章", () => {
     expect(formatCollectionStampDate("2026-12-01")).toBe("12 月 1 日");
     expect(formatCollectionStampDate("2026/09/22")).toBe("");
     expect(formatCollectionStampDate("")).toBe("");
+  });
+});
+
+// 知识岛现在有两个展示位置：收藏册里的入口卡 + 独立页面 /knowledge-island。
+// 这一组测试守住“同一个岛屿只有一套数据来源”：
+// 两处都必须调同一个纯函数 knowledgeIslandGrowth.buildKnowledgeIslandGrowth，
+// 谁也不许自己再数一遍印章或再判一次繁荣度。
+describe("adventureCollectionBook · 知识岛与独立页同源", () => {
+  const CASES = [
+    { stampCount: 0, lifetimeStarCount: 0 },
+    { stampCount: 0, lifetimeStarCount: 45 },
+    { stampCount: 7, lifetimeStarCount: 45 },
+    { stampCount: 30, lifetimeStarCount: 63 }
+  ];
+
+  for (const { stampCount, lifetimeStarCount } of CASES) {
+    it(`${stampCount} 枚印章 / ${lifetimeStarCount} 颗星：收藏册入口卡与独立页面拿到完全相同的岛屿`, () => {
+      const section = buildCollectionStampSection({
+        growthProgress: buildGrowthProgress({ totalDailyChests: stampCount }),
+        lifetimeStarCount
+      });
+      // 独立页面拿到的就是这一份。
+      const islandPageIsland = buildKnowledgeIslandGrowth(stampCount, { starCount: lifetimeStarCount });
+
+      expect(section.knowledgeIsland).toEqual(islandPageIsland);
+    });
+  }
+
+  it("星星再多也不会改变阶段：0 枚印章 + 63 颗星仍然是「初见小岛」", () => {
+    const withStars = buildCollectionStampSection({
+      growthProgress: buildGrowthProgress({ totalDailyChests: 0 }),
+      lifetimeStarCount: 63
+    });
+    const withoutStars = buildCollectionStampSection({
+      growthProgress: buildGrowthProgress({ totalDailyChests: 0 }),
+      lifetimeStarCount: 0
+    });
+
+    expect(withStars.knowledgeIsland.currentStage.id).toBe("first-sight");
+    expect(withStars.knowledgeIsland.currentStage.features).toEqual(["沙滩", "海浪"]);
+    // 只有繁荣度变了。
+    expect(withStars.knowledgeIsland.prosperityKey).toBe("flourishing");
+    expect(withoutStars.knowledgeIsland.prosperityKey).toBe("basic");
+    expect(withStars.knowledgeIsland.currentStage.id).toBe(withoutStars.knowledgeIsland.currentStage.id);
   });
 });
 

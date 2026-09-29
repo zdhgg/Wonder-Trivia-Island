@@ -64,7 +64,9 @@ function createFakeShell() {
       activeToolSectionId: ref(TOOL_DEFAULT_SECTION_ID),
       activeSettingsSectionId: ref("settings-profile"),
       catalogPrefill: ref(null),
-      handleImportFinished: vi.fn()
+      handleImportFinished: vi.fn(),
+      // 知识岛独立页面用的那一份岛屿 ViewModel（应用状态里已经算好的）。
+      knowledgeIsland: ref({ currentStage: { id: "first-sight", name: "初见小岛" }, stampCount: 0 })
     },
     settingsCenter: {
       backupStatusMessage: ref(""),
@@ -98,6 +100,7 @@ describe("router driven pages · 路由页面判定", () => {
     expect(createPages(APP_ROUTE_NAME.SETTINGS).pages.isRouterDrivenPageActive.value).toBe(true);
     expect(createPages(APP_ROUTE_NAME.GROWTH_BOOK).pages.isRouterDrivenPageActive.value).toBe(true);
     expect(createPages(APP_ROUTE_NAME.GROWTH_PLANS).pages.isRouterDrivenPageActive.value).toBe(true);
+    expect(createPages(APP_ROUTE_NAME.KNOWLEDGE_ISLAND).pages.isRouterDrivenPageActive.value).toBe(true);
 
     for (const otherRouteName of [
       APP_ROUTE_NAME.HOME,
@@ -140,6 +143,53 @@ describe("router driven pages · 路由页面判定", () => {
 
     expect(pages.routerDrivenPageProps.value).toEqual({});
     expect(pages.routerDrivenPageListeners.value).toEqual({});
+  });
+});
+
+describe("router driven pages · 知识岛独立页面", () => {
+  it("props 键与 KnowledgeIslandView 声明的 props 完全一致", () => {
+    const { pages } = createPages(APP_ROUTE_NAME.KNOWLEDGE_ISLAND);
+
+    expect(Object.keys(pages.routerDrivenPageProps.value).sort()).toEqual(
+      readDeclaredProps("KnowledgeIslandView.vue").sort()
+    );
+  });
+
+  it("岛屿数据直接来自应用状态里那一份，页面不自己算第二套", () => {
+    const { pages, shell } = createPages(APP_ROUTE_NAME.KNOWLEDGE_ISLAND);
+    const nextIsland = {
+      currentStage: { id: "palm-camp", name: "椰林营地" },
+      stampCount: 7,
+      prosperityKey: "lush"
+    };
+
+    shell.app.knowledgeIsland.value = nextIsland;
+
+    expect(pages.routerDrivenPageProps.value).toEqual({ island: nextIsland });
+
+    // 领到新印章后页面跟着拿到同一份更新后的结果，而不是打开时的快照。
+    shell.app.knowledgeIsland.value = {
+      currentStage: { id: "knowledge-lighthouse", name: "知识灯塔" },
+      stampCount: 30,
+      prosperityKey: "flourishing"
+    };
+
+    expect(pages.routerDrivenPageProps.value.island.currentStage.name).toBe("知识灯塔");
+    expect(pages.routerDrivenPageProps.value.island.stampCount).toBe(30);
+  });
+
+  it("页面自己不提交数据，没有需要映射的事件", () => {
+    const { pages } = createPages(APP_ROUTE_NAME.KNOWLEDGE_ISLAND);
+
+    expect(pages.routerDrivenPageListeners.value).toEqual({});
+  });
+
+  it("知识岛算宽版页面：内容本身就是一幅大画面，外壳要一起放宽", () => {
+    expect(createPages(APP_ROUTE_NAME.KNOWLEDGE_ISLAND).pages.isWideRouterDrivenPage.value).toBe(true);
+    expect(createPages(APP_ROUTE_NAME.TOOLS).pages.isWideRouterDrivenPage.value).toBe(true);
+    expect(createPages(APP_ROUTE_NAME.SETTINGS).pages.isWideRouterDrivenPage.value).toBe(true);
+    expect(createPages(APP_ROUTE_NAME.GROWTH_BOOK).pages.isWideRouterDrivenPage.value).toBe(false);
+    expect(createPages(APP_ROUTE_NAME.HOME).pages.isWideRouterDrivenPage.value).toBe(false);
   });
 });
 

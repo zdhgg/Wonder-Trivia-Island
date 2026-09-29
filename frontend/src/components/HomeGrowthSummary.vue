@@ -25,7 +25,7 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(["open-backpack", "open-entry"]);
+const emit = defineEmits(["open-backpack", "open-entry", "open-island"]);
 
 // 三条成长入口用同一个渲染模板，只有文案、去往的地方和底色不同。
 // 纪念册那两条（我们一起 / 她的成长）同色系，因为它们翻开的是同一本纪念册。
@@ -89,13 +89,14 @@ const growthEntries = computed(() => [
       </li>
     </ul>
 
-    <!-- 长期成长摘要：整行就是热区，点开同一个探险收藏册（右上角按钮仍然保留）。
-         只做轻量摘要：岛名 + 已经攒了多少枚印章 + 下一次变化，不把整座岛搬到首页。 -->
+    <!-- 长期成长摘要：整行就是热区，点开知识岛自己的独立页面。
+         只做轻量摘要：岛名 + 已经攒了多少枚印章 + 下一次变化，不把整座岛搬到首页。
+         右上角的「我的探险收藏册」按钮仍然开着收藏册，两条路各去各的页面。 -->
     <button
       class="growth-summary__stamps"
       type="button"
-      :aria-label="`打开我的探险收藏册，查看我的知识岛（${growth.stampText}）`"
-      @click="emit('open-backpack')"
+      :aria-label="`打开我的知识岛（${growth.stampText}）`"
+      @click="emit('open-island')"
     >
       <span class="growth-summary__stamps-glyph" aria-hidden="true">{{ growth.knowledgeIsland.currentStage.glyph }}</span>
       <span class="growth-summary__stamps-copy">

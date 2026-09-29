@@ -230,7 +230,7 @@ test.describe("首页奖励闭环", () => {
     expect(await readClaimedStampCount(page)).toBe(1);
   });
 
-  test("我的成长知识岛摘要整行可点，打开同一个收藏册", async ({ page }) => {
+  test("我的成长知识岛摘要整行可点，进入知识岛独立页面；收藏册另有入口", async ({ page }) => {
     await page.goto("/");
     await seedStorage(page, { [CHALLENGE_KEY]: buildProgress({ clearedStageCount: 2, earnedRewardCount: 2 }), [TASKS_KEY]: buildTasks(0) });
 
@@ -245,7 +245,7 @@ test.describe("首页奖励闭环", () => {
     await gotoHome(page);
 
     const growth = page.getByRole("region", { name: "我的成长" });
-    const islandRow = growth.getByRole("button", { name: /打开我的探险收藏册，查看我的知识岛/ });
+    const islandRow = growth.getByRole("button", { name: /打开我的知识岛/ });
 
     await expect(islandRow).toBeVisible();
     await expect(growth).toContainText("我的知识岛");
@@ -256,13 +256,7 @@ test.describe("首页奖励闭环", () => {
     // 旧的报表腔文案不再出现
     await expect(growth).not.toContainText("累计开启");
 
-    await islandRow.click();
-
-    const dialog = page.getByRole("dialog", { name: COLLECTION_DIALOG });
-
-    await expect(dialog).toBeVisible();
-    await expect(dialog.getByRole("region", { name: "我的知识岛" })).toContainText("累计 1 枚探险印章");
-    // 首页摘要与收藏册是同一个阶段（都来自同一个纯函数）。
+    // 首页摘要与知识岛页面是同一个阶段（都来自同一个纯函数）。
     const homeStage = await page.evaluate(async () => {
       const { buildKnowledgeIslandGrowth } = await import("/src/utils/knowledgeIslandGrowth.js");
 
@@ -270,12 +264,24 @@ test.describe("首页奖励闭环", () => {
     });
 
     await expect(islandRow).toContainText(homeStage);
-    await expect(dialog.getByRole("region", { name: "我的知识岛" })).toContainText(homeStage);
+    await islandRow.click();
 
-    // 关闭后右上角的入口仍然在，两个入口指向同一个收藏册
-    await dialog.getByRole("button", { name: "关闭我的探险收藏册" }).click();
+    // 整座岛现在在它自己的页面上。
+    await expect(page).toHaveURL(/#\/knowledge-island$/);
+    await expect(page.getByRole("heading", { name: "我的知识岛" })).toBeVisible();
+    await expect(page.locator('[data-role="knowledge-island-figure"]')).toHaveAttribute("data-stage", "first-sight");
+    await expect(page.locator('[data-role="island-page-stamp-count"]')).toHaveText("1 枚");
+    await expect(page.getByRole("region", { name: "我的知识岛" })).toContainText(homeStage);
+
+    // 收藏册仍然在首页右上角，两条路各去各的页面。
+    await page.getByRole("button", { name: "返回首页" }).first().click();
+    await expect(page).toHaveURL(/#\/$/);
     await growth.getByRole("button", { name: "打开我的探险收藏册，查看印章、航海收藏和成就" }).click();
-    await expect(page.getByRole("dialog", { name: COLLECTION_DIALOG })).toBeVisible();
+    const dialog = page.getByRole("dialog", { name: COLLECTION_DIALOG });
+
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole("region", { name: "我的知识岛" })).toContainText("累计 1 枚探险印章");
+    await expect(dialog.getByRole("region", { name: "我的知识岛" })).toContainText(homeStage);
   });
 
   test("欢迎区不再重复主线建议：review/study 显示，challenge/chapter-complete/explore 不显示", async ({ page }) => {
