@@ -13,6 +13,12 @@ const {
   KNOWLEDGE_ISLAND_PAGE_URL,
   KNOWLEDGE_ISLAND_REGION,
   KNOWLEDGE_ISLAND_TRACK,
+  KNOWLEDGE_ISLAND_TERRAIN,
+  KNOWLEDGE_ISLAND_NEXT_TERRAIN,
+  KNOWLEDGE_ISLAND_GRASSLAND,
+  KNOWLEDGE_ISLAND_HIGHLAND,
+  KNOWLEDGE_ISLAND_BEAM,
+  KNOWLEDGE_ISLAND_ZONES,
   COLLECTION_ISLAND_ENTRY,
   COLLECTION_ISLAND_ENTRY_LABEL,
   collectionIslandMetaText,
@@ -108,6 +114,8 @@ async function readIslandExpectation(page, stampCount) {
       progressText: growth.progressText,
       progressPercent: growth.progressPercent,
       isMaxStage: growth.isMaxStage,
+      // 下一阶段是谁同样只认这一个纯函数：满级时是 null。
+      nextStageId: growth.nextStage ? growth.nextStage.id : null,
       // 块内作用域提示的文案也从应用自己的纯函数取。
       scopeText: growth.islandScopeText
     };
@@ -790,8 +798,7 @@ test.describe("知识岛成长", () => {
 // ---------------------------------------------------------------------------
 
 // 带星星的账本：每一关 3 星，清通 n 关 = 3n 颗跨章节累计星星。
-async function openHomeWithStampAndStars(page, { stampCount, clearedStageCount = 0 }) {
-  const profileId = randomUUID();
+async function openHomeWithStampAndStars(page, { stampCount, clearedStageCount = 0 }) {  const profileId = randomUUID();
 
   await seedHomeStorage(page);
   await page.addInitScript(
@@ -815,8 +822,418 @@ async function openHomeWithStampAndStars(page, { stampCount, clearedStageCount =
   await page.goto("/");
   await page.getByRole("region", { name: "我的成长" }).waitFor({ state: "visible", timeout: 15_000 });
 
+  seedStoredStampCount(profileId, stampCount);
+  await page.goto("/");
+  await page.getByRole("region", { name: "我的成长" }).waitFor({ state: "visible", timeout: 15_000 });
+
   return profileId;
 }
+
+// ---------------------------------------------------------------------------
+// 地形成长（Phase 3）：这一组只测「画得像不像一座会长大的岛」。
+//
+// 分工必须在这里守住：阶段仍然只由 knowledgeIslandGrowth 决定（阈值 0/3/7/15/30 一律没动），
+// knowledgeIslandTerrain 只负责回答「这一阶段的岛身有多大、岸线长什么样」，
+// 繁荣度只负责回答「这些已解锁的东西有多丰富」，两者都不许改阶段。
+//
+// 所以下面的断言全部是"量画面"：量岛身盒子、量街区、量建筑落在哪个街区里，
+// 而不是去断言任何业务数字。
+// ---------------------------------------------------------------------------
+
+// 真实章节 id：非法 id 会被进度账本整章丢掉，星数就永远是 0，测不出繁荣档。
+const REAL_CHAPTER_IDS = Object.freeze([
+  "chapter-grade-3-upper",
+  "chapter-grade-3-lower",
+  "chapter-grade-4-upper",
+  "chapter-grade-4-lower",
+  "chapter-grade-5-upper",
+  "chapter-grade-5-lower"
+]);
+
+// 一关 3 星、一章 7 关 = 一章 21 星；按 starCount 需要铺几章真实章节。
+async function openHomeWithStampAndStarCount(page, { stampCount, starCount }) {
+  const profileId = randomUUID();
+  const chapterCount = starCount > 0 ? Math.ceil(starCount / 21) : 0;
+
+  await seedHomeStorage(page);
+  await page.addInitScript(
+    ({ progressKey, chapterEntries }) => {
+      window.localStorage.setItem(progressKey, JSON.stringify(chapterEntries));
+    },
+    {
+      progressKey: CHALLENGE_PROGRESS_STORAGE_KEY,
+      chapterEntries: {
+        activeChapterId: REAL_CHAPTER_IDS[0],
+        chapters: Object.fromEntries(
+          REAL_CHAPTER_IDS.slice(0, chapterCount).map((chapterId) => [
+            chapterId,
+            buildChapterEntry({ clearedStageCount: 7, earnedRewardCount: 7 })
+          ])
+        )
+      }
+    }
+  );
+  await page.context().addCookies([
+    { name: PROFILE_COOKIE_NAME, value: profileId, url: "http://127.0.0.1:3101", httpOnly: true, sameSite: "Lax" }
+  ]);
+  seedStoredStampCount(profileId, stampCount);
+  await page.goto("/");
+  await page.getByRole("region", { name: "我的成长" }).waitFor({ state: "visible", timeout: 15_000 });
+
+  return profileId;
+}
+
+// 把这一幅画里所有「和地形有关」的量一次性读出来：岛身盒子、预告轮廓、街区、建筑。
+function readIslandTerrainState(container) {
+  return container.evaluate((section) => {
+    const box = (element) => (element ? element.getBoundingClientRect().toJSON() : null);
+    const visible = (element) => Boolean(element) && element.getBoundingClientRect().width > 0;
+    const figure = section.querySelector('[data-role="knowledge-island-figure"]');
+    const terrain = section.querySelector('[data-role="knowledge-island-terrain"]');
+    const next = section.querySelector('[data-role="knowledge-island-next-terrain"]');
+    const zoneOf = (name) => box(section.querySelector(`[data-role="knowledge-island-zone-${name}"]`));
+
+    return {
+      stage: figure?.getAttribute("data-stage") || "",
+      prosperity: figure?.getAttribute("data-prosperity") || "",
+      terrainStage: terrain?.getAttribute("data-terrain-stage") || "",
+      figure: box(figure),
+      terrain: box(terrain),
+      // 预告：有没有、大小、落在画布的哪个位置。
+      next: next
+        ? {
+            box: next.getBoundingClientRect().toJSON(),
+            points: next.querySelector(".knowledge-island__next-outline")?.getAttribute("points") || ""
+          }
+        : null,
+      hasGrassland: visible(section.querySelector(".knowledge-island__grassland")),
+      hasHighland: visible(section.querySelector(".knowledge-island__highland")),
+      hasBeam: visible(section.querySelector(".knowledge-island__beam")),
+      zones: {
+        westShore: zoneOf("west-shore"),
+        green: zoneOf("green"),
+        camp: zoneOf("camp"),
+        harbor: zoneOf("harbor"),
+        highland: zoneOf("highland")
+      },
+      // 建筑盒子，用来断言"它确实站在自己的街区里"。
+      centers: {
+        palm: box(section.querySelector(".knowledge-island__palm")),
+        camp: box(section.querySelector(".knowledge-island__camp")),
+        dock: box(section.querySelector(".knowledge-island__dock")),
+        boat: box(section.querySelector(".knowledge-island__boat")),
+        lighthouse: box(section.querySelector(".knowledge-island__lighthouse")),
+        beam: box(section.querySelector(".knowledge-island__beam")),
+        shell: box(section.querySelector(".knowledge-island__shell")),
+        rock: box(section.querySelector(".knowledge-island__rock"))
+      }
+    };
+  });
+}
+
+function centerOf(box) {
+  return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+}
+
+function isInside(inner, outer, tolerance = 12) {
+  const point = centerOf(inner);
+
+  return (
+    point.x >= outer.left - tolerance &&
+    point.x <= outer.right + tolerance &&
+    point.y >= outer.top - tolerance &&
+    point.y <= outer.bottom + tolerance
+  );
+}
+
+test.describe("知识岛地形随阶段长大", () => {
+  // 阈值仍然是 0 / 3 / 7 / 15 / 30，这一组把它们当"取样点"用，不是在重新定义阈值。
+  const STAMP_SAMPLES = Object.freeze([0, 3, 7, 15, 30]);
+  const STAGE_IDS = Object.freeze(["first-sight", "sprout-coast", "palm-camp", "explorer-dock", "knowledge-lighthouse"]);
+
+  test("0 / 3 / 7 / 15 / 30：岛身面积逐阶段明显递增", async ({ page }) => {
+    const samples = [];
+
+    for (const stampCount of STAMP_SAMPLES) {
+      await openHomeWithStampCount(page, stampCount);
+
+      const islandPage = await openKnowledgeIslandPage(page);
+      const state = await readIslandTerrainState(islandPage);
+
+      expect(state.stage, `${stampCount} 枚的阶段不对`).toBe(STAGE_IDS[STAMP_SAMPLES.indexOf(stampCount)]);
+      // 地形盒子带的阶段 id 必须和业务阶段一致：地形不许自己另判一次阶段。
+      expect(state.terrainStage).toBe(state.stage);
+
+      samples.push({ stampCount, area: state.terrain.width * state.terrain.height, width: state.terrain.width });
+    }
+
+    for (let index = 1; index < samples.length; index += 1) {
+      expect(
+        samples[index].area,
+        `${samples[index].stampCount} 枚的岛没有比 ${samples[index - 1].stampCount} 枚更大`
+      ).toBeGreaterThan(samples[index - 1].area);
+      expect(samples[index].width).toBeGreaterThan(samples[index - 1].width);
+    }
+
+    // 0 枚必须是一块明显的小沙洲：最大阶段至少是它的三倍面积。
+    const first = samples[0];
+    const last = samples[samples.length - 1];
+
+    expect(last.area / first.area).toBeGreaterThan(3);
+    expect(first.width).toBeLessThan(last.width * 0.5);
+  });
+
+  test("0 枚：明显的小沙洲，画面上没有任何绿色", async ({ page }) => {
+    await openHomeWithStampCount(page, 0);
+
+    const islandPage = await openKnowledgeIslandPage(page);
+    const state = await readIslandTerrainState(islandPage);
+
+    // 地形层：绿地和高地都不存在。
+    expect(state.hasGrassland).toBe(false);
+    expect(state.hasHighland).toBe(false);
+    // 岛屿本身的绿色元素也不存在。
+    await expect(islandPage.locator(".knowledge-island__sprout")).toHaveCount(0);
+    await expect(islandPage.locator(".knowledge-island__grass")).toHaveCount(0);
+    await expect(islandPage.locator(KNOWLEDGE_ISLAND_GRASSLAND)).toHaveCount(0);
+    // 0 枚也没有任何核心建筑。
+    await expect(islandPage.locator(".knowledge-island__palm")).toHaveCount(0);
+    await expect(islandPage.locator(".knowledge-island__camp")).toHaveCount(0);
+    await expect(islandPage.locator(".knowledge-island__dock")).toHaveCount(0);
+    await expect(islandPage.locator(".knowledge-island__lighthouse")).toHaveCount(0);
+    // 西侧海岸的贝壳 / 石头从第一阶段就存在，所以是有的（它们不属于后续阶段的建筑）。
+    expect(state.centers.shell).not.toBeNull();
+    expect(state.centers.rock).not.toBeNull();
+  });
+
+  test("星星再多也不会把地形或建筑往上解锁一级", async ({ page }) => {
+    const basics = [];
+
+    for (const starCount of [0, 21, 70]) {
+      await openHomeWithStampAndStarCount(page, { stampCount: 0, starCount });
+
+      const islandPage = await openKnowledgeIslandPage(page);
+      const state = await readIslandTerrainState(islandPage);
+
+      expect(state.stage, `${starCount} 颗星把阶段顶到了后面`).toBe("first-sight");
+      expect(state.hasGrassland).toBe(false);
+      // 繁荣度确实跟着星数走了（证明种子生效），但地形一动不动。
+      basics.push({ starCount, terrain: state.terrain, prosperity: state.prosperity });
+    }
+
+    expect(new Set(basics.map((item) => item.prosperity))).toEqual(new Set(["basic", "lush", "flourishing"]));
+    // 岛身盒子三档星星下尺寸相同。
+    for (const item of basics) {
+      expect(Math.round(item.terrain.width)).toBe(Math.round(basics[0].terrain.width));
+      expect(Math.round(item.terrain.height)).toBe(Math.round(basics[0].terrain.height));
+    }
+  });
+
+  test("7 枚同一阶段下，基础 / 丰盛 / 繁荣：岛一样大，但细节明显不同", async ({ page }) => {
+    const tiers = [];
+
+    for (const starCount of [0, 21, 70]) {
+      await openHomeWithStampAndStarCount(page, { stampCount: 7, starCount });
+
+      const islandPage = await openKnowledgeIslandPage(page);
+      const state = await readIslandTerrainState(islandPage);
+
+      expect(state.stage).toBe("palm-camp");
+      tiers.push({ starCount, state });
+    }
+
+    // 同一阶段 = 同一座岛：地形盒子必须完全一样，繁荣度只改细节。
+    for (const tier of tiers) {
+      expect(Math.round(tier.state.terrain.width)).toBe(Math.round(tiers[0].state.terrain.width));
+      expect(Math.round(tier.state.terrain.height)).toBe(Math.round(tiers[0].state.terrain.height));
+    }
+    expect(tiers.map((tier) => tier.state.prosperity)).toEqual(["basic", "lush", "flourishing"]);
+
+    // 丰盛比基础多出"被使用过"的东西（旗子 / 木箱 / 索具），细节肉眼可见地变多。
+    const detailCounts = [];
+
+    for (const starCount of [0, 21, 70]) {
+      await openHomeWithStampAndStarCount(page, { stampCount: 7, starCount });
+
+      const islandPage = await openKnowledgeIslandPage(page);
+      detailCounts.push(
+        await islandPage.evaluate(
+          (section) => [...section.querySelectorAll(".knowledge-island__terrain *")].filter((el) => el.getBoundingClientRect().width > 0).length
+        )
+      );
+    }
+
+    expect(detailCounts[1]).toBeGreaterThan(detailCounts[0]);
+    expect(detailCounts[2]).toBeGreaterThan(detailCounts[1]);
+  });
+});
+
+test.describe("知识岛建筑落在自己的街区里", () => {
+  test("30 枚：灯塔 / 码头 / 营地 / 西岸贝壳都在对应街区，灯塔光束锚在灯塔上", async ({ page }) => {
+    await openHomeWithStampCount(page, 30);
+
+    const islandPage = await openKnowledgeIslandPage(page);
+    const state = await readIslandTerrainState(islandPage);
+
+    expect(state.stage).toBe("knowledge-lighthouse");
+    expect(state.hasHighland).toBe(true);
+    expect(state.hasBeam).toBe(true);
+
+    // 每一栋建筑都站在自己的街区里。
+    expect(isInside(state.centers.palm, state.zones.camp), "椰树不在营地区").toBe(true);
+    expect(isInside(state.centers.camp, state.zones.camp), "帐篷不在营地区").toBe(true);
+    expect(isInside(state.centers.dock, state.zones.harbor), "码头不在东侧港口").toBe(true);
+    expect(isInside(state.centers.lighthouse, state.zones.highland), "灯塔不在高地区").toBe(true);
+    expect(isInside(state.centers.shell, state.zones.westShore), "贝壳不在西侧海岸").toBe(true);
+    // 小船停在码头外侧的海面上，所以允许落在港口街区的右边缘之外一点。
+    expect(isInside(state.centers.boat, state.zones.harbor, 40), "小船离港口太远").toBe(true);
+
+    // 光束必须从灯塔射出去：起点贴在灯塔的右边缘，而不是画布的某个绝对位置。
+    const lighthouseRight = state.centers.lighthouse.left + state.centers.lighthouse.width;
+    const beamStart = state.centers.beam.left;
+    const gap = Math.abs(beamStart - lighthouseRight);
+
+    expect(gap, "灯塔光束没有锚在灯塔上").toBeLessThan(24);
+    // 光束是灯塔的子元素（不是各自独立的画布绝对定位）。
+    expect(await islandPage.locator(".knowledge-island__lighthouse .knowledge-island__beam").count()).toBe(1);
+  });
+
+  test("15 枚还没有灯塔，也没有灯塔光束", async ({ page }) => {
+    await openHomeWithStampCount(page, 15);
+
+    const islandPage = await openKnowledgeIslandPage(page);
+    const state = await readIslandTerrainState(islandPage);
+
+    expect(state.stage).toBe("explorer-dock");
+    expect(state.hasBeam).toBe(false);
+    // 高地属于最高阶段的地形，15 枚时还没有。
+    expect(state.hasHighland).toBe(false);
+    await expect(islandPage.locator(".knowledge-island__lighthouse")).toHaveCount(0);
+    await expect(islandPage.locator(KNOWLEDGE_ISLAND_BEAM)).toHaveCount(0);
+    // 但码头和小船已经在了，而且都落在港口街区。
+    expect(isInside(state.centers.dock, state.zones.harbor), "码头不在东侧港口").toBe(true);
+  });
+});
+
+test.describe("知识岛下一阶段预告", () => {
+  test("0 / 3 / 7 / 15 枚：只预告紧邻的下一阶段，且那一圈一定更大", async ({ page }) => {
+    const pairs = [
+      { stampCount: 0, current: "first-sight", next: "sprout-coast" },
+      { stampCount: 3, current: "sprout-coast", next: "palm-camp" },
+      { stampCount: 7, current: "palm-camp", next: "explorer-dock" },
+      { stampCount: 15, current: "explorer-dock", next: "knowledge-lighthouse" }
+    ];
+
+    for (const pair of pairs) {
+      await openHomeWithStampCount(page, pair.stampCount);
+
+      const islandPage = await openKnowledgeIslandPage(page);
+      const state = await readIslandTerrainState(islandPage);
+      const expectation = await readIslandExpectation(page, pair.stampCount);
+
+      expect(state.stage).toBe(pair.current);
+      // 「下一阶段是谁」仍然来自 knowledgeIslandGrowth。
+      expect(expectation.nextStageId).toBe(pair.next);
+      expect(state.next, `${pair.current} 没有预告`).not.toBeNull();
+      // 预告一定比当前岛更大，否则就不成其为「扩张预告」。
+      expect(state.next.box.width).toBeGreaterThan(state.terrain.width);
+      expect(state.next.box.height).toBeGreaterThan(state.terrain.height);
+      // 预告画在画布之内，绝不会跑到画面外面。
+      expect(state.next.box.right).toBeLessThanOrEqual(state.figure.right + 1);
+      expect(state.next.box.left).toBeGreaterThanOrEqual(state.figure.left - 1);
+      // 预告只画岸线。
+      expect(state.next.points.length).toBeGreaterThan(0);
+      await expect(
+        islandPage.locator(`${KNOWLEDGE_ISLAND_NEXT_TERRAIN} .knowledge-island__next-outline`)
+      ).toHaveCount(1);
+    }
+  });
+
+  test("预告里没有任何建筑：只说岛会变大，不说会盖房子", async ({ page }) => {
+    await openHomeWithStampCount(page, 0);
+
+    const islandPage = await openKnowledgeIslandPage(page);
+    const preview = islandPage.locator(KNOWLEDGE_ISLAND_NEXT_TERRAIN);
+
+    await expect(preview).toHaveCount(1);
+    // 预告盒子里只有两条同形的 polygon（填充 + 虚线），没有任何建筑元素。
+    expect(await preview.locator("polygon").count()).toBe(2);
+    expect(
+      await preview
+        .locator(".knowledge-island__lighthouse, .knowledge-island__dock, .knowledge-island__palm, .knowledge-island__camp")
+        .count()
+    ).toBe(0);
+  });
+
+  test("30 枚（满级）：不显示预告", async ({ page }) => {
+    await openHomeWithStampCount(page, 30);
+
+    const islandPage = await openKnowledgeIslandPage(page);
+
+    await expect(islandPage.locator(KNOWLEDGE_ISLAND_NEXT_TERRAIN)).toHaveCount(0);
+  });
+
+  test("减少动态偏好下：预告不呼吸，但轮廓仍然看得见", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await openHomeWithStampCount(page, 7);
+
+    const islandPage = await openKnowledgeIslandPage(page);
+    const preview = islandPage.locator(KNOWLEDGE_ISLAND_NEXT_TERRAIN);
+
+    await expect(preview).toHaveCount(1);
+    const motion = await preview.evaluate((element) => ({
+      animationName: window.getComputedStyle(element).animationName,
+      opacity: Number(window.getComputedStyle(element).opacity)
+    }));
+
+    expect(motion.animationName).toBe("none");
+    // 静态强度仍然要看得见，不能因为关掉动画就淡成透明。
+    expect(motion.opacity).toBeGreaterThan(0.4);
+  });
+});
+
+test.describe("知识岛世界坐标不漂移", () => {
+  test("390 / 820 / 1440：同一座岛等比缩放，不横向溢出，建筑都在画面内", async ({ page }) => {
+    await openHomeWithStampAndStarCount(page, { stampCount: 30, starCount: 70 });
+
+    const ratios = [];
+
+    for (const width of [1440, 820, 390]) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+
+      const islandPage = await openKnowledgeIslandPage(page);
+      const state = await readIslandTerrainState(islandPage);
+      const layout = await page.evaluate(() => ({
+        docWidth: document.documentElement.scrollWidth,
+        viewport: window.innerWidth,
+        islandRight: Math.round(document.querySelector(".knowledge-island").getBoundingClientRect().right)
+      }));
+
+      expect(layout.docWidth, `${width} 宽出现横向溢出`).toBeLessThanOrEqual(layout.viewport);
+      expect(layout.islandRight, `${width} 宽知识岛卡片超出视口`).toBeLessThanOrEqual(layout.viewport);
+
+      // 岛身盒子完全落在画面盒子里。
+      expect(state.terrain.left).toBeGreaterThanOrEqual(state.figure.left - 1);
+      expect(state.terrain.right).toBeLessThanOrEqual(state.figure.right + 1);
+      expect(state.terrain.top).toBeGreaterThanOrEqual(state.figure.top - 1);
+      expect(state.terrain.bottom).toBeLessThanOrEqual(state.figure.bottom + 1);
+
+      // 街区是岛屿自身的相对坐标，所以街区之间、以及建筑与街区的相对关系在各宽度下保持一致。
+      ratios.push({
+        width,
+        terrainToFigure: state.terrain.width / state.figure.width,
+        lighthouseToHighland: state.centers.lighthouse.width / state.zones.highland.width,
+        campToTerrain: (state.centers.camp.left - state.terrain.left) / state.terrain.width
+      });
+    }
+
+    for (const ratio of ratios) {
+      expect(Math.abs(ratio.terrainToFigure - ratios[0].terrainToFigure), `${ratio.width} 宽岛身比例变了`).toBeLessThan(0.01);
+      expect(Math.abs(ratio.lighthouseToHighland - ratios[0].lighthouseToHighland), `${ratio.width} 宽灯塔比例变了`).toBeLessThan(0.02);
+      expect(Math.abs(ratio.campToTerrain - ratios[0].campToTerrain), `${ratio.width} 宽营地位置漂了`).toBeLessThan(0.02);
+    }
+  });
+});
 
 test.describe("知识岛独立页面", () => {
   test("深链可以直接打开，刷新后仍然是同一座岛", async ({ page }) => {

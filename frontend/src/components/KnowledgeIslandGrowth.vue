@@ -6,22 +6,36 @@
 // 岛上元素出现与否只看「当前阶段的 features 里有没有这件东西」——
 // 组件里没有第二份阶段顺序数组（顺序的唯一来源是 KNOWLEDGE_ISLAND_STAGES）。
 //
-// 画面是轻量 CSS 绘本地图：海水、浪线、沙洲、草地与小物件分层，
-// 阶段元素在同一幅小景里逐件长出来，不引入图片资产或额外渲染依赖。
+// 这一轮把「画什么」拆成三层，各管各的，互不越权：
+//   1) knowledgeIslandGrowth    → 业务真相：现在是第几阶段、下一阶段是谁、繁荣度几档。
+//   2) knowledgeIslandTerrain   → 纯视觉：这一阶段的岛身占地、岸线、绿地、高地，以及岛上的街区。
+//   3) 本组件                  → 把上面两者画出来，并按街区摆放繁荣细节。
 //
-// 繁荣度（星星）在本组件里的唯一职责：把「已经解锁的这些元素」画得更丰富一点。
-// 组件不判定繁荣度（那是 knowledgeIslandProsperity 的事），只读 props 上算好的 level / key。
-//
-// 最重要的不变量（改这个组件时务必保留）：
-//   每一件繁荣细节都必须挂在「该阶段的父元素」内部，或者本身是与阶段无关的
-//   贝壳 / 石头 / 云 / 海鸥 / 浪花。
-//   所以星星再多也不会让 0 枚印章的「初见小岛」提前长出草、花、椰树、帐篷、码头或灯塔。
+// 最重要的三条不变量（改这个组件时务必保留）：
+//   A. 元素挂在「街区」里，街区挂在「岛身盒子」里。
+//      岛身盒子由地形表给出，随阶段变大；街区坐标是岛屿自身的归一化坐标，与阶段无关。
+//      所以岛屿一旦变大，所有东西都跟着岛一起长大，不会漂到海里或压在岸外。
+//      这也是「贝壳 / 码头 / 灯塔不再依赖画布绝对位置」的全部实现方式。
+//   B. 每一件繁荣细节都写在它所属街区 / 建筑内部，父元素没解锁就不会被创建。
+//      星星再多也不会让 0 枚印章的「初见小岛」提前长出草、椰树、帐篷、码头或灯塔。
+//   C. 「下一阶段预告」只画下一阶段更宽的那条岸线（虚线轮廓），
+//      「下一阶段是谁」仍然由 knowledgeIslandGrowth 决定，组件不自己判断，
+//      满级（nextStage 为 null）时什么都不画。
 //
 // 尺寸（size）只影响「画多大」，不参与任何阶段或繁荣度判定：
-//   compact（默认）：收藏册 / 阶段庆祝弹层里的小卡片；
-//   hero：独立知识岛页面。画面内容、元素数量、解锁规则完全一样，
-//   只是把这一幅图按「固定设计宽度 + 整块缩放」放到整页宽度上，
-//   这样椰树、灯塔、贝壳这些固定像素尺寸的元素会和天空、海岸一起等比放大。
+//   compact（默认）：阶段庆祝弹层里的小卡片；
+//   hero：独立知识岛页面。
+// 两种尺寸共用同一套世界坐标（见下方「世界坐标」一节），所以构图完全一致，只是缩放倍数不同。
+import { computed } from "vue";
+import {
+  KNOWLEDGE_ISLAND_ZONES,
+  buildKnowledgeIslandNextTerrainPreview,
+  buildTerrainClipPath,
+  buildTerrainFootprintStyle,
+  buildZoneStyle,
+  getKnowledgeIslandTerrain
+} from "../utils/knowledgeIslandTerrain.js";
+
 const props = defineProps({
   island: {
     type: Object,
@@ -48,8 +62,8 @@ function currentStageFeatures() {
   return props.island?.currentStage?.features || [];
 }
 
-// 阶段配置里的 features 只增不减，所以“现在岛上有这件东西”=
-// “当前阶段已经包含它”。
+// 阶段配置里的 features 只增不减，所以"现在岛上有这件东西"=
+// "当前阶段已经包含它"。
 function hasIslandFeature(feature) {
   return currentStageFeatures().includes(feature);
 }
@@ -71,6 +85,28 @@ function prosperityKey() {
 
   return key || "basic";
 }
+
+// ---------------------------------------------------------------------------
+// 地形：这一阶段的岛长什么样（占地 / 岸线 / 绿地 / 高地）。
+// 全部来自 knowledgeIslandTerrain，组件里不再出现任何岛屿尺寸数字。
+// ---------------------------------------------------------------------------
+const terrain = computed(() => getKnowledgeIslandTerrain(props.island?.currentStage?.id));
+const footprintStyle = computed(() => buildTerrainFootprintStyle(terrain.value));
+const groundClipPath = computed(() => buildTerrainClipPath(terrain.value.ground));
+const grassClipPath = computed(() => buildTerrainClipPath(terrain.value.grass));
+const reliefClipPath = computed(() => buildTerrainClipPath(terrain.value.relief));
+// 绿地 / 高地有没有，由地形表决定（第一阶段草地就是 null，所以 0 枚时画面上没有任何绿色）。
+const hasGrass = computed(() => Boolean(terrain.value.grass));
+const hasRelief = computed(() => Boolean(terrain.value.relief));
+
+// 街区（岛上的"街区"）：坐标与阶段无关，五个阶段共用同一份。
+function zoneStyle(zoneId) {
+  return buildZoneStyle(KNOWLEDGE_ISLAND_ZONES[zoneId]);
+}
+
+// 下一阶段预告：谁才是下一阶段由 knowledgeIslandGrowth 说了算，
+// 这里只是拿它的 id 去地形表里取那条更宽的岸线；满级时自动是 null。
+const nextTerrainPreview = computed(() => buildKnowledgeIslandNextTerrainPreview(props.island));
 </script>
 
 <template>
@@ -93,10 +129,11 @@ function prosperityKey() {
       :data-prosperity="prosperityKey()"
       :aria-label="`知识岛现在的样子：${island.currentStage.name}，${island.prosperityLabel}。${island.currentStage.summary}`"
     >
-      <!-- 舞台层：整幅图都画在这一个盒子里。compact 尺寸下它是 display: contents，
-           等于没有这一层；hero 尺寸下它按固定设计宽度绘制，再整块放大到整页宽度，
-           这样固定像素尺寸的建筑与细节会跟着天空、海岸一起等比放大。 -->
-      <div class="knowledge-island__stage">
+      <!-- 世界画布：固定 400 × 225 的设计画布（16:9），内部所有尺寸都按它换算。
+           类名刻意用 __world 而不是 __stage：__stage 这个名字已经被信息区里
+           「当前：XX」那个段落占用了，两处同名会让那条规则把段落也变成绝对定位、
+           铺满整张卡片（庆祝弹层里的按钮就是这样被盖住的）。 -->
+      <div class="knowledge-island__world">
         <!-- 天空：留出一块明亮的绘本留白，再用太阳与云朵交代远景。 -->
         <span class="knowledge-island__sun" aria-hidden="true"></span>
         <span class="knowledge-island__cloud knowledge-island__cloud--left" aria-hidden="true"></span>
@@ -110,7 +147,8 @@ function prosperityKey() {
         <span v-if="isProsperityAtLeast(1)" class="knowledge-island__gull knowledge-island__gull--b" aria-hidden="true"></span>
         <span v-if="isProsperityAtLeast(2)" class="knowledge-island__gull knowledge-island__gull--c" aria-hidden="true"></span>
 
-        <!-- 海水分三层：远处的浅蓝、近处的深蓝和贴着岸边的浪花。 -->
+        <!-- 海水分三层：远处的浅蓝、近处的深蓝和贴着岸边的浪线。
+             海是画布级背景，不跟着岛走（岛在水里，海不会跟着岛搬家）。 -->
         <span class="knowledge-island__sea" aria-hidden="true"></span>
         <span class="knowledge-island__sea-depth" aria-hidden="true"></span>
         <span class="knowledge-island__surf" aria-hidden="true">
@@ -125,110 +163,205 @@ function prosperityKey() {
           <span v-if="isProsperityAtLeast(2)" class="knowledge-island__surf-line knowledge-island__surf-line--flourishing-b"></span>
         </span>
 
-        <!-- 最高阶段才点亮的灯塔光束；繁荣度只调亮度和宽度，不负责解锁。 -->
-        <span
-          v-if="hasIslandFeature('灯光')"
-          class="knowledge-island__beam"
-          :class="`knowledge-island__beam--${prosperityKey()}`"
+        <!-- 下一阶段预告：只画「下一阶段更宽的那条岸线」，一条淡虚线 + 一点微光。
+             画的是地形表里 nextStage 对应的那条真实岸线，不是当前阶段的放大版；
+             谁是下一阶段仍然由 knowledgeIslandGrowth 决定（满级时这里整块不渲染）。
+             故意不画任何"幽灵建筑"：预告只说"岛会变大"，不说"会盖房子"。 -->
+        <svg
+          v-if="nextTerrainPreview"
+          class="knowledge-island__next-terrain"
+          data-role="knowledge-island-next-terrain"
+          :style="nextTerrainPreview.footprintStyle"
+          viewBox="0 0 100 100"
+          preserveAspectRatio="none"
           aria-hidden="true"
-        ></span>
+        >
+          <polygon class="knowledge-island__next-fill" :points="nextTerrainPreview.points" />
+          <polygon class="knowledge-island__next-outline" :points="nextTerrainPreview.points" />
+        </svg>
 
-        <!-- 岛影、沙滩和草地内的纹理共同组成不规则岸线。 -->
-        <span class="knowledge-island__island-shadow" aria-hidden="true"></span>
-        <span class="knowledge-island__ground" aria-hidden="true"></span>
-        <span class="knowledge-island__shoreline" aria-hidden="true"></span>
-        <span class="knowledge-island__rock knowledge-island__rock--left" aria-hidden="true"></span>
-        <span class="knowledge-island__rock knowledge-island__rock--right" aria-hidden="true"></span>
-        <span class="knowledge-island__shell" aria-hidden="true"></span>
-        <!-- 繁荣细节里的贝壳与石头：这两个元素从初见小岛起就一直存在，
-             所以只挂繁荣度门禁，不挂任何阶段门禁，也就绝不会越级解锁后续建筑。 -->
-        <span v-if="isProsperityAtLeast(1)" class="knowledge-island__shell knowledge-island__shell--lush-a" aria-hidden="true"></span>
-        <span v-if="isProsperityAtLeast(1)" class="knowledge-island__shell knowledge-island__shell--lush-b" aria-hidden="true"></span>
-        <span v-if="isProsperityAtLeast(2)" class="knowledge-island__shell knowledge-island__shell--flourishing-a" aria-hidden="true"></span>
-        <span v-if="isProsperityAtLeast(2)" class="knowledge-island__shell knowledge-island__shell--flourishing-b" aria-hidden="true"></span>
-        <span v-if="isProsperityAtLeast(1)" class="knowledge-island__rock knowledge-island__rock--lush" aria-hidden="true"></span>
-        <span v-if="isProsperityAtLeast(2)" class="knowledge-island__rock knowledge-island__rock--flourishing" aria-hidden="true"></span>
+        <!-- ===================== 岛身（随阶段改变骨架） =====================
+             整座岛就是这一个盒子：位置与尺寸全部来自地形表。
+             岛变大时，这个盒子变大，里面的街区跟着一起长大和移动——
+             这就是「印章决定岛有多大、地形长到哪里」的全部实现。 -->
+        <div
+          class="knowledge-island__terrain"
+          data-role="knowledge-island-terrain"
+          :data-terrain-stage="terrain.id"
+          :style="footprintStyle"
+        >
+          <span class="knowledge-island__island-shadow" aria-hidden="true"></span>
+          <!-- 岸线浪花环：和岸线是同一条形状，只是整体放大一圈、白一些，
+               所以任何阶段都严丝合缝地贴着海岸（它和岛身盒子一起缩放）。
+               两个元素共用同一份地形表的形状点，不会画出两条不一样的海岸。 -->
+          <span
+            class="knowledge-island__shore-ring"
+            :style="{ clipPath: groundClipPath }"
+            aria-hidden="true"
+          ></span>
+          <span class="knowledge-island__ground" :style="{ clipPath: groundClipPath }" aria-hidden="true"></span>
+          <!-- 绿地：地形表里这一阶段没有草地时就是 null，0 枚时这里什么都不渲染。 -->
+          <span
+            v-if="hasGrass"
+            class="knowledge-island__grassland"
+            :style="{ clipPath: grassClipPath }"
+            aria-hidden="true"
+          ></span>
+          <!-- 高地：只有最高阶段的地形里才有，灯塔的地基。 -->
+          <span
+            v-if="hasRelief"
+            class="knowledge-island__highland"
+            :style="{ clipPath: reliefClipPath }"
+            aria-hidden="true"
+          ></span>
 
-        <!-- 下面这些是成长元素，名称与 features 保持一一对应。
-             每一组内部的繁荣细节都写在这个元素的 v-if 里面：
-             父元素没解锁（阶段没到），里面的细节就一个都不会被创建。 -->
-        <span v-if="hasIslandFeature('小草丛')" class="knowledge-island__grass" aria-hidden="true">
-          <span class="knowledge-island__grass-blade knowledge-island__grass-blade--a"></span>
-          <span class="knowledge-island__grass-blade knowledge-island__grass-blade--b"></span>
-          <span class="knowledge-island__grass-blade knowledge-island__grass-blade--c"></span>
-          <span v-if="isProsperityAtLeast(1)" class="knowledge-island__grass-blade knowledge-island__grass-blade--d"></span>
-          <span v-if="isProsperityAtLeast(1)" class="knowledge-island__grass-blade knowledge-island__grass-blade--e"></span>
-          <span v-if="isProsperityAtLeast(2)" class="knowledge-island__grass-blade knowledge-island__grass-blade--f"></span>
-          <span v-if="isProsperityAtLeast(1)" class="knowledge-island__flower knowledge-island__flower--a"></span>
-          <span v-if="isProsperityAtLeast(1)" class="knowledge-island__flower knowledge-island__flower--b"></span>
-          <span v-if="isProsperityAtLeast(2)" class="knowledge-island__flower knowledge-island__flower--c"></span>
-        </span>
+          <!-- ============ 西侧海岸：贝壳 / 石头 / 浪花 ============
+               这一整片从第一阶段就存在，所以只挂繁荣度门禁、不挂阶段门禁。 -->
+          <div
+            class="knowledge-island__zone knowledge-island__zone--west-shore"
+            data-role="knowledge-island-zone-west-shore"
+            :style="zoneStyle('west-shore')"
+            aria-hidden="true"
+          >
+            <span class="knowledge-island__surf-ring knowledge-island__surf-ring--a"></span>
+            <span v-if="isProsperityAtLeast(1)" class="knowledge-island__surf-ring knowledge-island__surf-ring--b"></span>
+            <span v-if="isProsperityAtLeast(2)" class="knowledge-island__surf-ring knowledge-island__surf-ring--c"></span>
+            <span class="knowledge-island__shell" aria-hidden="true"></span>
+            <span v-if="isProsperityAtLeast(1)" class="knowledge-island__shell knowledge-island__shell--lush-a" aria-hidden="true"></span>
+            <span v-if="isProsperityAtLeast(1)" class="knowledge-island__shell knowledge-island__shell--lush-b" aria-hidden="true"></span>
+            <span v-if="isProsperityAtLeast(2)" class="knowledge-island__shell knowledge-island__shell--flourishing" aria-hidden="true"></span>
+            <span class="knowledge-island__rock" aria-hidden="true"></span>
+            <span v-if="isProsperityAtLeast(1)" class="knowledge-island__rock knowledge-island__rock--lush" aria-hidden="true"></span>
+            <span v-if="isProsperityAtLeast(2)" class="knowledge-island__rock knowledge-island__rock--flourishing" aria-hidden="true"></span>
+          </div>
 
-        <span v-if="hasIslandFeature('嫩芽')" class="knowledge-island__sprout" aria-hidden="true">
-          <span class="knowledge-island__sprout-stem"></span>
-          <span class="knowledge-island__sprout-leaf knowledge-island__sprout-leaf--left"></span>
-          <span class="knowledge-island__sprout-leaf knowledge-island__sprout-leaf--right"></span>
-          <span v-if="isProsperityAtLeast(1)" class="knowledge-island__sprout-leaf knowledge-island__sprout-leaf--lush-left"></span>
-          <span v-if="isProsperityAtLeast(1)" class="knowledge-island__sprout-leaf knowledge-island__sprout-leaf--lush-right"></span>
-          <span v-if="isProsperityAtLeast(2)" class="knowledge-island__sprout-leaf knowledge-island__sprout-leaf--flourishing-left"></span>
-          <span v-if="isProsperityAtLeast(2)" class="knowledge-island__sprout-leaf knowledge-island__sprout-leaf--flourishing-right"></span>
-        </span>
+          <!-- ============ 中央绿地：嫩芽 / 草丛 / 花 ============
+               全部挂在 features 上：0 枚时这一整块不会被创建。 -->
+          <div
+            v-if="hasIslandFeature('嫩芽') || hasIslandFeature('小草丛')"
+            class="knowledge-island__zone knowledge-island__zone--green"
+            data-role="knowledge-island-zone-green"
+            :style="zoneStyle('green')"
+            aria-hidden="true"
+          >
+            <span v-if="hasIslandFeature('嫩芽')" class="knowledge-island__sprout" aria-hidden="true">
+              <span class="knowledge-island__sprout-stem"></span>
+              <span class="knowledge-island__sprout-leaf knowledge-island__sprout-leaf--left"></span>
+              <span class="knowledge-island__sprout-leaf knowledge-island__sprout-leaf--right"></span>
+              <span v-if="isProsperityAtLeast(1)" class="knowledge-island__sprout-leaf knowledge-island__sprout-leaf--lush-left"></span>
+              <span v-if="isProsperityAtLeast(1)" class="knowledge-island__sprout-leaf knowledge-island__sprout-leaf--lush-right"></span>
+              <span v-if="isProsperityAtLeast(2)" class="knowledge-island__sprout-leaf knowledge-island__sprout-leaf--flourishing"></span>
+            </span>
 
-        <span v-if="hasIslandFeature('椰子树')" class="knowledge-island__palm" aria-hidden="true">
-          <span class="knowledge-island__palm-trunk"></span>
-          <span class="knowledge-island__palm-crown">
-            <span class="knowledge-island__palm-leaf knowledge-island__palm-leaf--a"></span>
-            <span class="knowledge-island__palm-leaf knowledge-island__palm-leaf--b"></span>
-            <span class="knowledge-island__palm-leaf knowledge-island__palm-leaf--c"></span>
-            <span class="knowledge-island__palm-leaf knowledge-island__palm-leaf--d"></span>
-            <span v-if="isProsperityAtLeast(1)" class="knowledge-island__palm-leaf knowledge-island__palm-leaf--e"></span>
-            <span v-if="isProsperityAtLeast(2)" class="knowledge-island__palm-leaf knowledge-island__palm-leaf--f"></span>
-          </span>
-          <span class="knowledge-island__palm-fruit"></span>
-          <!-- 椰子是椰树自己的细节：写在 椰子树 的 v-if 里，没到椰林营地就永远不存在。 -->
-          <span v-if="isProsperityAtLeast(1)" class="knowledge-island__palm-fruit knowledge-island__palm-fruit--lush"></span>
-          <span v-if="isProsperityAtLeast(2)" class="knowledge-island__palm-fruit knowledge-island__palm-fruit--flourishing"></span>
-        </span>
+            <span v-if="hasIslandFeature('小草丛')" class="knowledge-island__grass" aria-hidden="true">
+              <span class="knowledge-island__grass-blade knowledge-island__grass-blade--a"></span>
+              <span class="knowledge-island__grass-blade knowledge-island__grass-blade--b"></span>
+              <span class="knowledge-island__grass-blade knowledge-island__grass-blade--c"></span>
+              <!-- 丰盛开始出现"第二丛草 + 小花"：多出来的是另一种东西，不只是同一丛变多。 -->
+              <span v-if="isProsperityAtLeast(1)" class="knowledge-island__grass-extra"></span>
+              <span v-if="isProsperityAtLeast(1)" class="knowledge-island__flower knowledge-island__flower--a"></span>
+              <span v-if="isProsperityAtLeast(1)" class="knowledge-island__flower knowledge-island__flower--b"></span>
+              <span v-if="isProsperityAtLeast(2)" class="knowledge-island__flower knowledge-island__flower--c"></span>
+              <span v-if="isProsperityAtLeast(2)" class="knowledge-island__flower knowledge-island__flower--d"></span>
+            </span>
+          </div>
 
-        <span v-if="hasIslandFeature('小帐篷')" class="knowledge-island__camp" aria-hidden="true">
-          <span class="knowledge-island__camp-body"></span>
-          <span class="knowledge-island__camp-door"></span>
-          <span class="knowledge-island__camp-flag"></span>
-          <span v-if="isProsperityAtLeast(1)" class="knowledge-island__camp-flag knowledge-island__camp-flag--lush"></span>
-          <span v-if="isProsperityAtLeast(1)" class="knowledge-island__camp-crate"></span>
-          <span v-if="isProsperityAtLeast(2)" class="knowledge-island__camp-crate knowledge-island__camp-crate--flourishing"></span>
-          <span v-if="isProsperityAtLeast(2)" class="knowledge-island__camp-campfire"></span>
-        </span>
+          <!-- ============ 营地区：椰树 / 帐篷 / 营火 ============
+               繁荣度三档在这块是"性质"变化而不是数量变化：
+                 基础 = 一顶帐篷；
+                 丰盛 = 旗子 + 木箱（像有人在这儿扎过营）；
+                 繁荣 = 营火 + 炊烟（岛上有人在生活）。 -->
+          <div
+            v-if="hasIslandFeature('椰子树') || hasIslandFeature('小帐篷')"
+            class="knowledge-island__zone knowledge-island__zone--camp"
+            data-role="knowledge-island-zone-camp"
+            :style="zoneStyle('camp')"
+            aria-hidden="true"
+          >
+            <span v-if="hasIslandFeature('椰子树')" class="knowledge-island__palm" aria-hidden="true">
+              <span class="knowledge-island__palm-trunk"></span>
+              <span class="knowledge-island__palm-crown">
+                <span class="knowledge-island__palm-leaf knowledge-island__palm-leaf--a"></span>
+                <span class="knowledge-island__palm-leaf knowledge-island__palm-leaf--b"></span>
+                <span class="knowledge-island__palm-leaf knowledge-island__palm-leaf--c"></span>
+                <span class="knowledge-island__palm-leaf knowledge-island__palm-leaf--d"></span>
+                <span v-if="isProsperityAtLeast(1)" class="knowledge-island__palm-leaf knowledge-island__palm-leaf--e"></span>
+                <span v-if="isProsperityAtLeast(2)" class="knowledge-island__palm-leaf knowledge-island__palm-leaf--f"></span>
+              </span>
+              <span class="knowledge-island__palm-fruit"></span>
+              <span v-if="isProsperityAtLeast(1)" class="knowledge-island__palm-fruit knowledge-island__palm-fruit--lush"></span>
+              <span v-if="isProsperityAtLeast(2)" class="knowledge-island__palm-fruit knowledge-island__palm-fruit--flourishing"></span>
+            </span>
 
-        <span v-if="hasIslandFeature('小码头')" class="knowledge-island__dock" aria-hidden="true">
-          <span class="knowledge-island__dock-plank knowledge-island__dock-plank--a"></span>
-          <span class="knowledge-island__dock-plank knowledge-island__dock-plank--b"></span>
-          <span class="knowledge-island__dock-post knowledge-island__dock-post--a"></span>
-          <span class="knowledge-island__dock-post knowledge-island__dock-post--b"></span>
-          <span v-if="isProsperityAtLeast(1)" class="knowledge-island__dock-plank knowledge-island__dock-plank--lush"></span>
-          <span v-if="isProsperityAtLeast(1)" class="knowledge-island__dock-post knowledge-island__dock-post--lush"></span>
-          <span v-if="isProsperityAtLeast(2)" class="knowledge-island__dock-net"></span>
-        </span>
+            <span v-if="hasIslandFeature('小帐篷')" class="knowledge-island__camp" aria-hidden="true">
+              <span class="knowledge-island__camp-body"></span>
+              <span class="knowledge-island__camp-door"></span>
+              <!-- 旗与木箱从丰盛档才出现：基础档的营地就是干干净净一顶帐篷。 -->
+              <span v-if="isProsperityAtLeast(1)" class="knowledge-island__camp-flag"></span>
+              <span v-if="isProsperityAtLeast(1)" class="knowledge-island__camp-crate"></span>
+              <span v-if="isProsperityAtLeast(2)" class="knowledge-island__camp-crate knowledge-island__camp-crate--flourishing"></span>
+              <!-- 营火与炊烟是繁荣档：岛上真的有人在生活。 -->
+              <span v-if="isProsperityAtLeast(2)" class="knowledge-island__camp-campfire"></span>
+              <span v-if="isProsperityAtLeast(2)" class="knowledge-island__camp-smoke"></span>
+            </span>
+          </div>
 
-        <span v-if="hasIslandFeature('泊岸小船')" class="knowledge-island__boat" aria-hidden="true">
-          <span class="knowledge-island__boat-hull"></span>
-          <span class="knowledge-island__boat-mast"></span>
-          <span class="knowledge-island__boat-sail"></span>
-          <span v-if="isProsperityAtLeast(1)" class="knowledge-island__boat-rigging"></span>
-          <span v-if="isProsperityAtLeast(2)" class="knowledge-island__boat-anchor"></span>
-        </span>
+          <!-- ============ 东侧港口：码头 / 小船 ============
+               码头与小船整体挂在 features 上；岛的岬角也是从这一阶段的地形里长出来的，
+               所以码头永远贴着东岸，而不是浮在一片沙洲旁边的水面上。 -->
+          <div
+            v-if="hasIslandFeature('小码头') || hasIslandFeature('泊岸小船')"
+            class="knowledge-island__zone knowledge-island__zone--harbor"
+            data-role="knowledge-island-zone-harbor"
+            :style="zoneStyle('harbor')"
+            aria-hidden="true"
+          >
+            <span v-if="hasIslandFeature('小码头')" class="knowledge-island__dock" aria-hidden="true">
+              <span class="knowledge-island__dock-plank knowledge-island__dock-plank--a"></span>
+              <span class="knowledge-island__dock-plank knowledge-island__dock-plank--b"></span>
+              <span class="knowledge-island__dock-post knowledge-island__dock-post--a"></span>
+              <span class="knowledge-island__dock-post knowledge-island__dock-post--b"></span>
+              <span v-if="isProsperityAtLeast(1)" class="knowledge-island__dock-plank knowledge-island__dock-plank--lush"></span>
+              <span v-if="isProsperityAtLeast(1)" class="knowledge-island__dock-post knowledge-island__dock-post--lush"></span>
+              <span v-if="isProsperityAtLeast(1)" class="knowledge-island__dock-bollard"></span>
+              <span v-if="isProsperityAtLeast(2)" class="knowledge-island__dock-net"></span>
+              <span v-if="isProsperityAtLeast(2)" class="knowledge-island__dock-lantern"></span>
+            </span>
 
-        <span v-if="hasIslandFeature('灯塔')" class="knowledge-island__lighthouse" aria-hidden="true">
-          <span class="knowledge-island__lighthouse-roof"></span>
-          <span class="knowledge-island__lighthouse-tower"></span>
-          <span class="knowledge-island__lighthouse-window knowledge-island__lighthouse-window--a"></span>
-          <span class="knowledge-island__lighthouse-window knowledge-island__lighthouse-window--b"></span>
-          <span class="knowledge-island__lighthouse-light"></span>
-          <!-- 窗灯与灯塔基座都是灯塔自己的细节：写在 灯塔 的 v-if 里。 -->
-          <span v-if="isProsperityAtLeast(1)" class="knowledge-island__lighthouse-window knowledge-island__lighthouse-window--lush"></span>
-          <span v-if="isProsperityAtLeast(2)" class="knowledge-island__lighthouse-window knowledge-island__lighthouse-window--flourishing"></span>
-          <span v-if="isProsperityAtLeast(2)" class="knowledge-island__lighthouse-base"></span>
-        </span>
+            <span v-if="hasIslandFeature('泊岸小船')" class="knowledge-island__boat" aria-hidden="true">
+              <span class="knowledge-island__boat-hull"></span>
+              <span class="knowledge-island__boat-mast"></span>
+              <span class="knowledge-island__boat-sail"></span>
+              <span v-if="isProsperityAtLeast(1)" class="knowledge-island__boat-rigging"></span>
+              <span v-if="isProsperityAtLeast(1)" class="knowledge-island__boat-flag"></span>
+              <span v-if="isProsperityAtLeast(2)" class="knowledge-island__boat-anchor"></span>
+            </span>
+          </div>
+
+          <!-- ============ 高地区：灯塔 ============
+               灯塔连同它的光束都在这一个街区里；光束是灯塔的子元素，
+               所以无论岛屿怎么变，光都从灯塔自己的窗口射出去，不会飘到别处。 -->
+          <div
+            v-if="hasIslandFeature('灯塔')"
+            class="knowledge-island__zone knowledge-island__zone--highland"
+            data-role="knowledge-island-zone-highland"
+            :style="zoneStyle('highland')"
+            aria-hidden="true"
+          >
+            <span class="knowledge-island__lighthouse" aria-hidden="true">
+              <span class="knowledge-island__lighthouse-roof"></span>
+              <span class="knowledge-island__lighthouse-tower"></span>
+              <span class="knowledge-island__lighthouse-window knowledge-island__lighthouse-window--a"></span>
+              <span class="knowledge-island__lighthouse-window knowledge-island__lighthouse-window--b"></span>
+              <span class="knowledge-island__lighthouse-light"></span>
+              <!-- 光束是灯塔的子元素：起点永远钉在灯塔的窗口上。 -->
+              <span class="knowledge-island__beam" :class="`knowledge-island__beam--${prosperityKey()}`"></span>
+              <span v-if="isProsperityAtLeast(1)" class="knowledge-island__lighthouse-window knowledge-island__lighthouse-window--lush"></span>
+              <span v-if="isProsperityAtLeast(2)" class="knowledge-island__lighthouse-window knowledge-island__lighthouse-window--flourishing"></span>
+              <span v-if="isProsperityAtLeast(2)" class="knowledge-island__lighthouse-base"></span>
+            </span>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -278,53 +411,80 @@ function prosperityKey() {
   background:
     linear-gradient(170deg, rgba(238, 252, 249, 0.98) 0%, rgba(255, 252, 243, 0.94) 100%);
   box-sizing: border-box;
+  min-width: 0;
 }
 
-/* 舞台层：画面里所有元素的共同父级。
-   compact（默认）是 display: contents —— 盒子不参与布局，子元素仍然直接相对
-   .knowledge-island__figure 定位，所以小卡片里的画面和以前逐像素一致。
-   hero 尺寸下才把它变成一个真实的盒子，规则见文件末尾的「尺寸：hero」一节。 */
-.knowledge-island__stage {
-  display: contents;
-}
-
-/* 一幅小小的冒险地图：比例足够高，让岛岸与阶段建筑有呼吸空间。 */
+/* ===========================================================================
+   世界坐标
+   ---------------------------------------------------------------------------
+   整幅图都画在一个固定 400 × 225（16:9）的设计画布上，
+   然后按画面宽度整体等比缩放：
+     scale = 画面宽度 / 400
+   这样做换来三件事：
+     1) compact 与 hero 用的是同一套坐标、同一个画布 → 同一座岛在两个尺寸下构图完全一致，
+        只是缩放倍数不同（以前 compact 是 16:8.5、hero 是 16:9 + 视口分档 scale，两边构图会走样）；
+     2) 固定像素的建筑（椰树、帐篷、灯塔）会跟着天空和海岸一起等比放大，
+        搬到整页宽度上时不会缩成岛上的小点；
+     3) 画布缩放后正好等于画面盒，永远不会超出画面，因此不会横向溢出。
+   画面盒是 inline-size 容器，所以 100cqw 就是它的宽度，缩放倍数直接由它算出来，
+   不需要任何视口分档的魔法数字。
+   =========================================================================== */
 .knowledge-island__figure {
   position: relative;
   isolation: isolate;
   overflow: hidden;
+  container-type: inline-size;
   width: 100%;
-  aspect-ratio: 16 / 8.5;
-  max-height: 220px;
-  min-height: 118px;
+  aspect-ratio: 16 / 9;
   border: 1px solid rgba(50, 143, 174, 0.22);
   border-radius: 18px;
   background:
-    radial-gradient(circle at 78% 16%, rgba(255, 255, 255, 0.74) 0 13%, transparent 14%),
+    radial-gradient(circle at 82% 12%, rgba(255, 255, 255, 0.5) 0 5%, transparent 5.5%),
     linear-gradient(180deg, #ccecf8 0%, #e8f8fb 57%, #dff3f3 100%);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.92),
     0 10px 18px -18px rgba(37, 106, 126, 0.55);
 }
 
+/* 世界画布：整个 400 × 225（16:9）的设计坐标系。
+   --ki-u 是「一个设计像素在真实画面里有多大」：画面盒是 inline-size 容器，
+   所以 100cqw 就是画面宽度，除以 400 得到设计单位。
+   画布用 inset: 0 铺满画面盒，画面盒本身是 16:9，
+   于是 compact 与 hero 拿到的是同一套坐标、同一个画布、同一份构图，只是尺寸不同。
+   所有内部元素都写成 calc(var(--ki-u) * N)，N 就是设计画布上的像素数：
+     - 椰树 34、灯塔 22、贝壳 11……这些数字只在这套坐标里有意义；
+     - 画面被放大多少倍，所有元素就等比放大多少倍，不会缩成岛上的小点；
+     - 画布铺满画面盒，永远不会超出画面，因此不会横向溢出。
+
+   类名必须是 __world，不能叫 __stage：信息区里「当前：XX」那个段落
+   已经占用了 .knowledge-island__stage，两处同名会互相污染
+   （同名规则会让那个段落也变成 position: absolute + inset: 0，
+     于是它铺满整张庆祝弹层卡片，把下面「知道啦」按钮整个盖住）。 */
+.knowledge-island__world {
+  --ki-u: calc(100cqw / 400);
+  position: absolute;
+  inset: 0;
+}
+
+/* ---------- 天空 ---------- */
 .knowledge-island__sun {
   position: absolute;
-  top: 10%;
-  right: 10%;
-  width: clamp(22px, 5vw, 36px);
-  aspect-ratio: 1;
-  border: clamp(2px, 0.45vw, 4px) solid rgba(255, 250, 211, 0.9);
+  top: calc(var(--ki-u) * 14);
+  right: calc(var(--ki-u) * 24);
+  width: calc(var(--ki-u) * 22);
+  height: calc(var(--ki-u) * 22);
+  border: calc(var(--ki-u) * 2) solid rgba(255, 250, 211, 0.9);
   border-radius: 50%;
   background: #ffd979;
-  box-shadow: 0 0 0 5px rgba(255, 232, 155, 0.22), 0 8px 15px -10px rgba(214, 142, 37, 0.6);
+  box-shadow: 0 0 0 calc(var(--ki-u) * 4) rgba(255, 232, 155, 0.22), 0 calc(var(--ki-u) * 8) calc(var(--ki-u) * 15) calc(var(--ki-u) * -10) rgba(214, 142, 37, 0.6);
   z-index: 1;
 }
 
 .knowledge-island__cloud {
   position: absolute;
-  width: 17%;
-  height: 8%;
-  border-radius: 999px;
+  width: calc(var(--ki-u) * 62);
+  height: calc(var(--ki-u) * 18);
+  border-radius: calc(var(--ki-u) * 999);
   background: rgba(255, 255, 255, 0.72);
   opacity: 0.86;
   z-index: 1;
@@ -352,41 +512,91 @@ function prosperityKey() {
 }
 
 .knowledge-island__cloud--left {
-  top: 19%;
-  left: 8%;
+  top: calc(var(--ki-u) * 26);
+  left: calc(var(--ki-u) * 34);
   transform: scale(0.78);
 }
 
 .knowledge-island__cloud--right {
-  top: 30%;
-  right: 28%;
+  top: calc(var(--ki-u) * 46);
+  left: calc(var(--ki-u) * 248);
   transform: scale(0.58);
   opacity: 0.56;
 }
 
+.knowledge-island__cloud--flourishing {
+  top: calc(var(--ki-u) * 16);
+  left: calc(var(--ki-u) * 150);
+  transform: scale(0.5);
+  opacity: 0.66;
+}
+
 .knowledge-island__sky-dot {
   position: absolute;
-  width: 5px;
-  height: 5px;
+  width: calc(var(--ki-u) * 5);
+  height: calc(var(--ki-u) * 5);
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.9);
   z-index: 1;
 }
 
 .knowledge-island__sky-dot--a {
-  top: 15%;
-  left: 31%;
+  top: calc(var(--ki-u) * 24);
+  left: calc(var(--ki-u) * 124);
 }
 
 .knowledge-island__sky-dot--b {
-  top: 31%;
-  left: 43%;
-  width: 4px;
-  height: 4px;
+  top: calc(var(--ki-u) * 52);
+  left: calc(var(--ki-u) * 172);
+  width: calc(var(--ki-u) * 4);
+  height: calc(var(--ki-u) * 4);
   opacity: 0.72;
 }
 
-/* 远处浅海 + 近处深海，海平面用不规则曲线而不是一条直线。 */
+/* 海鸥：两笔就够像一只鸟，不引入动画系统。 */
+.knowledge-island__gull {
+  position: absolute;
+  width: calc(var(--ki-u) * 9);
+  height: calc(var(--ki-u) * 4);
+  border-top: calc(var(--ki-u) * 2) solid rgba(72, 130, 156, 0.66);
+  border-radius: 50% 50% 0 0 / 100% 100% 0 0;
+  transform: rotate(-8deg);
+  z-index: 1;
+}
+
+.knowledge-island__gull::after {
+  content: "";
+  position: absolute;
+  left: calc(var(--ki-u) * 1);
+  top: calc(var(--ki-u) * 1);
+  width: calc(var(--ki-u) * 7);
+  height: calc(var(--ki-u) * 4);
+  border-top: calc(var(--ki-u) * 2) solid rgba(72, 130, 156, 0.66);
+  border-radius: 0 0 50% 50% / 0 0 100% 100%;
+  transform: rotate(6deg);
+}
+
+.knowledge-island__gull--a {
+  top: calc(var(--ki-u) * 42);
+  left: calc(var(--ki-u) * 252);
+  transform: rotate(-8deg) scale(0.9);
+}
+
+.knowledge-island__gull--b {
+  top: calc(var(--ki-u) * 58);
+  left: calc(var(--ki-u) * 280);
+  transform: rotate(-8deg) scale(0.7);
+  opacity: 0.78;
+}
+
+.knowledge-island__gull--c {
+  top: calc(var(--ki-u) * 32);
+  left: calc(var(--ki-u) * 208);
+  transform: rotate(-8deg) scale(0.6);
+  opacity: 0.66;
+}
+
+/* ---------- 海（画布级背景） ---------- */
 .knowledge-island__sea {
   position: absolute;
   inset: auto -4% 0;
@@ -405,8 +615,8 @@ function prosperityKey() {
   height: 38%;
   background: repeating-linear-gradient(
     168deg,
-    rgba(255, 255, 255, 0.18) 0 2px,
-    transparent 2px 22px
+    rgba(255, 255, 255, 0.18) 0 calc(var(--ki-u) * 2),
+    transparent calc(var(--ki-u) * 2) calc(var(--ki-u) * 22)
   );
   opacity: 0.72;
 }
@@ -417,7 +627,7 @@ function prosperityKey() {
 
 .knowledge-island__sea::after {
   top: 53%;
-  transform: translateX(-18px);
+  transform: translateX(calc(var(--ki-u) * -18));
   opacity: 0.46;
 }
 
@@ -441,11 +651,11 @@ function prosperityKey() {
 /* 岸边只留几段手绘浪线：宽度、间距、角度各不相同，避免规则矩形的瓷砖感。 */
 .knowledge-island__surf-line {
   --wave-angle: 0deg;
-  --wave-shift: 3px;
+  --wave-shift: calc(var(--ki-u) * 3);
   position: absolute;
   display: block;
-  height: 11px;
-  border-top: 3px solid rgba(255, 255, 255, 0.78);
+  height: calc(var(--ki-u) * 11);
+  border-top: calc(var(--ki-u) * 3) solid rgba(255, 255, 255, 0.78);
   border-radius: 50%;
   transform: translateX(0) rotate(var(--wave-angle));
   transform-origin: left center;
@@ -456,10 +666,10 @@ function prosperityKey() {
   content: "";
   position: absolute;
   right: 7%;
-  top: -5px;
-  width: 8px;
-  height: 5px;
-  border-top: 2px solid rgba(255, 255, 255, 0.68);
+  top: calc(var(--ki-u) * -5);
+  width: calc(var(--ki-u) * 8);
+  height: calc(var(--ki-u) * 5);
+  border-top: calc(var(--ki-u) * 2) solid rgba(255, 255, 255, 0.68);
   border-radius: 50%;
   transform: rotate(-16deg);
 }
@@ -469,16 +679,16 @@ function prosperityKey() {
   left: 4%;
   width: 17%;
   --wave-angle: -4deg;
-  --wave-shift: 2px;
+  --wave-shift: calc(var(--ki-u) * 2);
 }
 
 .knowledge-island__surf-line--b {
   top: 24%;
   left: 25%;
   width: 24%;
-  border-top-width: 2px;
+  border-top-width: calc(var(--ki-u) * 2);
   --wave-angle: 3deg;
-  --wave-shift: 4px;
+  --wave-shift: calc(var(--ki-u) * 4);
   animation-delay: -1.8s;
 }
 
@@ -487,7 +697,7 @@ function prosperityKey() {
   left: 54%;
   width: 19%;
   --wave-angle: -2deg;
-  --wave-shift: 3px;
+  --wave-shift: calc(var(--ki-u) * 3);
   animation-delay: -3.4s;
 }
 
@@ -495,248 +705,478 @@ function prosperityKey() {
   top: 18%;
   left: 79%;
   width: 13%;
-  border-top-width: 2px;
+  border-top-width: calc(var(--ki-u) * 2);
   --wave-angle: 5deg;
-  --wave-shift: 2px;
+  --wave-shift: calc(var(--ki-u) * 2);
   animation-delay: -5.2s;
 }
 
-/* 最高阶段才点亮的光束。 */
-.knowledge-island__beam {
+.knowledge-island__surf-line--lush-a {
+  top: 62%;
+  left: 12%;
+  width: 15%;
+  border-top-width: calc(var(--ki-u) * 2);
+  --wave-angle: 2deg;
+  --wave-shift: calc(var(--ki-u) * 3);
+  animation-delay: -2.6s;
+}
+
+.knowledge-island__surf-line--lush-b {
+  top: 33%;
+  left: 56%;
+  width: 20%;
+  --wave-angle: -3deg;
+  --wave-shift: calc(var(--ki-u) * 2);
+  animation-delay: -4.4s;
+}
+
+.knowledge-island__surf-line--flourishing-a {
+  top: 70%;
+  left: 38%;
+  width: 14%;
+  border-top-width: calc(var(--ki-u) * 2);
+  --wave-angle: 4deg;
+  --wave-shift: calc(var(--ki-u) * 3);
+  animation-delay: -6.1s;
+}
+
+.knowledge-island__surf-line--flourishing-b {
+  top: 14%;
+  left: 66%;
+  width: 17%;
+  border-top-width: calc(var(--ki-u) * 2);
+  --wave-angle: -5deg;
+  --wave-shift: calc(var(--ki-u) * 2);
+  animation-delay: -0.9s;
+}
+
+/* ===========================================================================
+   下一阶段预告
+   ---------------------------------------------------------------------------
+   只画下一阶段那一条更宽的岸线：一点微光 + 一条淡虚线。
+   画在海面之上、岛身之下，所以它读起来是"岛将来会扩到这里"，
+   而不是"这里已经盖好了什么"。
+   =========================================================================== */
+.knowledge-island__next-terrain {
   position: absolute;
-  right: 4%;
-  bottom: 53%;
-  width: 42%;
-  height: 25%;
-  background: linear-gradient(270deg, rgba(255, 238, 160, 0.76), rgba(255, 238, 160, 0));
-  clip-path: polygon(100% 25%, 0 0, 0 100%, 100% 75%);
-  animation: knowledge-island-beam 4s ease-in-out infinite;
-  z-index: 8;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 5;
+  animation: knowledge-island-next-breathe 5.2s ease-in-out infinite;
+}
+
+.knowledge-island__next-fill {
+  fill: rgba(255, 255, 255, 0.17);
+}
+
+.knowledge-island__next-outline {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.82);
+  stroke-width: 1.4;
+  /* 非等比缩放的世界画布里，描边宽度必须锁死，否则虚线会随岛变形而忽粗忽细。 */
+  stroke-dasharray: 5 4;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+@keyframes knowledge-island-next-breathe {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+
+  50% {
+    opacity: 0.92;
+  }
+}
+
+/* ===========================================================================
+   岛身
+   ---------------------------------------------------------------------------
+   下面这一块是「印章决定岛有多大」的落点：
+     .knowledge-island__terrain 的 left / bottom / width / height / --ki-unit
+     全部是行内样式，来自 knowledgeIslandTerrain。
+   组件 CSS 里没有任何岛屿尺寸数字，所以换阶段＝换一份地形数据，而不是换一堆 CSS。
+   =========================================================================== */
+.knowledge-island__terrain {
+  position: absolute;
+  z-index: 6;
 }
 
 .knowledge-island__island-shadow {
   position: absolute;
-  left: 50%;
-  bottom: 12%;
-  width: 68%;
-  height: 40%;
-  transform: translateX(-50%);
+  left: 4%;
+  right: 4%;
+  bottom: -5%;
+  height: 22%;
   border-radius: 50%;
-  background: rgba(39, 91, 108, 0.26);
-  filter: blur(3px);
-  clip-path: polygon(8% 50%, 17% 26%, 35% 15%, 53% 22%, 71% 11%, 91% 31%, 96% 60%, 78% 76%, 57% 88%, 35% 80%, 15% 72%);
-  z-index: 5;
+  background: rgba(39, 91, 108, 0.24);
+  filter: blur(calc(var(--ki-u) * 3));
+  z-index: 0;
 }
 
-/* 沙洲是手绘地图式的不规则轮廓；内部伪元素是初始就有的草地。 */
+/* 岸线浪花环：和岸线是同一条形状、整体放大一圈、白一些，
+   所以任何阶段都严丝合缝地贴着海岸（它和岛身盒子一起缩放）。
+   两个元素共用同一份地形表的形状点，不会画出两条不一样的海岸。 */
+.knowledge-island__shore-ring {
+  position: absolute;
+  inset: -3.5%;
+  background: rgba(255, 252, 236, 0.5);
+  z-index: 1;
+}
+
 .knowledge-island__ground {
   position: absolute;
-  left: 50%;
-  bottom: 16%;
-  width: 66%;
-  height: 48%;
-  transform: translateX(-50%);
-  border: 2px solid rgba(226, 168, 87, 0.36);
+  inset: 0;
   border-radius: 50%;
   background: linear-gradient(170deg, #ffe7b6 0%, #ffd28a 100%);
-  clip-path: polygon(7% 48%, 16% 27%, 34% 15%, 52% 21%, 70% 10%, 89% 28%, 97% 53%, 87% 72%, 66% 78%, 50% 91%, 30% 79%, 12% 73%);
-  box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.68), 0 10px 18px -16px rgba(49, 77, 73, 0.68);
+  box-shadow: inset 0 calc(var(--ki-u) * 3) 0 rgba(255, 255, 255, 0.68), 0 calc(var(--ki-u) * 10) calc(var(--ki-u) * 18) calc(var(--ki-u) * -16) rgba(49, 77, 73, 0.68);
+  z-index: 2;
+}
+
+/* 草地内的纹理：一小片深一点的草色，避免大片纯绿显得平。
+   形状跟着地形走，所以任何阶段都不会跑到岛外面。 */
+.knowledge-island__grassland::after {
+  content: "";
+  position: absolute;
+  left: 18%;
+  top: 24%;
+  width: 30%;
+  height: 22%;
+  border-radius: 50%;
+  background: rgba(112, 190, 122, 0.5);
+  transform: rotate(-8deg);
+}
+
+.knowledge-island__grassland {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(160deg, #a5d98d 0%, #79c57d 100%);
+  opacity: 0.95;
+  z-index: 3;
+}
+
+.knowledge-island__highland {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(168deg, #bfe6a4 0%, #8dcd8b 100%);
+  box-shadow: inset 0 calc(var(--ki-u) * 2) 0 rgba(255, 255, 255, 0.5);
+  z-index: 4;
+}
+
+/* ===========================================================================
+   街区
+   ---------------------------------------------------------------------------
+   街区盒子挂在岛身盒子内部，left / bottom / width / height 来自
+   KNOWLEDGE_ISLAND_ZONES（岛屿自身的归一化坐标，与阶段无关）。
+   于是：
+     - 岛长大 → 街区跟着长大，街区里的东西不会掉到岛外面；
+     - 岛换阶段 → 街区位置不变，所以贝壳永远在西岸、码头永远在东港。
+   =========================================================================== */
+.knowledge-island__zone {
+  position: absolute;
   z-index: 6;
 }
 
-.knowledge-island__ground::before {
-  content: "";
+/* 街区里的东西按「街区盒子的百分比」摆放：这样它们跟着岛一起缩放，
+   不需要为每个阶段各写一套 px 坐标。 */
+.knowledge-island__zone > * {
   position: absolute;
-  inset: 10% 14% 19% 17%;
-  border-radius: 50%;
-  background: linear-gradient(160deg, #a5d98d 0%, #79c57d 100%);
-  clip-path: polygon(5% 45%, 18% 20%, 37% 14%, 54% 22%, 75% 12%, 93% 37%, 88% 65%, 68% 80%, 43% 74%, 22% 84%, 9% 67%);
-  opacity: 0.95;
 }
 
-.knowledge-island__ground::after {
-  content: "";
-  position: absolute;
-  left: 39%;
-  bottom: 18%;
+/* ---------- 西侧海岸：浪花环 / 贝壳 / 石头 ----------
+   基础档就是一只贝壳 + 一块石头 + 一圈浪花；
+   丰盛、繁荣各再补一只贝壳、一块石头、一圈浪花，但位置全都错开，
+   所以看起来是"西岸更热闹"，不是"同一只贝壳复制了四份"。 */
+.knowledge-island__surf-ring {
+  border: calc(var(--ki-u) * 2) solid rgba(255, 255, 255, 0.72);
+  border-radius: 50%;
+  transform: translate(-50%, 50%);
+}
+
+.knowledge-island__surf-ring--a {
+  left: 28%;
+  bottom: 4%;
+  width: 22%;
+  height: 22%;
+}
+
+.knowledge-island__surf-ring--b {
+  left: 66%;
+  bottom: 0;
   width: 18%;
-  height: 48%;
-  border-left: 4px solid rgba(255, 227, 167, 0.92);
-  border-radius: 50%;
-  transform: rotate(28deg);
-  opacity: 0.9;
+  height: 20%;
+  border-width: calc(var(--ki-u) * 1.5);
+  opacity: 0.86;
 }
 
-.knowledge-island__shoreline {
-  position: absolute;
-  left: 50%;
-  bottom: 20%;
-  width: 65%;
-  height: 45%;
-  transform: translateX(-50%);
-  border: 3px dotted rgba(255, 247, 214, 0.76);
-  border-color: rgba(255, 247, 214, 0.76) transparent transparent;
-  border-radius: 50%;
-  clip-path: polygon(0 0, 100% 0, 100% 62%, 0 62%);
-  opacity: 0.84;
-  z-index: 7;
+.knowledge-island__surf-ring--c {
+  left: 46%;
+  bottom: 16%;
+  width: 26%;
+  height: 18%;
+  border-width: calc(var(--ki-u) * 1.5);
+  opacity: 0.8;
 }
 
-.knowledge-island__rock,
 .knowledge-island__shell {
-  position: absolute;
-  z-index: 8;
+  left: 50%;
+  bottom: 30%;
+  width: calc(var(--ki-u) * 11 * var(--ki-unit, 1));
+  height: calc(var(--ki-u) * 8 * var(--ki-unit, 1));
+  margin-left: calc(calc(var(--ki-u) * -5.5) * var(--ki-unit, 1));
+  border: calc(var(--ki-u) * 2) solid #efad83;
+  border-bottom: 0;
+  border-radius: calc(var(--ki-u) * 12) calc(var(--ki-u) * 12) 0 0;
+  transform: rotate(-16deg);
+  box-shadow: inset 0 calc(var(--ki-u) * 2) 0 rgba(255, 244, 214, 0.72);
+}
+
+.knowledge-island__shell--lush-a {
+  left: 32%;
+  bottom: 56%;
+  opacity: 0.9;
+  transform: rotate(12deg);
+}
+
+.knowledge-island__shell--lush-b {
+  left: 70%;
+  bottom: 44%;
+  opacity: 0.82;
+  transform: rotate(-28deg);
+}
+
+.knowledge-island__shell--flourishing {
+  left: 44%;
+  bottom: 74%;
+  opacity: 0.88;
+  transform: rotate(22deg);
 }
 
 .knowledge-island__rock {
-  width: 18px;
-  height: 10px;
+  left: 50%;
+  bottom: 30%;
+  width: calc(var(--ki-u) * 15 * var(--ki-unit, 1));
+  height: calc(var(--ki-u) * 9 * var(--ki-unit, 1));
+  margin-left: calc(calc(var(--ki-u) * -7.5) * var(--ki-unit, 1));
   border-radius: 70% 50% 48% 60%;
   background: linear-gradient(145deg, #9caeb0 0%, #6c898e 100%);
-  box-shadow: inset 2px 2px 0 rgba(255, 255, 255, 0.38), 0 4px 8px -7px rgba(38, 76, 86, 0.8);
-}
-
-.knowledge-island__rock--left {
-  left: 27%;
-  bottom: 29%;
+  box-shadow: inset calc(var(--ki-u) * 2) calc(var(--ki-u) * 2) 0 rgba(255, 255, 255, 0.38), 0 calc(var(--ki-u) * 4) calc(var(--ki-u) * 8) calc(var(--ki-u) * -7) rgba(38, 76, 86, 0.8);
   transform: rotate(-12deg);
 }
 
-.knowledge-island__rock--right {
-  right: 29%;
-  bottom: 23%;
-  width: 14px;
-  height: 8px;
+.knowledge-island__rock--lush {
+  left: 82%;
+  bottom: 22%;
+  width: calc(var(--ki-u) * 13 * var(--ki-unit, 1));
+  height: calc(var(--ki-u) * 8 * var(--ki-unit, 1));
+  margin-left: calc(calc(var(--ki-u) * -6.5) * var(--ki-unit, 1));
   transform: rotate(17deg);
   opacity: 0.82;
 }
 
-.knowledge-island__shell {
-  right: 37%;
-  bottom: 28%;
-  width: 12px;
-  height: 8px;
-  border: 2px solid #efad83;
-  border-bottom: 0;
-  border-radius: 12px 12px 0 0;
-  transform: rotate(-16deg);
-  box-shadow: inset 0 2px 0 rgba(255, 244, 214, 0.72);
+.knowledge-island__rock--flourishing {
+  left: 14%;
+  bottom: 48%;
+  width: calc(var(--ki-u) * 12 * var(--ki-unit, 1));
+  height: calc(var(--ki-u) * 7 * var(--ki-unit, 1));
+  margin-left: calc(calc(var(--ki-u) * -6) * var(--ki-unit, 1));
+  transform: rotate(8deg);
+  opacity: 0.8;
 }
 
-/* 所有岛上元素都坐在草地 / 沙滩上方。 */
-.knowledge-island__sprout,
-.knowledge-island__grass,
-.knowledge-island__palm,
-.knowledge-island__camp,
-.knowledge-island__dock,
-.knowledge-island__boat,
-.knowledge-island__lighthouse {
-  position: absolute;
-  z-index: 9;
-}
-
+/* ---------- 中央绿地：嫩芽 / 草丛 / 花 ---------- */
 .knowledge-island__sprout {
-  left: 36%;
-  bottom: 38%;
-  width: 24px;
-  height: 31px;
+  left: 26%;
+  bottom: 6%;
+  width: calc(var(--ki-u) * 24 * var(--ki-unit, 1));
+  height: calc(var(--ki-u) * 31 * var(--ki-unit, 1));
 }
 
 .knowledge-island__sprout-stem {
   position: absolute;
   left: 50%;
   bottom: 0;
-  width: 3px;
-  height: 20px;
+  width: calc(var(--ki-u) * 3);
+  height: calc(var(--ki-u) * 20);
   transform: translateX(-50%) rotate(4deg);
-  border-radius: 999px;
+  border-radius: calc(var(--ki-u) * 999);
   background: #4c9d5d;
 }
 
 .knowledge-island__sprout-leaf {
   position: absolute;
-  bottom: 14px;
-  width: 14px;
-  height: 8px;
+  bottom: calc(var(--ki-u) * 14);
+  width: calc(var(--ki-u) * 14);
+  height: calc(var(--ki-u) * 8);
   border-radius: 100% 0 100% 0;
   background: #4dba72;
 }
 
 .knowledge-island__sprout-leaf--left {
-  left: 1px;
+  left: calc(var(--ki-u) * 1);
   transform: rotate(-28deg);
 }
 
 .knowledge-island__sprout-leaf--right {
-  right: 1px;
+  right: calc(var(--ki-u) * 1);
   transform: scaleX(-1) rotate(-28deg);
 }
 
+.knowledge-island__sprout-leaf--lush-left {
+  bottom: calc(var(--ki-u) * 20);
+  left: calc(var(--ki-u) * 2);
+  width: calc(var(--ki-u) * 11);
+  height: calc(var(--ki-u) * 6);
+  transform: rotate(-52deg);
+  background: #3fa860;
+}
+
+.knowledge-island__sprout-leaf--lush-right {
+  bottom: calc(var(--ki-u) * 20);
+  right: calc(var(--ki-u) * 2);
+  width: calc(var(--ki-u) * 11);
+  height: calc(var(--ki-u) * 6);
+  transform: scaleX(-1) rotate(-52deg);
+  background: #3fa860;
+}
+
+.knowledge-island__sprout-leaf--flourishing {
+  bottom: calc(var(--ki-u) * 7);
+  left: calc(var(--ki-u) * 5);
+  width: calc(var(--ki-u) * 9);
+  height: calc(var(--ki-u) * 5);
+  transform: rotate(-10deg);
+  background: #6bc97e;
+}
+
 .knowledge-island__grass {
-  left: 42%;
-  bottom: 26%;
-  width: 22px;
-  height: 19px;
+  left: 58%;
+  bottom: 4%;
+  width: calc(var(--ki-u) * 22 * var(--ki-unit, 1));
+  height: calc(var(--ki-u) * 19 * var(--ki-unit, 1));
 }
 
 .knowledge-island__grass-blade {
   position: absolute;
   bottom: 0;
-  width: 5px;
-  height: 17px;
+  width: calc(var(--ki-u) * 5);
+  height: calc(var(--ki-u) * 17);
   border-radius: 100% 0 100% 0;
   background: #4b9f60;
   transform-origin: bottom center;
 }
 
 .knowledge-island__grass-blade--a {
-  left: 2px;
+  left: calc(var(--ki-u) * 2);
   transform: rotate(-25deg);
 }
 
 .knowledge-island__grass-blade--b {
-  left: 9px;
-  height: 19px;
+  left: calc(var(--ki-u) * 9);
+  height: calc(var(--ki-u) * 19);
 }
 
 .knowledge-island__grass-blade--c {
-  right: 1px;
+  right: calc(var(--ki-u) * 1);
   transform: rotate(29deg);
 }
 
+/* 丰盛档多出来的第二丛草：不是把原来那丛变高，而是旁边多了一丛。 */
+.knowledge-island__grass-extra {
+  position: absolute;
+  left: 12%;
+  bottom: 2%;
+  width: calc(var(--ki-u) * 17 * var(--ki-unit, 1));
+  height: calc(var(--ki-u) * 14 * var(--ki-unit, 1));
+  border-radius: 100% 0 100% 0;
+  background: linear-gradient(180deg, #57a96a 0%, #4b9f60 100%);
+  transform: rotate(-14deg);
+  transform-origin: bottom center;
+  opacity: 0.92;
+}
+
+.knowledge-island__flower {
+  position: absolute;
+  width: calc(var(--ki-u) * 6);
+  height: calc(var(--ki-u) * 6);
+  border-radius: 50%;
+  background: #ef8fb0;
+  box-shadow: 0 0 0 calc(var(--ki-u) * 1.5) rgba(255, 255, 255, 0.72);
+}
+
+.knowledge-island__flower::after {
+  content: "";
+  position: absolute;
+  left: calc(var(--ki-u) * 2);
+  top: calc(var(--ki-u) * 6);
+  width: calc(var(--ki-u) * 2);
+  height: calc(var(--ki-u) * 5);
+  background: #4b9f60;
+}
+
+.knowledge-island__flower--a {
+  left: calc(var(--ki-u) * 3);
+  bottom: calc(var(--ki-u) * 20);
+  background: #f2a0bd;
+}
+
+.knowledge-island__flower--b {
+  right: calc(var(--ki-u) * 5);
+  bottom: calc(var(--ki-u) * 18);
+  background: #f7c078;
+}
+
+.knowledge-island__flower--c {
+  left: calc(var(--ki-u) * 12);
+  bottom: calc(var(--ki-u) * 8);
+  width: calc(var(--ki-u) * 5);
+  height: calc(var(--ki-u) * 5);
+  background: #ef8fb0;
+}
+
+.knowledge-island__flower--d {
+  right: calc(var(--ki-u) * 14);
+  bottom: calc(var(--ki-u) * 6);
+  width: calc(var(--ki-u) * 5);
+  height: calc(var(--ki-u) * 5);
+  background: #c9a2ee;
+}
+
+/* ---------- 营地区：椰树 / 帐篷 / 旗 / 木箱 / 营火 / 炊烟 ---------- */
 .knowledge-island__palm {
-  left: 57%;
-  bottom: 39%;
-  width: 45px;
-  height: 70px;
+  left: 6%;
+  bottom: 2%;
+  width: calc(var(--ki-u) * 34 * var(--ki-unit, 1));
+  height: calc(var(--ki-u) * 52 * var(--ki-unit, 1));
 }
 
 .knowledge-island__palm-trunk {
   position: absolute;
-  left: 18px;
+  left: calc(var(--ki-u) * 13);
   bottom: 0;
-  width: 10px;
-  height: 48px;
+  width: calc(var(--ki-u) * 8);
+  height: calc(var(--ki-u) * 36);
   border-radius: 60% 44% 18% 18%;
-  background: repeating-linear-gradient(168deg, #b97842 0 8px, #d19452 8px 12px);
+  background: repeating-linear-gradient(168deg, #b97842 0 calc(var(--ki-u) * 6), #d19452 calc(var(--ki-u) * 6) calc(var(--ki-u) * 9));
   transform: rotate(7deg);
   transform-origin: bottom center;
 }
 
 .knowledge-island__palm-crown {
   position: absolute;
-  left: 1px;
+  left: 0;
   top: 0;
-  width: 42px;
-  height: 34px;
+  width: calc(var(--ki-u) * 32);
+  height: calc(var(--ki-u) * 26);
 }
 
 .knowledge-island__palm-leaf {
   position: absolute;
-  left: 18px;
-  top: 15px;
-  width: 29px;
-  height: 9px;
+  left: calc(var(--ki-u) * 14);
+  top: calc(var(--ki-u) * 11);
+  width: calc(var(--ki-u) * 22);
+  height: calc(var(--ki-u) * 7);
   border-radius: 100% 0 100% 0;
   background: #3d9d62;
   transform-origin: 0 50%;
@@ -758,461 +1198,6 @@ function prosperityKey() {
   transform: rotate(202deg) scale(0.72);
 }
 
-.knowledge-island__palm-fruit {
-  position: absolute;
-  left: 18px;
-  top: 20px;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #8f683a;
-  box-shadow: 6px 2px 0 #8f683a;
-}
-
-.knowledge-island__camp {
-  left: 43%;
-  bottom: 28%;
-  width: 42px;
-  height: 31px;
-}
-
-.knowledge-island__camp-body {
-  position: absolute;
-  left: 2px;
-  bottom: 0;
-  width: 38px;
-  height: 27px;
-  background: #f2a65b;
-  clip-path: polygon(50% 0, 100% 100%, 0 100%);
-  filter: drop-shadow(0 3px 0 rgba(173, 102, 58, 0.22));
-}
-
-.knowledge-island__camp-door {
-  position: absolute;
-  left: 17px;
-  bottom: 0;
-  width: 9px;
-  height: 14px;
-  border-radius: 8px 8px 0 0;
-  background: #7b6756;
-}
-
-.knowledge-island__camp-flag {
-  position: absolute;
-  top: -4px;
-  left: 20px;
-  width: 2px;
-  height: 10px;
-  background: #80512f;
-}
-
-.knowledge-island__camp-flag::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 2px;
-  width: 9px;
-  height: 6px;
-  background: #ef6e65;
-  clip-path: polygon(0 0, 100% 28%, 0 100%);
-}
-
-.knowledge-island__dock {
-  left: 66%;
-  bottom: 20%;
-  width: 24%;
-  height: 25%;
-  transform: rotate(-8deg);
-}
-
-.knowledge-island__dock-plank {
-  position: absolute;
-  left: 0;
-  width: 100%;
-  height: 8px;
-  border: 1px solid rgba(130, 74, 38, 0.35);
-  border-radius: 4px;
-  background: linear-gradient(180deg, #e6b36d 0%, #b77a42 100%);
-  box-shadow: inset 0 1px 0 rgba(255, 245, 204, 0.58);
-}
-
-.knowledge-island__dock-plank--a {
-  top: 5px;
-}
-
-.knowledge-island__dock-plank--b {
-  top: 15px;
-}
-
-.knowledge-island__dock-post {
-  position: absolute;
-  top: 5px;
-  width: 5px;
-  height: 30px;
-  border-radius: 3px;
-  background: #8f5a32;
-}
-
-.knowledge-island__dock-post--a {
-  left: 5px;
-}
-
-.knowledge-island__dock-post--b {
-  right: 5px;
-}
-
-.knowledge-island__boat {
-  left: 73%;
-  bottom: 26%;
-  width: 35px;
-  height: 33px;
-}
-
-.knowledge-island__boat-hull {
-  position: absolute;
-  left: 2px;
-  bottom: 2px;
-  width: 30px;
-  height: 10px;
-  border-radius: 0 0 17px 17px;
-  background: #f08d55;
-  border: 1px solid rgba(131, 74, 54, 0.35);
-}
-
-.knowledge-island__boat-mast {
-  position: absolute;
-  left: 16px;
-  bottom: 11px;
-  width: 2px;
-  height: 22px;
-  background: #765a48;
-}
-
-.knowledge-island__boat-sail {
-  position: absolute;
-  left: 18px;
-  top: 1px;
-  width: 15px;
-  height: 18px;
-  background: #fff4d0;
-  clip-path: polygon(0 0, 100% 80%, 0 100%);
-  border: 1px solid rgba(185, 135, 77, 0.3);
-}
-
-.knowledge-island__lighthouse {
-  left: 51%;
-  bottom: 44%;
-  width: 32px;
-  height: 64px;
-  transform: translateX(-50%);
-}
-
-.knowledge-island__lighthouse-roof {
-  position: absolute;
-  left: 2px;
-  top: 0;
-  width: 28px;
-  height: 13px;
-  border-radius: 50% 50% 18% 18%;
-  background: #e7665a;
-  box-shadow: inset 0 2px 0 rgba(255, 245, 220, 0.42);
-}
-
-.knowledge-island__lighthouse-tower {
-  position: absolute;
-  left: 6px;
-  top: 10px;
-  width: 20px;
-  height: 49px;
-  clip-path: polygon(14% 0, 86% 0, 100% 100%, 0 100%);
-  background: repeating-linear-gradient(180deg, #fff3cf 0 11px, #e47763 11px 18px);
-  border-radius: 4px 4px 2px 2px;
-}
-
-.knowledge-island__lighthouse-window {
-  position: absolute;
-  left: 13px;
-  width: 7px;
-  height: 7px;
-  border-radius: 2px;
-  background: #5c9eb4;
-  box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.7);
-}
-
-.knowledge-island__lighthouse-window--a {
-  top: 20px;
-}
-
-.knowledge-island__lighthouse-window--b {
-  top: 36px;
-}
-
-.knowledge-island__lighthouse-light {
-  position: absolute;
-  left: 12px;
-  top: 5px;
-  width: 8px;
-  height: 7px;
-  border-radius: 50%;
-  background: #ffe58d;
-  box-shadow: 0 0 0 2px rgba(255, 242, 164, 0.5);
-}
-
-/* ===========================================================================
-   繁荣度细节
-   ---------------------------------------------------------------------------
-   规则：下面每一条都只影响“该阶段的元素已经存在”之后的样子。
-   与阶段无关的（贝壳 / 石头 / 云 / 海鸥 / 浪花）只挂繁荣度门禁；
-   与阶段相关的（草丛 / 嫩芽 / 椰树 / 帐篷 / 码头 / 小船 / 灯塔）全部写在
-   父元素的 v-if 内部，所以阶段没到时这些规则根本不会被渲染出来。
-   0 枚印章永远不会因为星星多而长出草、花、椰树、帐篷、码头或灯塔。
-   =========================================================================== */
-
-/* 第三朵远景云：只在天上做文章，不碰岛上的任何东西。 */
-.knowledge-island__cloud--flourishing {
-  top: 11%;
-  left: 38%;
-  transform: scale(0.5);
-  opacity: 0.66;
-}
-
-/* 海鸥：两笔就够像一只鸟，不引入动画系统。 */
-.knowledge-island__gull {
-  position: absolute;
-  width: 9px;
-  height: 4px;
-  border-top: 2px solid rgba(72, 130, 156, 0.66);
-  border-radius: 50% 50% 0 0 / 100% 100% 0 0;
-  transform: rotate(-8deg);
-  z-index: 1;
-}
-
-.knowledge-island__gull::after {
-  content: "";
-  position: absolute;
-  left: 1px;
-  top: 1px;
-  width: 7px;
-  height: 4px;
-  border-top: 2px solid rgba(72, 130, 156, 0.66);
-  border-radius: 0 0 50% 50% / 0 0 100% 100%;
-  transform: rotate(6deg);
-}
-
-.knowledge-island__gull--a {
-  top: 21%;
-  left: 63%;
-  transform: rotate(-8deg) scale(0.9);
-}
-
-.knowledge-island__gull--b {
-  top: 27%;
-  left: 70%;
-  transform: rotate(-8deg) scale(0.7);
-  opacity: 0.78;
-}
-
-.knowledge-island__gull--c {
-  top: 17%;
-  left: 52%;
-  transform: rotate(-8deg) scale(0.6);
-  opacity: 0.66;
-}
-
-/* 浪花：复用同一套 .knowledge-island__surf-line，只改位置、角度和长度。 */
-.knowledge-island__surf-line--lush-a {
-  top: 62%;
-  left: 12%;
-  width: 15%;
-  border-top-width: 2px;
-  --wave-angle: 2deg;
-  --wave-shift: 3px;
-  animation-delay: -2.6s;
-}
-
-.knowledge-island__surf-line--lush-b {
-  top: 33%;
-  left: 56%;
-  width: 20%;
-  --wave-angle: -3deg;
-  --wave-shift: 2px;
-  animation-delay: -4.4s;
-}
-
-.knowledge-island__surf-line--flourishing-a {
-  top: 70%;
-  left: 38%;
-  width: 14%;
-  border-top-width: 2px;
-  --wave-angle: 4deg;
-  --wave-shift: 3px;
-  animation-delay: -6.1s;
-}
-
-.knowledge-island__surf-line--flourishing-b {
-  top: 14%;
-  left: 66%;
-  width: 17%;
-  border-top-width: 2px;
-  --wave-angle: -5deg;
-  --wave-shift: 2px;
-  animation-delay: -0.9s;
-}
-
-/* 更多贝壳：沿着原有那只贝壳的摆放逻辑散开，避免看起来像复制粘贴。 */
-.knowledge-island__shell--lush-a {
-  right: 46%;
-  bottom: 25%;
-  width: 10px;
-  height: 7px;
-  transform: rotate(12deg);
-  opacity: 0.9;
-}
-
-.knowledge-island__shell--lush-b {
-  right: 30%;
-  bottom: 34%;
-  width: 9px;
-  height: 6px;
-  transform: rotate(-28deg);
-  opacity: 0.82;
-}
-
-.knowledge-island__shell--flourishing-a {
-  right: 52%;
-  bottom: 33%;
-  width: 11px;
-  height: 7px;
-  transform: rotate(22deg);
-  opacity: 0.88;
-}
-
-.knowledge-island__shell--flourishing-b {
-  right: 24%;
-  bottom: 27%;
-  width: 9px;
-  height: 6px;
-  transform: rotate(6deg);
-  opacity: 0.78;
-}
-
-.knowledge-island__rock--lush {
-  left: 34%;
-  bottom: 21%;
-  width: 15px;
-  height: 9px;
-  transform: rotate(8deg);
-  opacity: 0.88;
-}
-
-.knowledge-island__rock--flourishing {
-  left: 45%;
-  bottom: 25%;
-  width: 12px;
-  height: 7px;
-  transform: rotate(-18deg);
-  opacity: 0.8;
-}
-
-/* 草丛更多叶片 + 小花：只在这一阶段的草丛元素内部生效。 */
-.knowledge-island__grass-blade--d {
-  left: 15px;
-  height: 15px;
-  transform: rotate(-12deg);
-  background: #57a96a;
-}
-
-.knowledge-island__grass-blade--e {
-  right: 8px;
-  height: 16px;
-  transform: rotate(14deg);
-  background: #57a96a;
-}
-
-.knowledge-island__grass-blade--f {
-  left: 6px;
-  height: 18px;
-  transform: rotate(-34deg);
-  background: #3f9257;
-}
-
-.knowledge-island__flower {
-  position: absolute;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #ef8fb0;
-  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.72);
-}
-
-.knowledge-island__flower::after {
-  content: "";
-  position: absolute;
-  left: 2px;
-  top: 6px;
-  width: 2px;
-  height: 5px;
-  background: #4b9f60;
-}
-
-.knowledge-island__flower--a {
-  left: 3px;
-  bottom: 14px;
-  background: #f2a0bd;
-}
-
-.knowledge-island__flower--b {
-  right: 5px;
-  bottom: 12px;
-  background: #f7c078;
-}
-
-.knowledge-island__flower--c {
-  left: 12px;
-  bottom: 6px;
-  width: 5px;
-  height: 5px;
-  background: #ef8fb0;
-}
-
-/* 嫩芽长出更多叶子：同样在 嫩芽 的 v-if 内部。 */
-.knowledge-island__sprout-leaf--lush-left {
-  bottom: 20px;
-  left: 2px;
-  width: 11px;
-  height: 6px;
-  transform: rotate(-52deg);
-  background: #3fa860;
-}
-
-.knowledge-island__sprout-leaf--lush-right {
-  bottom: 20px;
-  right: 2px;
-  width: 11px;
-  height: 6px;
-  transform: scaleX(-1) rotate(-52deg);
-  background: #3fa860;
-}
-
-.knowledge-island__sprout-leaf--flourishing-left {
-  bottom: 7px;
-  left: 5px;
-  width: 9px;
-  height: 5px;
-  transform: rotate(-10deg);
-  background: #6bc97e;
-}
-
-.knowledge-island__sprout-leaf--flourishing-right {
-  bottom: 7px;
-  right: 5px;
-  width: 9px;
-  height: 5px;
-  transform: scaleX(-1) rotate(-10deg);
-  background: #6bc97e;
-}
-
-/* 椰树：多两片叶子 + 更多椰子。 */
 .knowledge-island__palm-leaf--e {
   transform: rotate(-58deg) scale(0.68);
 }
@@ -1221,144 +1206,464 @@ function prosperityKey() {
   transform: rotate(292deg) scale(0.58);
 }
 
+.knowledge-island__palm-fruit {
+  position: absolute;
+  left: calc(var(--ki-u) * 14);
+  top: calc(var(--ki-u) * 15);
+  width: calc(var(--ki-u) * 5);
+  height: calc(var(--ki-u) * 5);
+  border-radius: 50%;
+  background: #8f683a;
+  box-shadow: calc(var(--ki-u) * 4) calc(var(--ki-u) * 2) 0 #8f683a;
+}
+
 .knowledge-island__palm-fruit--lush {
-  left: 20px;
-  top: 22px;
-  box-shadow: 5px 3px 0 #8f683a;
+  left: calc(var(--ki-u) * 15);
+  top: calc(var(--ki-u) * 17);
+  box-shadow: calc(var(--ki-u) * 4) calc(var(--ki-u) * 2) 0 #8f683a;
 }
 
 .knowledge-island__palm-fruit--flourishing {
-  left: 14px;
-  top: 24px;
-  box-shadow: 6px 2px 0 #8f683a, 11px 5px 0 #8f683a;
+  left: calc(var(--ki-u) * 11);
+  top: calc(var(--ki-u) * 18);
+  box-shadow: calc(var(--ki-u) * 4) calc(var(--ki-u) * 2) 0 #8f683a, calc(var(--ki-u) * 7) calc(var(--ki-u) * 4) 0 #8f683a;
 }
 
-/* 营地：第二面营旗 + 木箱 + 营火。 */
-.knowledge-island__camp-flag--lush {
-  left: 29px;
-  top: -1px;
-  height: 12px;
+.knowledge-island__camp {
+  left: 58%;
+  bottom: 2%;
+  width: calc(var(--ki-u) * 34 * var(--ki-unit, 1));
+  height: calc(var(--ki-u) * 26 * var(--ki-unit, 1));
+}
+
+.knowledge-island__camp-body {
+  position: absolute;
+  left: calc(var(--ki-u) * 2);
+  bottom: 0;
+  width: calc(var(--ki-u) * 30);
+  height: calc(var(--ki-u) * 22);
+  background: #f2a65b;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  filter: drop-shadow(0 calc(var(--ki-u) * 2) 0 rgba(173, 102, 58, 0.22));
+}
+
+.knowledge-island__camp-door {
+  position: absolute;
+  left: calc(var(--ki-u) * 13);
+  bottom: 0;
+  width: calc(var(--ki-u) * 8);
+  height: calc(var(--ki-u) * 12);
+  border-radius: calc(var(--ki-u) * 7) calc(var(--ki-u) * 7) 0 0;
+  background: #7b6756;
+}
+
+/* 丰盛：旗 + 木箱 —— 看起来像有人在这儿扎过营。 */
+.knowledge-island__camp-flag {
+  position: absolute;
+  top: calc(var(--ki-u) * -3);
+  left: calc(var(--ki-u) * 18);
+  width: calc(var(--ki-u) * 1.5);
+  height: calc(var(--ki-u) * 9);
+  background: #80512f;
+}
+
+.knowledge-island__camp-flag::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: calc(var(--ki-u) * 1.5);
+  width: calc(var(--ki-u) * 8);
+  height: calc(var(--ki-u) * 5.5);
+  background: #ef6e65;
+  clip-path: polygon(0 0, 100% 28%, 0 100%);
 }
 
 .knowledge-island__camp-crate {
   position: absolute;
-  left: -4px;
-  bottom: 1px;
-  width: 9px;
-  height: 8px;
-  border: 1px solid rgba(122, 78, 40, 0.4);
-  border-radius: 2px;
+  left: calc(var(--ki-u) * -4);
+  bottom: calc(var(--ki-u) * 1);
+  width: calc(var(--ki-u) * 7);
+  height: calc(var(--ki-u) * 6);
+  border: calc(var(--ki-u) * 0.75) solid rgba(122, 78, 40, 0.4);
+  border-radius: calc(var(--ki-u) * 1.5);
   background: #d59a5c;
 }
 
 .knowledge-island__camp-crate--flourishing {
-  left: -10px;
-  width: 7px;
-  height: 6px;
+  left: calc(var(--ki-u) * -9.5);
+  width: calc(var(--ki-u) * 5.5);
+  height: calc(var(--ki-u) * 5);
   background: #c68b50;
 }
 
+/* 繁荣：营火 + 炊烟 —— 岛上真的有人在生活。 */
 .knowledge-island__camp-campfire {
   position: absolute;
-  right: -6px;
-  bottom: 1px;
-  width: 7px;
-  height: 9px;
+  right: calc(var(--ki-u) * -6);
+  bottom: calc(var(--ki-u) * 1);
+  width: calc(var(--ki-u) * 6.5);
+  height: calc(var(--ki-u) * 8);
   border-radius: 50% 50% 40% 40%;
   background: radial-gradient(circle at 50% 70%, #fff0b0 0 34%, #f2a33c 62%, rgba(242, 163, 60, 0) 100%);
-  box-shadow: 0 0 6px rgba(255, 214, 128, 0.66);
+  box-shadow: 0 0 calc(var(--ki-u) * 5) rgba(255, 214, 128, 0.66);
 }
 
-/* 码头：多一块木板 + 第三个桩 + 渔网。 */
+.knowledge-island__camp-smoke {
+  position: absolute;
+  right: calc(var(--ki-u) * -3);
+  bottom: calc(var(--ki-u) * 10);
+  width: calc(var(--ki-u) * 4);
+  height: calc(var(--ki-u) * 11);
+  border-radius: calc(var(--ki-u) * 999);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.75) 100%);
+  transform: skewX(-9deg);
+  animation: knowledge-island-smoke-rise 3.6s ease-in-out infinite;
+}
+
+@keyframes knowledge-island-smoke-rise {
+  0%,
+  100% {
+    opacity: 0.32;
+    transform: skewX(-9deg) translateY(calc(var(--ki-u) * 2));
+  }
+
+  50% {
+    opacity: 0.72;
+    transform: skewX(-9deg) translateY(calc(var(--ki-u) * -2));
+  }
+}
+
+/* ---------- 东侧港口：码头 / 小船 ----------
+   基础档 = 码头 + 泊岸小船；
+   丰盛 = 索具 + 缆桩 + 小旗（有人在用）；
+   繁荣 = 渔网 + 挂灯 + 小锚（夜里也亮着）。 */
+/* 码头：起点压在岛的东岸上，末端伸进东侧那片水面。
+   它的落点由港口街区给出，街区又由地形给出，所以岛屿长大时码头一直贴着东岸，
+   不会变成一座浮在沙洲旁边的桥。 */
+.knowledge-island__dock {
+  left: calc(var(--ki-u) * 4);
+  bottom: calc(var(--ki-u) * 2);
+  width: calc(var(--ki-u) * 60 * var(--ki-unit, 1));
+  height: calc(var(--ki-u) * 22 * var(--ki-unit, 1));
+  transform: rotate(-6deg);
+  transform-origin: left bottom;
+}
+
+.knowledge-island__dock-plank {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: calc(var(--ki-u) * 5);
+  border: calc(var(--ki-u) * 0.6) solid rgba(130, 74, 38, 0.35);
+  border-radius: calc(var(--ki-u) * 2.5);
+  background: linear-gradient(180deg, #e6b36d 0%, #b77a42 100%);
+  box-shadow: inset 0 calc(var(--ki-u) * 0.6) 0 rgba(255, 245, 204, 0.58);
+}
+
+.knowledge-island__dock-plank--a {
+  top: calc(var(--ki-u) * 3);
+}
+
+.knowledge-island__dock-plank--b {
+  top: calc(var(--ki-u) * 9);
+}
+
 .knowledge-island__dock-plank--lush {
-  top: 25px;
-  height: 7px;
+  top: calc(var(--ki-u) * 15);
+}
+
+.knowledge-island__dock-post {
+  position: absolute;
+  top: calc(var(--ki-u) * 3);
+  width: calc(var(--ki-u) * 3.5);
+  height: calc(var(--ki-u) * 16);
+  border-radius: calc(var(--ki-u) * 2);
+  background: #8f5a32;
+}
+
+.knowledge-island__dock-post--a {
+  left: calc(var(--ki-u) * 3);
+}
+
+.knowledge-island__dock-post--b {
+  right: calc(var(--ki-u) * 3);
 }
 
 .knowledge-island__dock-post--lush {
   left: 50%;
-  top: 5px;
+  top: calc(var(--ki-u) * 3);
   transform: translateX(-50%);
 }
 
+/* 丰盛：缆桩，码头真的被系过缆。 */
+.knowledge-island__dock-bollard {
+  position: absolute;
+  left: 62%;
+  top: 0;
+  width: calc(var(--ki-u) * 3);
+  height: calc(var(--ki-u) * 5);
+  border-radius: calc(var(--ki-u) * 1.5);
+  background: #6f4a2a;
+}
+
+.knowledge-island__dock-bollard::after {
+  content: "";
+  position: absolute;
+  left: calc(var(--ki-u) * -3);
+  top: calc(var(--ki-u) * 0.75);
+  width: calc(var(--ki-u) * 9);
+  height: calc(var(--ki-u) * 1);
+  border-radius: calc(var(--ki-u) * 999);
+  background: rgba(111, 74, 42, 0.72);
+}
+
+/* 繁荣：渔网 + 挂灯。 */
 .knowledge-island__dock-net {
   position: absolute;
-  right: -8px;
-  top: 12px;
-  width: 11px;
-  height: 13px;
-  border: 1px solid rgba(122, 84, 48, 0.4);
-  border-radius: 2px;
+  right: calc(var(--ki-u) * -7);
+  top: calc(var(--ki-u) * 6);
+  width: calc(var(--ki-u) * 8);
+  height: calc(var(--ki-u) * 9);
+  border: calc(var(--ki-u) * 0.6) solid rgba(122, 84, 48, 0.4);
+  border-radius: calc(var(--ki-u) * 1.5);
   background:
-    repeating-linear-gradient(45deg, rgba(122, 84, 48, 0.28) 0 1px, transparent 1px 4px),
-    repeating-linear-gradient(-45deg, rgba(122, 84, 48, 0.28) 0 1px, transparent 1px 4px);
+    repeating-linear-gradient(45deg, rgba(122, 84, 48, 0.28) 0 calc(var(--ki-u) * 0.6), transparent calc(var(--ki-u) * 0.6) calc(var(--ki-u) * 3)),
+    repeating-linear-gradient(-45deg, rgba(122, 84, 48, 0.28) 0 calc(var(--ki-u) * 0.6), transparent calc(var(--ki-u) * 0.6) calc(var(--ki-u) * 3));
   transform: rotate(8deg);
 }
 
-/* 小船：索具 + 小锚。 */
+.knowledge-island__dock-lantern {
+  position: absolute;
+  left: 20%;
+  top: calc(var(--ki-u) * -6);
+  width: calc(var(--ki-u) * 4.5);
+  height: calc(var(--ki-u) * 6);
+  border-radius: calc(var(--ki-u) * 1.5) calc(var(--ki-u) * 1.5) calc(var(--ki-u) * 2) calc(var(--ki-u) * 2);
+  background: #ffe08a;
+  box-shadow: 0 0 calc(var(--ki-u) * 5) rgba(255, 214, 128, 0.85);
+}
+
+.knowledge-island__dock-lantern::before {
+  content: "";
+  position: absolute;
+  left: calc(var(--ki-u) * 1.5);
+  top: calc(var(--ki-u) * -3);
+  width: calc(var(--ki-u) * 1);
+  height: calc(var(--ki-u) * 3);
+  background: #6f4a2a;
+}
+
+/* 小船：停在码头末端外侧的海面上，浮在岛的东南角，不压在沙上。 */
+.knowledge-island__boat {
+  left: 84%;
+  bottom: -18%;
+  width: calc(var(--ki-u) * 26 * var(--ki-unit, 1));
+  height: calc(var(--ki-u) * 29 * var(--ki-unit, 1));
+}
+
+.knowledge-island__boat-hull {
+  position: absolute;
+  left: calc(var(--ki-u) * 2);
+  bottom: calc(var(--ki-u) * 2);
+  width: calc(var(--ki-u) * 22);
+  height: calc(var(--ki-u) * 8.5);
+  border-radius: 0 0 calc(var(--ki-u) * 15) calc(var(--ki-u) * 15);
+  background: #f08d55;
+  border: calc(var(--ki-u) * 0.8) solid rgba(131, 74, 54, 0.35);
+}
+
+.knowledge-island__boat-mast {
+  position: absolute;
+  left: calc(var(--ki-u) * 12);
+  bottom: calc(var(--ki-u) * 9);
+  width: calc(var(--ki-u) * 1.6);
+  height: calc(var(--ki-u) * 19);
+  background: #765a48;
+}
+
+.knowledge-island__boat-sail {
+  position: absolute;
+  left: calc(var(--ki-u) * 14);
+  top: calc(var(--ki-u) * 1);
+  width: calc(var(--ki-u) * 13);
+  height: calc(var(--ki-u) * 15);
+  background: #fff4d0;
+  clip-path: polygon(0 0, 100% 80%, 0 100%);
+  border: calc(var(--ki-u) * 0.8) solid rgba(185, 135, 77, 0.3);
+}
+
+/* 丰盛：索具 + 小旗 —— 船出海了。 */
 .knowledge-island__boat-rigging {
   position: absolute;
-  left: 4px;
-  top: 4px;
-  width: 24px;
-  height: 1.5px;
+  left: calc(var(--ki-u) * 3);
+  top: calc(var(--ki-u) * 4);
+  width: calc(var(--ki-u) * 20);
+  height: calc(var(--ki-u) * 1.2);
   background: rgba(118, 90, 72, 0.72);
   transform: rotate(6deg);
 }
 
+.knowledge-island__boat-flag {
+  position: absolute;
+  left: calc(var(--ki-u) * 13.5);
+  top: calc(var(--ki-u) * -0.5);
+  width: calc(var(--ki-u) * 7);
+  height: calc(var(--ki-u) * 4);
+  background: #7fc9e0;
+  clip-path: polygon(0 0, 100% 26%, 0 100%);
+}
+
+/* 繁荣：小锚。 */
 .knowledge-island__boat-anchor {
   position: absolute;
-  left: 1px;
+  left: calc(var(--ki-u) * 0.5);
   bottom: 0;
-  width: 6px;
-  height: 6px;
-  border: 1.5px solid #6f5a4c;
+  width: calc(var(--ki-u) * 5);
+  height: calc(var(--ki-u) * 5);
+  border: calc(var(--ki-u) * 1.2) solid #6f5a4c;
   border-top: 0;
-  border-radius: 0 0 6px 6px;
+  border-radius: 0 0 calc(var(--ki-u) * 5) calc(var(--ki-u) * 5);
 }
 
 .knowledge-island__boat-anchor::before {
   content: "";
   position: absolute;
-  left: 2px;
-  top: -4px;
-  width: 1.5px;
-  height: 4px;
+  left: calc(var(--ki-u) * 1.6);
+  top: calc(var(--ki-u) * -3.4);
+  width: calc(var(--ki-u) * 1.2);
+  height: calc(var(--ki-u) * 3.4);
   background: #6f5a4c;
 }
 
-/* 灯塔：窗灯亮起 + 塔基座 + 光束更宽更亮。 */
+/* ---------- 高地区：灯塔 + 灯塔自己的光束 ---------- */
+.knowledge-island__lighthouse {
+  left: 50%;
+  bottom: 0;
+  width: calc(var(--ki-u) * 22 * var(--ki-unit, 1));
+  height: calc(var(--ki-u) * 46 * var(--ki-unit, 1));
+  margin-left: calc(var(--ki-u) * -11 * var(--ki-unit, 1));
+  z-index: 7;
+}
+
+.knowledge-island__lighthouse-roof {
+  position: absolute;
+  left: calc(var(--ki-u) * 2);
+  top: 0;
+  width: calc(var(--ki-u) * 18);
+  height: calc(var(--ki-u) * 9);
+  border-radius: 50% 50% 18% 18%;
+  background: #e7665a;
+  box-shadow: inset 0 var(--ki-u) 0 rgba(255, 245, 220, 0.42);
+}
+
+.knowledge-island__lighthouse-tower {
+  position: absolute;
+  left: calc(var(--ki-u) * 4);
+  top: calc(var(--ki-u) * 8);
+  width: calc(var(--ki-u) * 14);
+  height: calc(var(--ki-u) * 37);
+  clip-path: polygon(14% 0, 86% 0, 100% 100%, 0 100%);
+  background: repeating-linear-gradient(180deg, #fff3cf 0 calc(var(--ki-u) * 9), #e47763 calc(var(--ki-u) * 9) calc(var(--ki-u) * 14));
+  border-radius: var(--ki-u) var(--ki-u) 0 0;
+}
+
+.knowledge-island__lighthouse-window {
+  position: absolute;
+  left: calc(var(--ki-u) * 8);
+  width: calc(var(--ki-u) * 6);
+  height: calc(var(--ki-u) * 6);
+  border-radius: var(--ki-u);
+  background: #5c9eb4;
+  box-shadow: inset var(--ki-u) var(--ki-u) 0 rgba(255, 255, 255, 0.7);
+}
+
+.knowledge-island__lighthouse-window--a {
+  top: calc(var(--ki-u) * 16);
+}
+
+.knowledge-island__lighthouse-window--b {
+  top: calc(var(--ki-u) * 28);
+}
+
+.knowledge-island__lighthouse-light {
+  position: absolute;
+  left: calc(var(--ki-u) * 7.5);
+  top: calc(var(--ki-u) * 3.5);
+  width: calc(var(--ki-u) * 7);
+  height: calc(var(--ki-u) * 6);
+  border-radius: 50%;
+  background: #ffe58d;
+  box-shadow: 0 0 0 var(--ki-u) rgba(255, 242, 164, 0.5);
+}
+
+/* 光束：灯塔的子元素，左边就贴着灯塔的灯室，向东射出去。
+   以前它是画布级绝对定位（right: 4% / bottom: 53%），和灯塔的位置各写各的，
+   所以光总是从画面右边射出来、跟灯塔没关系；现在它是灯塔的子元素，
+   岛屿再怎么变，光都从灯塔自己的窗口射出去。 */
+.knowledge-island__beam {
+  position: absolute;
+  left: 100%;
+  top: calc(var(--ki-u) * 1);
+  width: calc(var(--ki-u) * 92 * var(--ki-unit, 1));
+  height: calc(var(--ki-u) * 20 * var(--ki-unit, 1));
+  background: linear-gradient(90deg, rgba(255, 226, 132, 0.95), rgba(255, 238, 160, 0.55) 40%, rgba(255, 238, 160, 0));
+  clip-path: polygon(0 36%, 100% 0, 100% 100%, 0 64%);
+  animation: knowledge-island-beam 4s ease-in-out infinite;
+  z-index: -1;
+}
+
+.knowledge-island__beam--lush {
+  width: calc(var(--ki-u) * 112 * var(--ki-unit, 1));
+  height: calc(var(--ki-u) * 24 * var(--ki-unit, 1));
+}
+
+.knowledge-island__beam--flourishing {
+  width: calc(var(--ki-u) * 132 * var(--ki-unit, 1));
+  height: calc(var(--ki-u) * 28 * var(--ki-unit, 1));
+}
+
+/* 繁荣：窗更亮 + 塔基座（灯更结实了）。 */
 .knowledge-island__lighthouse-window--lush {
-  top: 28px;
+  top: calc(var(--ki-u) * 22);
   background: #ffe9a8;
-  box-shadow: 0 0 4px rgba(255, 226, 140, 0.86);
+  box-shadow: 0 0 calc(var(--ki-u) * 4) rgba(255, 226, 140, 0.86);
 }
 
 .knowledge-island__lighthouse-window--flourishing {
-  top: 43px;
+  top: calc(var(--ki-u) * 34);
   background: #ffe9a8;
-  box-shadow: 0 0 5px rgba(255, 226, 140, 0.92);
+  box-shadow: 0 0 calc(var(--ki-u) * 5) rgba(255, 226, 140, 0.92);
 }
 
 .knowledge-island__lighthouse-base {
   position: absolute;
   left: 0;
-  bottom: -2px;
-  width: 32px;
-  height: 6px;
-  border-radius: 0 0 5px 5px;
+  bottom: calc(var(--ki-u) * -2);
+  width: calc(var(--ki-u) * 22);
+  height: calc(var(--ki-u) * 5);
+  border-radius: 0 0 var(--ki-u) var(--ki-u);
   background: linear-gradient(180deg, #e8dcc4 0%, #cbbb9c 100%);
 }
 
-.knowledge-island__beam--lush {
-  width: 48%;
-  opacity: 0.78;
+@keyframes knowledge-island-beam {
+  0%,
+  100% {
+    opacity: 0.42;
+  }
+
+  50% {
+    opacity: 0.84;
+  }
 }
 
-.knowledge-island__beam--flourishing {
-  width: 56%;
-  height: 29%;
-  opacity: 0.92;
+@keyframes knowledge-island-wave-drift {
+  from {
+    transform: translateX(calc(var(--wave-shift) * -1)) rotate(var(--wave-angle));
+  }
+
+  to {
+    transform: translateX(var(--wave-shift)) rotate(var(--wave-angle));
+  }
 }
 
 .knowledge-island__info {
@@ -1487,69 +1792,14 @@ function prosperityKey() {
   color: #8a5a00;
 }
 
-@keyframes knowledge-island-beam {
-  0%,
-  100% {
-    opacity: 0.42;
-  }
-
-  50% {
-    opacity: 0.84;
-  }
-}
-
-@keyframes knowledge-island-wave-drift {
-  from {
-    transform: translateX(calc(var(--wave-shift) * -1)) rotate(var(--wave-angle));
-  }
-
-  to {
-    transform: translateX(var(--wave-shift)) rotate(var(--wave-angle));
-  }
-}
-
-/* 390 窄屏：保留画面层次，缩小建筑与卡片内边距，避免横向溢出。 */
-@media (max-width: 480px) {
-  .knowledge-island {
-    padding: 11px 12px;
-  }
-
-  .knowledge-island__figure {
-    min-height: 116px;
-    max-height: 164px;
-  }
-
-  .knowledge-island__palm {
-    transform: scale(0.86);
-    transform-origin: bottom left;
-  }
-
-  .knowledge-island__lighthouse {
-    transform: translateX(-50%) scale(0.88);
-    transform-origin: bottom center;
-  }
-
-  .knowledge-island__camp {
-    transform: scale(0.88);
-    transform-origin: bottom left;
-  }
-}
-
 /* ===========================================================================
-   尺寸：hero（独立知识岛页面）
+   尺寸
    ---------------------------------------------------------------------------
-   做法只有一个：把舞台层变成一个固定“设计宽度”的盒子，再用 scale() 整块放大到
-   铺满画面盒子。因为天空、海岸、椰树、灯塔、贝壳全都画在这同一个盒子内部
-   （百分比定位 + 固定像素），整块放大之后：
-     - 构图比例不变，画面不会被拉变形；
-     - 固定像素的建筑与细节（椰树 45px、灯塔 32px、贝壳 9~12px……）跟着一起放大，
-       这正是把画面搬到整页宽度时必须做的事，否则建筑会缩成岛上的小点；
-     - 舞台盒放大后正好等于画面盒，永远不会超出画面，因此不会横向溢出。
-   缩放倍数只按视口分档，取值一律偏向“偏大”一侧：倍数偏大只是构图略松，
-   绝不会裁切；倍数偏小才会让建筑显得拥挤。
+   compact 与 hero 现在共用同一套世界坐标与同一个 16:9 画面盒，
+   所以这里不再有任何"按视口分档缩放"的魔法数字：两种尺寸只有卡片内边距和圆角不同。
+   画面内容、元素数量、解锁规则完全一样，构图也完全一样。
    =========================================================================== */
 .knowledge-island--hero {
-  --ki-hero-scale: 1;
   gap: 0;
   padding: 18px 20px 20px;
   border-radius: 30px;
@@ -1565,56 +1815,9 @@ function prosperityKey() {
 }
 
 .knowledge-island--hero .knowledge-island__figure {
-  aspect-ratio: 16 / 9;
-  max-height: none;
-  min-height: 200px;
   border-radius: 24px;
 }
 
-.knowledge-island--hero .knowledge-island__stage {
-  display: block;
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: calc(100% / var(--ki-hero-scale));
-  height: calc(100% / var(--ki-hero-scale));
-  transform: scale(var(--ki-hero-scale));
-  transform-origin: top left;
-}
-
-@media (min-width: 681px) {
-  .knowledge-island--hero {
-    --ki-hero-scale: 1.55;
-  }
-}
-
-@media (min-width: 900px) {
-  .knowledge-island--hero {
-    --ki-hero-scale: 2.15;
-  }
-}
-
-@media (min-width: 1100px) {
-  .knowledge-island--hero {
-    --ki-hero-scale: 2.7;
-  }
-}
-
-@media (min-width: 1320px) {
-  .knowledge-island--hero {
-    --ki-hero-scale: 3.3;
-  }
-}
-
-@media (min-width: 1560px) {
-  .knowledge-island--hero {
-    --ki-hero-scale: 3.4;
-  }
-}
-
-/* 窄屏：收紧卡片内边距，让画面尽量占满 390 的宽度。
-   下面这三条是把 compact 在 480 以下给建筑做的“缩小一点”处理在 hero 里撤销掉：
-   hero 的设计宽度本来就比 compact 大，建筑不需要再缩小。 */
 @media (max-width: 680px) {
   .knowledge-island--hero {
     padding: 12px 12px 14px;
@@ -1627,29 +1830,27 @@ function prosperityKey() {
 }
 
 @media (max-width: 480px) {
-  .knowledge-island--hero .knowledge-island__palm {
-    transform: none;
-  }
-
-  .knowledge-island--hero .knowledge-island__lighthouse {
-    transform: translateX(-50%);
-  }
-
-  .knowledge-island--hero .knowledge-island__camp {
-    transform: none;
+  .knowledge-island {
+    padding: 11px 12px;
   }
 }
 
+/* 动效全部是可关的：减少动态偏好下不呼吸、不冒烟、不闪灯。 */
 @media (prefers-reduced-motion: reduce) {
   .knowledge-island__beam,
-  .knowledge-island__surf-line {
+  .knowledge-island__surf-line,
+  .knowledge-island__camp-smoke,
+  .knowledge-island__next-terrain {
     animation: none;
+  }
+
+  /* 关掉动画后，预告轮廓不能淡到看不见：给一个稳定的静态强度。 */
+  .knowledge-island__next-terrain {
+    opacity: 0.78;
   }
 
   .knowledge-island__fill {
     transition: none;
   }
 }
-
-
 </style>

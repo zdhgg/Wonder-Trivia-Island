@@ -7,6 +7,20 @@ const KNOWLEDGE_ISLAND_FIGURE = '[data-role="knowledge-island-figure"]';
 const KNOWLEDGE_ISLAND_TRACK = ".knowledge-island__track";
 const KNOWLEDGE_ISLAND_FILL = ".knowledge-island__fill";
 
+// 地形层（视觉成长）：岛身盒子 + 下一阶段预告 + 岛上的街区。
+const KNOWLEDGE_ISLAND_TERRAIN = '[data-role="knowledge-island-terrain"]';
+const KNOWLEDGE_ISLAND_NEXT_TERRAIN = '[data-role="knowledge-island-next-terrain"]';
+const KNOWLEDGE_ISLAND_GRASSLAND = ".knowledge-island__grassland";
+const KNOWLEDGE_ISLAND_HIGHLAND = ".knowledge-island__highland";
+const KNOWLEDGE_ISLAND_BEAM = ".knowledge-island__beam";
+const KNOWLEDGE_ISLAND_ZONES = Object.freeze({
+  westShore: '[data-role="knowledge-island-zone-west-shore"]',
+  green: '[data-role="knowledge-island-zone-green"]',
+  camp: '[data-role="knowledge-island-zone-camp"]',
+  harbor: '[data-role="knowledge-island-zone-harbor"]',
+  highland: '[data-role="knowledge-island-zone-highland"]'
+});
+
 // 知识岛独立页面：深链直接打开，路径不带参数。
 const KNOWLEDGE_ISLAND_PAGE_URL = "/#/knowledge-island";
 const KNOWLEDGE_ISLAND_PAGE_TITLE = "我的知识岛";
@@ -48,6 +62,12 @@ module.exports = {
   KNOWLEDGE_ISLAND_FIGURE,
   KNOWLEDGE_ISLAND_TRACK,
   KNOWLEDGE_ISLAND_FILL,
+  KNOWLEDGE_ISLAND_TERRAIN,
+  KNOWLEDGE_ISLAND_NEXT_TERRAIN,
+  KNOWLEDGE_ISLAND_GRASSLAND,
+  KNOWLEDGE_ISLAND_HIGHLAND,
+  KNOWLEDGE_ISLAND_BEAM,
+  KNOWLEDGE_ISLAND_ZONES,
   KNOWLEDGE_ISLAND_PAGE_URL,
   KNOWLEDGE_ISLAND_PAGE_TITLE,
   KNOWLEDGE_ISLAND_PAGE_STAGE_COUNT,
