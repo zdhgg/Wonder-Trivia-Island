@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  CHALLENGE_CHAPTERS,
   CHALLENGE_STAGES,
+  markChallengeWorldCardsByProfileGrade,
   getChallengeStageConfig,
   getChallengeStageList,
   getChallengeChapterClearedStageCount,
@@ -135,5 +137,60 @@ describe("challenge chapter completion", () => {
 
     expect(isChallengeChapterComplete(progress)).toBe(false);
     expect(getChallengeChapterClearedStageCount(progress)).toBe(0);
+  });
+});
+
+// 世界大地图的年级视觉层级：只加视觉标记，不排序、不筛选、不隐藏岛卡。
+describe("challenge world map grade highlight", () => {
+  it("档案年级的上册 / 下册两张岛被标成我的年级，其余年级标成其他年级", () => {
+    const marked = markChallengeWorldCardsByProfileGrade(CHALLENGE_CHAPTERS, "四年级");
+
+    // 12 张岛一张不少，顺序与 CHALLENGE_CHAPTERS 完全一致（不重排、不折叠）。
+    expect(marked).toHaveLength(CHALLENGE_CHAPTERS.length);
+    expect(marked.map((chapter) => chapter.id)).toEqual(CHALLENGE_CHAPTERS.map((chapter) => chapter.id));
+
+    const currentIds = marked.filter((chapter) => chapter.isCurrentGrade).map((chapter) => chapter.id);
+    const otherCount = marked.filter((chapter) => chapter.isOtherGrade).length;
+
+    expect(currentIds).toEqual(["chapter-grade-4-upper", "chapter-grade-4-lower"]);
+    expect(otherCount).toBe(CHALLENGE_CHAPTERS.length - 2);
+    // 高亮与弱化互斥，不会出现同一张卡又高亮又弱化。
+    expect(marked.every((chapter) => chapter.isCurrentGrade !== chapter.isOtherGrade)).toBe(true);
+  });
+
+  it("年级跟着档案走：换一个年级，高亮就换到另外两张岛", () => {
+    const firstGradeIds = markChallengeWorldCardsByProfileGrade(CHALLENGE_CHAPTERS, "一年级")
+      .filter((chapter) => chapter.isCurrentGrade)
+      .map((chapter) => chapter.id);
+    const nextGradeIds = markChallengeWorldCardsByProfileGrade(CHALLENGE_CHAPTERS, "六年级")
+      .filter((chapter) => chapter.isCurrentGrade)
+      .map((chapter) => chapter.id);
+
+    expect(firstGradeIds).toEqual(["chapter-grade-1-upper", "chapter-grade-1-lower"]);
+    expect(nextGradeIds).toEqual(["chapter-grade-6-upper", "chapter-grade-6-lower"]);
+  });
+
+  it("年级两边空格照常识别，标记只依赖 grade 字段", () => {
+    const marked = markChallengeWorldCardsByProfileGrade(CHALLENGE_CHAPTERS, "  三年级  ");
+
+    expect(marked.filter((chapter) => chapter.isCurrentGrade).map((chapter) => chapter.id)).toEqual([
+      "chapter-grade-3-upper",
+      "chapter-grade-3-lower"
+    ]);
+    // 进度等业务字段原样带过来，不被视觉标记覆盖。
+    const withProgress = markChallengeWorldCardsByProfileGrade(
+      [{ id: "chapter-grade-3-upper", grade: "三年级", starsEarned: 7, progressPercent: 33 }],
+      "三年级"
+    );
+    expect(withProgress[0]).toMatchObject({ starsEarned: 7, progressPercent: 33, isCurrentGrade: true });
+  });
+
+  it("档案年级缺失或异常时不做任何弱化，12 张卡保持同等视觉", () => {
+    for (const abnormalGrade of ["", "   ", "七年级", null, undefined]) {
+      const marked = markChallengeWorldCardsByProfileGrade(CHALLENGE_CHAPTERS, abnormalGrade);
+
+      expect(marked).toHaveLength(CHALLENGE_CHAPTERS.length);
+      expect(marked.some((chapter) => chapter.isCurrentGrade || chapter.isOtherGrade)).toBe(false);
+    }
   });
 });

@@ -260,8 +260,13 @@ export default {
             v-for="chapter in challengeWorldData"
             :key="chapter.id"
             class="challenge-world-card"
+            :class="{
+              'challenge-world-card--current': chapter.isCurrentGrade,
+              'challenge-world-card--other': chapter.isOtherGrade
+            }"
             @click="openChallengeView({ nextChallengeChapterId: chapter.id })"
           >
+            <span v-if="chapter.isCurrentGrade" class="challenge-world-card__own-badge">我的年级</span>
             <div class="challenge-world-card__icon">{{ chapter.emoji || '🏝️' }}</div>
             <div class="challenge-world-card__content">
               <h4 class="challenge-world-card__title">

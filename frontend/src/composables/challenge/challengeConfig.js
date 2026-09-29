@@ -710,6 +710,28 @@ export function supportsChallengeSemester(grade) {
     return CHALLENGE_SEMESTER_GRADES.includes(String(grade || "").trim());
   }
 
+// 世界大地图的年级视觉层级：只打视觉标记，不排序、不筛选、不隐藏任何一张岛卡。
+// profileGrade 就是学习档案里的年级（settingsStore.profile.grade），上册 / 下册两张岛
+// 共用同一个 grade，所以会同时被标成“我的年级”。
+// 档案年级为空或不在 1-6 年级里时 hasCurrentGrade 为 false：12 张卡全部保持同等视觉，
+// 页面不会退化成“整张地图都被弱化到不可读”。
+export function markChallengeWorldCardsByProfileGrade(chapters = [], profileGrade = "") {
+    const currentGrade = String(profileGrade || "").trim();
+    const hasCurrentGrade = currentGrade
+        ? chapters.some((chapter) => String(chapter?.grade || "").trim() === currentGrade)
+        : false;
+
+    return chapters.map((chapter) => {
+        const isCurrentGrade = hasCurrentGrade && String(chapter?.grade || "").trim() === currentGrade;
+
+        return {
+            ...chapter,
+            isCurrentGrade,
+            isOtherGrade: hasCurrentGrade && !isCurrentGrade
+        };
+    });
+}
+
 function getNormalizedChallengeChapterTargets(chapterId) {
     const normalizedChapterId = String(chapterId || "").trim();
 

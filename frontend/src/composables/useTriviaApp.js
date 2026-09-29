@@ -76,6 +76,7 @@ import {
   normalizeChallengeProgressBook,
   getChallengeChapterProgress,
   isChallengeChapterComplete,
+  markChallengeWorldCardsByProfileGrade,
   mergeChallengeProgressBooks,
   isChallengeProgressBookEqual,
   buildChallengeOutcome
@@ -1546,8 +1547,10 @@ export function useTriviaApp() {
     };
   });
 
+  // 岛卡顺序、进度口径完全不变（还是 CHALLENGE_CHAPTERS 原序 + 星星进度），
+  // 末尾只按学习档案年级补一层视觉标记：高亮当前年级的上/下册两张，其余年级适度弱化。
   const challengeWorldData = computed(() => {
-    return CHALLENGE_CHAPTERS.map((chapter) => {
+    const worldCards = CHALLENGE_CHAPTERS.map((chapter) => {
       const chapterProg = challengeProgressBook.value.chapters[chapter.id] || {};
       const results = chapterProg.bestResults || {};
       let starsEarned = 0;
@@ -1561,6 +1564,8 @@ export function useTriviaApp() {
         progressPercent: Math.round((starsEarned / 21) * 100)
       };
     });
+
+    return markChallengeWorldCardsByProfileGrade(worldCards, studyProfileGrade.value);
   });
 
   // 首页“今天的探险”要用的当前主线关卡：取本章最后一个已解锁关卡（也就是下一关）。

@@ -3753,3 +3753,84 @@ select {
   border-radius: 4px;
   transition: width 0.6s ease-out;
 }
+
+/* ---- 🗺️ 年级视觉层级（只影响观感：顺序、点击、进度、路由都不动） ----
+   我的年级 = 学习档案里的年级，上册 / 下册两张岛一起高亮。
+   档案年级缺失或异常时不加任何弱化 class，12 张卡回到同等视觉。 */
+
+/* 我的年级：保持满权重，只把边框 / 阴影 / 背景往上抬一档。 */
+.challenge-world-card--current {
+  background: linear-gradient(145deg, #ffffff 0%, #eaf4ff 100%);
+  border-color: #74b9ff;
+  box-shadow: 0 14px 30px rgba(9, 132, 227, 0.18), inset 0 2px 0 rgba(255, 255, 255, 1);
+}
+
+.challenge-world-card--current .challenge-world-card__icon {
+  filter: drop-shadow(0 4px 8px rgba(9, 132, 227, 0.35));
+}
+
+.challenge-world-card--current .challenge-world-card__grade-tag {
+  background: rgba(116, 185, 255, 0.22);
+  color: #0b6fc4;
+}
+
+/* “我的年级”小徽标：绝对定位在卡片右上角，不占文档流，窄屏也不会挤到岛名文字。 */
+.challenge-world-card__own-badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  padding: 1px 8px;
+  border-radius: 12px;
+  font-size: 0.7rem;
+  line-height: 1.7;
+  font-weight: bold;
+  color: #ffffff;
+  background: linear-gradient(135deg, #74b9ff 0%, #0984e3 100%);
+  box-shadow: 0 3px 8px rgba(9, 132, 227, 0.28);
+  pointer-events: none;
+}
+
+/* 其他年级：降背景 / 边框 / 阴影 / 图标饱和度，不用整卡 opacity，文字保持可读。 */
+.challenge-world-card--other {
+  background: linear-gradient(145deg, rgba(248, 251, 253, 0.92) 0%, rgba(238, 244, 250, 0.88) 100%);
+  border-color: rgba(178, 196, 214, 0.5);
+  box-shadow: 0 6px 14px rgba(36, 50, 74, 0.06), inset 0 2px 0 rgba(255, 255, 255, 0.9);
+}
+
+.challenge-world-card--other .challenge-world-card__icon {
+  filter: grayscale(0.6) saturate(0.55) drop-shadow(0 3px 4px rgba(0, 0, 0, 0.1));
+}
+
+.challenge-world-card--other .challenge-world-card__island-name {
+  color: #44586b;
+}
+
+.challenge-world-card--other .challenge-world-card__theme-title {
+  color: #8a99a8;
+}
+
+.challenge-world-card--other .challenge-world-card__grade-tag {
+  background: rgba(154, 170, 186, 0.16);
+  color: #6d7f8f;
+}
+
+.challenge-world-card--other .challenge-world-card__stats {
+  color: #7a8a99;
+}
+
+/* 其他年级 hover：还原成和我的年级一样的浮起 + 蓝色边框，可点性不被弱化。 */
+.challenge-world-card--other:hover {
+  transform: translateY(-8px) scale(1.02);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.97) 0%, rgba(243, 249, 255, 0.94) 100%);
+  border-color: #74b9ff;
+  box-shadow: 0 15px 35px rgba(36, 50, 74, 0.15), inset 0 2px 0 rgba(255, 255, 255, 1);
+}
+
+.challenge-world-card--other:hover .challenge-world-card__icon {
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.15));
+}
+
+.challenge-world-card--other:hover .challenge-world-card__grade-tag {
+  background: rgba(116, 185, 255, 0.15);
+  color: #0984e3;
+}
