@@ -54,6 +54,25 @@ const accessibleLabel = computed(() =>
   [String(props.option?.text || "").trim(), feedbackLabel.value].filter(Boolean).join("，")
 );
 
+// 按字数分档缩小字号，配合 text-wrap: balance 保证长选项最多两行且留在气球内部
+const textSizeClass = computed(() => {
+  const length = String(props.option?.text || "").trim().length;
+
+  if (length >= 11) {
+    return "balloon-option__text--xlong";
+  }
+
+  if (length >= 7) {
+    return "balloon-option__text--long";
+  }
+
+  if (length >= 5) {
+    return "balloon-option__text--medium";
+  }
+
+  return "balloon-option__text--short";
+});
+
 function handleClick() {
   if (!props.disabled && !props.isSubmitting) {
     emit("select", props.option.key);
@@ -98,7 +117,7 @@ function handleClick() {
     </div>
 
     <div class="balloon-option__content">
-      <span class="balloon-option__text">{{ option.text }}</span>
+      <span class="balloon-option__text" :class="textSizeClass">{{ option.text }}</span>
       <span v-if="feedbackLabel" class="balloon-option__feedback" aria-live="polite">
         <span aria-hidden="true">{{ isCorrect ? "✓" : isWrong ? "×" : "…" }}</span>
         {{ feedbackLabel }}
@@ -113,10 +132,12 @@ function handleClick() {
   display: grid;
   place-items: center;
   width: 100%;
-  max-width: 180px;
-  min-height: 140px;
-  padding: 0;
+  max-width: 150px;
+  /* 与 SVG viewBox 同比例，保证文字覆盖层百分比和气球主体严格对齐 */
+  aspect-ratio: 100 / 120;
+  justify-self: center;
   margin: 0;
+  padding: 0;
   overflow: visible;
   border: 0;
   background: transparent;
@@ -216,35 +237,57 @@ function handleClick() {
   stroke-width: 1;
 }
 
+/* 覆盖层与气球主体（SVG 路径 y 15~100、x 10~90）对齐，文字只在气球内部排布 */
 .balloon-option__content {
-  position: relative;
+  position: absolute;
+  left: 13.5%;
+  right: 13.5%;
+  top: 12.5%;
+  bottom: 16.7%;
   z-index: 2;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   min-width: 0;
-  padding: 10px 18px 20px;
   text-align: center;
   pointer-events: none;
 }
 
 .balloon-option__text {
-  max-width: 100%;
   color: #334155;
   font-family: "ZCOOL KuaiLe", "Baloo 2", sans-serif;
-  font-size: 1.55rem;
   font-weight: 700;
-  line-height: 1.18;
+  line-height: 1.22;
   overflow-wrap: anywhere;
+  text-wrap: balance;
+}
+
+.balloon-option__text--short {
+  font-size: 1.3rem;
+}
+
+.balloon-option__text--medium {
+  font-size: 1.1rem;
+}
+
+.balloon-option__text--long {
+  font-size: 1rem;
+}
+
+.balloon-option__text--xlong {
+  font-size: 0.9rem;
 }
 
 .balloon-option__feedback {
+  position: absolute;
+  bottom: 16%;
+  left: 50%;
+  transform: translateX(-50%);
   display: inline-flex;
   align-items: center;
   gap: 4px;
   min-height: 24px;
-  margin-top: 6px;
   padding: 3px 8px;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.88);
@@ -252,6 +295,7 @@ function handleClick() {
   font-size: 0.78rem;
   font-weight: 800;
   line-height: 1;
+  white-space: nowrap;
   box-shadow: 0 2px 5px rgba(36, 50, 74, 0.08);
 }
 
