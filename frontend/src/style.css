@@ -3651,3 +3651,105 @@ select {
   }
 }
 
+/* ==========================================================================
+   🗺️ 世界大地图视图 (World Map)
+   ========================================================================== */
+.challenge-world-map {
+  padding: 16px 24px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.challenge-world__continents {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 24px;
+  padding: 16px 8px 60px;
+}
+
+.challenge-world-card {
+  position: relative;
+  background: linear-gradient(145deg, rgba(255,255,255,0.95) 0%, rgba(248,252,255,0.85) 100%);
+  border: 3px solid rgba(255, 255, 255, 0.8);
+  border-radius: 24px;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  cursor: pointer;
+  box-shadow: 0 10px 25px rgba(36, 50, 74, 0.08), inset 0 2px 0 rgba(255, 255, 255, 1);
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  backdrop-filter: blur(10px);
+}
+
+.challenge-world-card:hover {
+  transform: translateY(-8px) scale(1.02);
+  box-shadow: 0 15px 35px rgba(36, 50, 74, 0.15), inset 0 2px 0 rgba(255, 255, 255, 1);
+  border-color: #74b9ff;
+}
+
+.challenge-world-card__icon {
+  font-size: 3.2rem;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.15));
+}
+
+.challenge-world-card__content {
+  flex: 1;
+}
+
+.challenge-world-card__title {
+  font-family: "ZCOOL KuaiLe", "Baloo 2", sans-serif;
+  font-size: 1.4rem;
+  color: #2c3e50;
+  margin: 0 0 4px 0;
+  line-height: 1.25;
+  display: flex;
+  flex-direction: column;
+}
+
+.challenge-world-card__island-name {
+  font-size: 1.35rem;
+  color: #2d3436;
+  font-weight: 850;
+}
+
+.challenge-world-card__theme-title {
+  font-size: 0.95rem;
+  color: #7f8c8d;
+  font-weight: normal;
+  margin-top: 2px;
+  font-family: var(--font-primary), sans-serif;
+}
+
+.challenge-world-card__grade-tag {
+  display: inline-block;
+  font-size: 0.75rem;
+  background: rgba(116, 185, 255, 0.15);
+  color: #0984e3;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-weight: bold;
+  margin-bottom: 8px;
+}
+
+.challenge-world-card__stats {
+  font-size: 0.9rem;
+  color: #5c6c7c;
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+
+.challenge-world-card__progress-bar {
+  width: 100%;
+  height: 8px;
+  background: rgba(44, 62, 80, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.challenge-world-card__progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #ff9f43, #ff6b6b);
+  border-radius: 4px;
+  transition: width 0.6s ease-out;
+}
