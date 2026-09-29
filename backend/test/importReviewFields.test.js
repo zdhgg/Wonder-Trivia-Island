@@ -10,7 +10,6 @@ const tempDbPath = path.join(tempDir, "trivia.test.db");
 fs.mkdirSync(tempDir, { recursive: true });
 process.env.NODE_ENV = "test";
 process.env.TRIVIA_DB_PATH = tempDbPath;
-process.env.OPENAI_API_KEY = "test-openai-key";
 
 const app = require("../src/app");
 const { closeDatabaseConnection, createDatabaseConnection, dbPath, run } = require("../src/db/database");

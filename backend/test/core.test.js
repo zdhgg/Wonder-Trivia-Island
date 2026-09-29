@@ -9,7 +9,6 @@ const tempDbPath = path.join(tempDir, "trivia.test.db");
 fs.mkdirSync(tempDir, { recursive: true });
 process.env.NODE_ENV = "test";
 process.env.TRIVIA_DB_PATH = tempDbPath;
-process.env.OPENAI_API_KEY = "test-openai-key";
 
 const app = require("../src/app");
 const { questions } = require("../scripts/questionSeedData");
@@ -27,8 +26,6 @@ const {
   stageQuestionImport
 } = require("../src/services/questionImport");
 const { pendingBatchPath } = require("../src/services/questionImportStaging");
-const { setOpenAIReviewClientFactoryForTesting } = require("../src/services/questionReview");
-const { setOpenAIProbeClientFactoryForTesting } = require("../src/services/aiRuntimeProbe");
 
 function cloneQuestion(question) {
   return JSON.parse(JSON.stringify(question));
@@ -199,13 +196,6 @@ test.after(async () => {
 
 test.beforeEach(() => {
   resetDatabase();
-  setOpenAIReviewClientFactoryForTesting(null);
-  setOpenAIProbeClientFactoryForTesting(null);
-});
-
-test.after(() => {
-  setOpenAIReviewClientFactoryForTesting(null);
-  setOpenAIProbeClientFactoryForTesting(null);
 });
 
 test("validatePreparedQuestion enforces the allowed type list", () => {
@@ -1012,517 +1002,11 @@ test("legacy AI draft generation endpoint is gone and writes nothing", async () 
   }
 });
 
-test("question routes can test AI runtime connectivity for current provider and models", async () => {
-  const probeRuntimeCalls = [];
-  const probeParseCalls = [];
-  const probeSpeechCalls = [];
-
-  setOpenAIProbeClientFactoryForTesting((runtimeConfig) => {
-    probeRuntimeCalls.push(runtimeConfig);
-    return {
-      responses: {
-        parse: async (request) => {
-          probeParseCalls.push(request);
-          return {
-            id: `resp_probe_${probeParseCalls.length}`,
-            model: request.model,
-            output_parsed: {
-              status: "ok"
-            }
-          };
-        }
-      },
-      chat: {
-        completions: {
-          create: async (request) => ({
-            id: `chatcmpl_probe_${probeParseCalls.length + 1}`,
-            model: request.model,
-            choices: [
-              {
-                message: {
-                  content: JSON.stringify({ status: "ok" })
-                }
-              }
-            ]
-          })
-        }
-      },
-      audio: {
-        speech: {
-          create: async (request) => {
-            probeSpeechCalls.push(request);
-            return {
-              arrayBuffer: async () => Buffer.from("probe-mp3-audio")
-            };
-          }
-        }
-      }
-    };
-  });
-
-  const response = await fetch(`${baseUrl}/api/questions/ai/runtime-check`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      questionModel: "gpt-5.4-mini",
-      reviewModel: "gpt-5.4-mini",
-      ttsModel: "gpt-4o-mini-tts",
-      aiRuntime: {
-        providerLabel: "OpenAI Compatible",
-        baseUrl: "https://example.com/v1",
-        apiKey: "test-provider-key"
-      }
-    })
-  });
-
-  assert.equal(response.status, 200);
-
-  const payload = await readJson(response);
-  assert.equal(payload.data.allPassed, true);
-  assert.equal(payload.data.tests.length, 3);
-  assert.equal(probeRuntimeCalls.length, 1);
-  assert.equal(probeRuntimeCalls[0].baseUrl, "https://example.com/v1");
-  assert.equal(probeRuntimeCalls[0].apiKey, "test-provider-key");
-  assert.equal(probeParseCalls.length, 2);
-  assert.equal(probeSpeechCalls.length, 1);
-  assert.equal(probeSpeechCalls[0].model, "gpt-4o-mini-tts");
-});
-
-test("question routes reject runtime overrides that provide a baseUrl without a custom apiKey", async () => {
-  const runtimeCheckResponse = await fetch(`${baseUrl}/api/questions/ai/runtime-check`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      questionModel: "gpt-5.4-mini",
-      aiRuntime: {
-        providerLabel: "OpenAI Compatible",
-        baseUrl: "https://example.com/v1"
-      }
-    })
-  });
-
-  assert.equal(runtimeCheckResponse.status, 400);
-
-  const runtimeCheckPayload = await readJson(runtimeCheckResponse);
-  assert.equal(runtimeCheckPayload.message, "AI 运行时配置无效。");
-  assert.ok(runtimeCheckPayload.details.includes("aiRuntime.baseUrl 仅在同时提供 aiRuntime.apiKey 时才允许自定义。"));
-
-  seedQuestions([
-    {
-      subject: "数学",
-      grade: "三年级",
-      semester: "通用",
-      knowledgeTag: "加法应用",
-      type: "情景计算",
-      content: "小松鼠收集了 9 颗松果，又找到 4 颗，现在一共有多少颗？",
-      options: [
-        { key: "A", text: "11 颗" },
-        { key: "B", text: "12 颗" },
-        { key: "C", text: "13 颗" },
-        { key: "D", text: "14 颗" }
-      ],
-      answer: "C",
-      explanation: "9 + 4 = 13，所以现在一共有 13 颗。",
-      difficulty: 1
-    }
-  ]);
-
-  const db = createDatabaseConnection();
-  let questionId = 0;
-
-  try {
-    questionId = Number(all(db, "SELECT id FROM questions LIMIT 1")[0]?.id || 0);
-  } finally {
-    closeDatabaseConnection(db);
-  }
-
-  const reviewResponse = await fetch(`${baseUrl}/api/questions/review`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      questionId,
-      selectedOption: "A",
-      aiRuntime: {
-        providerLabel: "OpenAI Compatible",
-        baseUrl: "https://example.com/v1"
-      }
-    })
-  });
-
-  assert.equal(reviewResponse.status, 400);
-
-  const reviewPayload = await readJson(reviewResponse);
-  assert.equal(reviewPayload.message, "AI 运行时配置无效。");
-  assert.ok(reviewPayload.details.includes("aiRuntime.baseUrl 仅在同时提供 aiRuntime.apiKey 时才允许自定义。"));
-});
-
-test("question routes can fall back to chat completions when responses API is unavailable", async () => {
-  const probeSpeechCalls = [];
-
-  setOpenAIProbeClientFactoryForTesting(() => ({
-    responses: {
-      parse: async () => {
-        const error = new Error("404 Not Found");
-        error.status = 404;
-        throw error;
-      }
-    },
-    chat: {
-      completions: {
-        create: async (request) => {
-          if (request.model === "mimo-v2.5-tts") {
-            return {
-              id: "chatcmpl_probe_fallback_tts",
-              model: request.model,
-              choices: [
-                {
-                  message: {
-                    audio: {
-                      data: Buffer.from("fake-mimo-wav").toString("base64")
-                    }
-                  }
-                }
-              ]
-            };
-          }
-
-          return {
-            id: "chatcmpl_probe_fallback",
-            model: request.model,
-            choices: [
-              {
-                message: {
-                  content: JSON.stringify({ status: "ok" })
-                }
-              }
-            ]
-          };
-        }
-      }
-    },
-    audio: {
-      speech: {
-        create: async (request) => {
-          probeSpeechCalls.push(request);
-          return {
-            arrayBuffer: async () => Buffer.from("probe-mp3-audio")
-          };
-        }
-      }
-    }
-  }));
-
-  const response = await fetch(`${baseUrl}/api/questions/ai/runtime-check`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      questionModel: "mimo-v2.5-pro",
-      reviewModel: "mimo-v2.5-pro",
-      ttsModel: "mimo-v2.5-tts",
-      aiRuntime: {
-        providerLabel: "Xiaomi MiMo",
-        baseUrl: "https://token-plan-cn.xiaomimimo.com/v1",
-        apiKey: "test-provider-key"
-      }
-    })
-  });
-
-  assert.equal(response.status, 200);
-
-  const payload = await readJson(response);
-  assert.equal(payload.data.allPassed, true);
-  assert.equal(payload.data.tests[0].type, "chat.completions");
-  assert.equal(payload.data.tests[1].type, "chat.completions");
-  assert.equal(payload.data.tests[2].type, "chat.completions.audio");
-  assert.equal(probeSpeechCalls.length, 0);
-});
-
-test("question routes can probe Xiaomi MiMo TTS through chat completions audio mode", async () => {
-  const ttsCompletionCalls = [];
-
-  setOpenAIProbeClientFactoryForTesting(() => ({
-    responses: {
-      parse: async () => ({
-        id: "resp_probe_ok",
-        model: "mimo-v2.5-pro",
-        output_parsed: { status: "ok" }
-      })
-    },
-    chat: {
-      completions: {
-        create: async (request) => {
-          ttsCompletionCalls.push(request);
-          return {
-            id: "chatcmpl_mimo_tts_probe",
-            model: request.model,
-            choices: [
-              {
-                message: {
-                  audio: {
-                    data: Buffer.from("fake-mimo-wav").toString("base64")
-                  }
-                }
-              }
-            ]
-          };
-        }
-      }
-    },
-    audio: {
-      speech: {
-        create: async () => {
-          throw new Error("Should not use audio.speech for MiMo TTS");
-        }
-      }
-    }
-  }));
-
-  const response = await fetch(`${baseUrl}/api/questions/ai/runtime-check`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      questionModel: "mimo-v2.5-pro",
-      reviewModel: "mimo-v2.5-pro",
-      ttsModel: "mimo-v2.5-tts",
-      aiRuntime: {
-        providerLabel: "Xiaomi_mimo",
-        baseUrl: "https://api.xiaomimimo.com/v1",
-        apiKey: "test-provider-key"
-      }
-    })
-  });
-
-  assert.equal(response.status, 200);
-
-  const payload = await readJson(response);
-  assert.equal(payload.data.allPassed, true);
-  assert.equal(payload.data.tests[2].type, "chat.completions.audio");
-  assert.equal(ttsCompletionCalls.length, 1);
-  assert.equal(ttsCompletionCalls[0].model, "mimo-v2.5-tts");
-  assert.equal(ttsCompletionCalls[0].audio.voice, "Chloe");
-});
-
-test("question routes can generate AI review text and TTS audio for a submitted answer", async () => {
-  const reviewParseCalls = [];
-  const speechCreateCalls = [];
-  const reviewRuntimeCalls = [];
-
-  seedQuestions([
-    {
-      subject: "数学",
-      grade: "三年级",
-      semester: "通用",
-      knowledgeTag: "加法应用",
-      type: "情景计算",
-      content: "图书角原来有 12 本故事书，又放进 5 本，现在一共有多少本？",
-      options: [
-        { key: "A", text: "15 本" },
-        { key: "B", text: "16 本" },
-        { key: "C", text: "17 本" },
-        { key: "D", text: "18 本" }
-      ],
-      answer: "C",
-      explanation: "12 + 5 = 17，所以现在一共有 17 本。",
-      difficulty: 1
-    }
-  ]);
-
-  setOpenAIReviewClientFactoryForTesting((runtimeConfig) => {
-    reviewRuntimeCalls.push(runtimeConfig);
-    return {
-      responses: {
-        parse: async (request) => {
-          reviewParseCalls.push(request);
-          return {
-            id: "resp_test_question_review",
-            model: "gpt-5.4-mini",
-            output_parsed: {
-              tone: "repair",
-              title: "先看数量变化词",
-              encouragement: "你已经把题目场景看懂了一半。",
-              diagnosis: "这题关键是看到“又放进”，说明数量还要继续相加。",
-              nextStep: "下次先圈出“又、多、还剩”这些变化词。",
-              bubbleText: "先圈出“又放进”，这题就是继续相加。",
-              speechText: "你已经把场景看懂了一半。这题要先看到“又放进”表示继续相加，下次先圈出数量变化词。"
-            }
-          };
-        }
-      },
-      chat: {
-        completions: {
-          create: async (request) => ({
-            id: "chatcmpl_test_question_review",
-            model: request.model,
-            choices: [
-              {
-                message: {
-                  content: JSON.stringify({
-                    tone: "repair",
-                    title: "先看数量变化词",
-                    encouragement: "你已经把题目场景看懂了一半。",
-                    diagnosis: "这题关键是看到“又放进”，说明数量还要继续相加。",
-                    nextStep: "下次先圈出“又、多、还剩”这些变化词。",
-                    bubbleText: "先圈出“又放进”，这题就是继续相加。",
-                    speechText: "你已经把场景看懂了一半。这题要先看到“又放进”表示继续相加，下次先圈出数量变化词。"
-                  })
-                }
-              }
-            ]
-          })
-        }
-      },
-      audio: {
-        speech: {
-          create: async (request) => {
-            speechCreateCalls.push(request);
-            return {
-              arrayBuffer: async () => Buffer.from("fake-mp3-audio")
-            };
-          }
-        }
-      }
-    };
-  });
-
-  const db = createDatabaseConnection();
-  let questionId = 0;
-
-  try {
-    questionId = Number(all(db, "SELECT id FROM questions LIMIT 1")[0]?.id || 0);
-  } finally {
-    closeDatabaseConnection(db);
-  }
-
-  const reviewResponse = await fetch(`${baseUrl}/api/questions/review`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      questionId,
-      selectedOption: "A",
-      reviewLength: "detailed",
-      aiRuntime: {
-        providerLabel: "OpenAI Compatible",
-        baseUrl: "https://example.com/v1",
-        apiKey: "test-provider-key"
-      }
-    })
-  });
-
-  assert.equal(reviewResponse.status, 200);
-
-  const reviewPayload = await readJson(reviewResponse);
-  assert.equal(reviewPayload.data.tone, "repair");
-  assert.equal(reviewPayload.data.title, "先看数量变化词");
-  assert.equal(reviewPayload.data.bubbleText, "先圈出“又放进”，这题就是继续相加");
-  assert.ok(reviewPayload.data.speechText.includes("继续相加"));
-  assert.equal(reviewPayload.meta.model, "gpt-5.4-mini");
-  assert.equal(reviewParseCalls.length, 1);
-  assert.equal(reviewRuntimeCalls[0].baseUrl, "https://example.com/v1");
-  assert.equal(reviewRuntimeCalls[0].apiKey, "test-provider-key");
-  assert.ok(reviewParseCalls[0].instructions.includes("当前题目属于数学。"));
-  assert.ok(reviewParseCalls[0].instructions.includes("数量关系"));
-  assert.ok(reviewParseCalls[0].instructions.includes("bubbleText"));
-
-  const speechResponse = await fetch(`${baseUrl}/api/questions/review/speech`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      text: reviewPayload.data.speechText,
-      model: "gpt-4o-mini-tts",
-      aiRuntime: {
-        providerLabel: "OpenAI Compatible",
-        baseUrl: "https://example.com/v1",
-        apiKey: "test-provider-key"
-      }
-    })
-  });
-
-  assert.equal(speechResponse.status, 200);
-  assert.ok(String(speechResponse.headers.get("content-type") || "").includes("audio/mpeg"));
-  assert.equal(speechCreateCalls.length, 1);
-  assert.equal(speechCreateCalls[0].model, "gpt-4o-mini-tts");
-
-  const speechBuffer = Buffer.from(await speechResponse.arrayBuffer());
-  assert.equal(speechBuffer.toString(), "fake-mp3-audio");
-});
-
 test("API responses do not expose wildcard CORS headers by default", async () => {
   const healthResponse = await fetch(`${baseUrl}/health`);
 
   assert.equal(healthResponse.status, 200);
   assert.equal(healthResponse.headers.get("access-control-allow-origin"), null);
-});
-
-test("question review speech can use Xiaomi MiMo chat completions audio mode", async () => {
-  const ttsCompletionCalls = [];
-
-  setOpenAIReviewClientFactoryForTesting(() => ({
-    chat: {
-      completions: {
-        create: async (request) => {
-          ttsCompletionCalls.push(request);
-          return {
-            id: "chatcmpl_mimo_tts_review",
-            model: request.model,
-            choices: [
-              {
-                message: {
-                  audio: {
-                    data: Buffer.from("fake-mimo-review-wav").toString("base64")
-                  }
-                }
-              }
-            ]
-          };
-        }
-      }
-    },
-    audio: {
-      speech: {
-        create: async () => {
-          throw new Error("Should not use audio.speech for MiMo TTS");
-        }
-      }
-    }
-  }));
-
-  const speechResponse = await fetch(`${baseUrl}/api/questions/review/speech`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      text: "这是一段语音测试。",
-      model: "mimo-v2.5-tts",
-      aiRuntime: {
-        providerLabel: "Xiaomi_mimo",
-        baseUrl: "https://api.xiaomimimo.com/v1",
-        apiKey: "test-provider-key"
-      }
-    })
-  });
-
-  assert.equal(speechResponse.status, 200);
-  assert.equal(ttsCompletionCalls.length, 1);
-  assert.equal(ttsCompletionCalls[0].model, "mimo-v2.5-tts");
-  assert.equal(ttsCompletionCalls[0].audio.voice, "Chloe");
-
-  const speechBuffer = Buffer.from(await speechResponse.arrayBuffer());
-  assert.equal(speechBuffer.toString(), "fake-mimo-review-wav");
 });
 
 test("home welcome route is removed and the homepage copy is generated locally", async () => {
@@ -1543,15 +1027,43 @@ test("home welcome route is removed and the homepage copy is generated locally",
   assert.equal(homeWelcomeResponse.status, 404);
 });
 
-test("session summary is built by local deterministic rules without any model call", async () => {
-  // 回归：即使注入一个会抛错的模型 client 工厂，summary 也绝不创建/调用模型客户端。
-  let clientFactoryCalls = 0;
-
-  setOpenAIReviewClientFactoryForTesting(() => {
-    clientFactoryCalls += 1;
-    throw new Error("session summary must not create a model client");
+// 旧「单题 AI 点评 / 在线点评 TTS / AI 连接探针」链已删除（Phase C2 收口）：
+// 前端没有入口，后端不再持有任何内部模型调用。这里保留否定式回归：
+// 三个入口必须彻底 404，防止历史链路被无意恢复。
+test("legacy single-question AI review endpoints are gone", async () => {
+  const reviewResponse = await fetch(`${baseUrl}/api/questions/review`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      questionId: 1,
+      selectedOption: "A"
+    })
   });
 
+  assert.equal(reviewResponse.status, 404);
+
+  const speechResponse = await fetch(`${baseUrl}/api/questions/review/speech`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      text: "这是一段语音测试。"
+    })
+  });
+
+  assert.equal(speechResponse.status, 404);
+
+  const runtimeCheckResponse = await fetch(`${baseUrl}/api/questions/ai/runtime-check`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      reviewModel: "gpt-5.4-mini"
+    })
+  });
+
+  assert.equal(runtimeCheckResponse.status, 404);
+});
+
+test("session summary is built by local deterministic rules without any model call", async () => {
   const summaryResponse = await fetch(`${baseUrl}/api/questions/review/summary`, {
     method: "POST",
     headers: {
@@ -1618,7 +1130,50 @@ test("session summary is built by local deterministic rules without any model ca
   assert.equal(summaryPayload.meta.model, "");
   assert.equal(summaryPayload.meta.responseId, "");
   assert.equal(summaryPayload.meta.source, "fallback");
-  assert.equal(clientFactoryCalls, 0);
+});
+
+test("backend runtime sources no longer reference any model SDK", () => {
+  // 内部 OpenAI runtime 已随 Phase C2 删除：正式源码不允许再出现模型 SDK
+  // 或 OPENAI_* 环境变量引用（External AI Gateway / 外部 Harness 不在本仓库运行时内）。
+  const runtimeSources = [
+    "../src/app.js",
+    "../src/server.js",
+    "../src/services/questionReview.js",
+    "../src/routes/questions/index.js",
+    "../src/routes/questions/reviewRoutes.js",
+    "../src/routes/questions/shared.js"
+  ];
+
+  for (const relativePath of runtimeSources) {
+    const source = fs.readFileSync(path.join(__dirname, relativePath), "utf8");
+
+    assert.equal(
+      /require\(\s*["']openai["']\s*\)|from\s+["']openai["']/.test(source),
+      false,
+      `${relativePath} 不应再引用 openai SDK`
+    );
+    assert.equal(
+      /OPENAI_/.test(source),
+      false,
+      `${relativePath} 不应再引用 OPENAI_* 环境变量`
+    );
+  }
+
+  const deletedRuntimeFiles = [
+    "../src/services/openAiStructuredOutput.js",
+    "../src/services/aiRuntimeProbe.js",
+    "../src/services/aiRuntimeConfig.js",
+    "../src/services/mimoTtsCompat.js",
+    "../src/routes/questions/aiRoutes.js"
+  ];
+
+  for (const relativePath of deletedRuntimeFiles) {
+    assert.equal(
+      fs.existsSync(path.join(__dirname, relativePath)),
+      false,
+      `${relativePath} 应已删除`
+    );
+  }
 });
 
 test("session summary route rejects empty attempts", async () => {

@@ -29,7 +29,7 @@ const emit = defineEmits(["profile-saved", "export-backup", "import-backup", "pe
 const settingsStore = useSettingsStore();
 settingsStore.hydrate();
 
-const { profile, aiPreferences, coachingPreferences, activityLogs } = storeToRefs(settingsStore);
+const { profile, coachingPreferences, activityLogs } = storeToRefs(settingsStore);
 
 const allSectionLinks = SETTINGS_SECTIONS.map((section) => ({
   label: section.navLabel,
@@ -40,7 +40,6 @@ const allSectionLinks = SETTINGS_SECTIONS.map((section) => ({
 const quickLinks = allSectionLinks.filter((section) => !section.hidden);
 const sectionDirtyState = ref({
   profile: false,
-  ai: false,
   coaching: false
 });
 const activeSectionModel = computed({
@@ -69,7 +68,6 @@ const settingsUpdatedLabel = computed(() =>
   formatTimestamp(
     latestLog.value?.createdAt ||
       coachingPreferences.value.updatedAt ||
-      aiPreferences.value.updatedAt ||
       profile.value.updatedAt
   )
 );
@@ -85,14 +83,9 @@ function handleQuickLinkClick(item) {
   activeSectionModel.value = resolveSectionId(item.href);
 }
 
-function handleSectionSelect(sectionId) {
-  activeSectionModel.value = sectionId;
-}
-
 function handleDirtyStateChange(nextDirtyState = {}) {
   sectionDirtyState.value = {
     profile: Boolean(nextDirtyState.profile),
-    ai: Boolean(nextDirtyState.ai),
     coaching: Boolean(nextDirtyState.coaching)
   };
 }
@@ -195,7 +188,6 @@ watch(
           :is-backup-busy="isBackupBusy"
           :backup-stats="backupStats"
           @dirty-state-change="handleDirtyStateChange"
-          @section-select="handleSectionSelect"
           @profile-saved="$emit('profile-saved', $event)"
           @export-backup="$emit('export-backup')"
           @import-backup="$emit('import-backup', $event)"

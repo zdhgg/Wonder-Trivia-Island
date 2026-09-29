@@ -1,7 +1,7 @@
 # Wonder Trivia Island
 
 面向小学生的趣味答题系统，前端使用 Vite + Vue 3，后端使用 Node.js + Express + SQLite。
-当前正式版本为 `v1.5.0`，已经覆盖答题冒险、闯关世界地图、讲堂地图、弱项专项练习、题库管理、外部 Harness 出题导入、AI 点评与语音、首页欢迎语、错题温习、知识学习、闯关进度和设置中心。
+当前正式版本为 `v1.5.0`，已经覆盖答题冒险、闯关世界地图、讲堂地图、弱项专项练习、题库管理、外部 Harness 出题导入、本地整轮学习总结、首页欢迎语、错题温习、知识学习、闯关进度和设置中心。
 
 当前实现使用 Node.js 24+ 自带的 `node:sqlite` 访问 SQLite 数据库，避免额外安装原生驱动带来的兼容问题。
 
@@ -16,7 +16,7 @@
 |   |   |-- db/              # SQLite 连接与事务辅助
 |   |   |-- questions/       # 题目仓储、类型、知识标签别名
 |   |   |-- routes/          # questions / challenge / study record API
-|   |   `-- services/        # 导入校验、AI 点评、TTS、AI 连接探针
+|   |   `-- services/        # 导入校验、本地整轮学习总结
 |   `-- test/
 |-- frontend/
 |   |-- src/
@@ -136,31 +136,21 @@ npm run dev
 ```bash
 # PowerShell
 $env:ADMIN_IMPORT_KEY="your-import-key"
-$env:OPENAI_API_KEY="your-openai-api-key"
-# 可选：如果你使用兼容网关，可以额外配置
-# $env:OPENAI_BASE_URL="https://api.openai.com/v1"
-# 可选：覆盖默认模型，当前默认使用 gpt-5.4-mini
-$env:OPENAI_QUESTION_MODEL="gpt-5.4-mini"
 npm run backend:start
 ```
 
 如果未配置 `ADMIN_IMPORT_KEY`，导入接口默认只允许本机访问。
 External AI Gateway 是 **localhost-only 的本机进程间接口**：只供 DSH / External Harness 直连 `http://127.0.0.1:8008/api/external-ai/...` 使用。它只认真实 socket loopback，**不需要也不接受任何凭证**——既没有网关专用密钥，也不接受 `ADMIN_IMPORT_KEY`。它不经过 Vite，也不应通过任何远程代理或浏览器暴露给局域网。它只提供白名单查询、proposal 提交和 proposal 状态读取，不提供题库或学习记录写入。
-如果未配置 `OPENAI_API_KEY`，AI 点评和语音播报会返回不可用提示；首页欢迎语（本地规则）和整轮学习总结（本地确定性逻辑）不依赖任何模型 Key。题目生成不依赖该 Key（由外部 Harness 完成），现有题库查看、导入、答题、学习和闯关功能也不受影响。
-教学演示（Teaching Demo）不依赖任何模型 Key：系统只登记“待外部生成”请求，demo 由外部 Harness 通过 External AI Gateway 提交，未配置 `OPENAI_API_KEY` 时该流程依然完整可用。
-如果你在前端设置里为某条模型填写了自定义 `Base URL`，需要同时填写该模型自己的 `API Key`；服务端不会再把默认密钥转发到任意自定义网关。
+系统运行时不调用任何模型，也不需要任何 `OPENAI_*` 配置：首页欢迎语（本地规则）和整轮学习总结（本地确定性逻辑）在本地生成；题目生成和教学演示由外部 Harness 通过 External AI Gateway 完成。现有题库查看、导入、答题、学习和闯关功能均不受影响。
 
 启动后访问：
 
 - `GET /api/questions/random`：按题数随机返回题目，支持按年级 / 学期 / 难度筛选
 - `POST /api/questions/submit`：提交答案并返回判题结果
-- `POST /api/questions/review`：为单题生成 AI 点评
-- `POST /api/questions/review/speech`：把点评文案转成语音
 - `POST /api/questions/review/summary`：为整轮练习生成学习总结（本地确定性逻辑，不调用模型）
 - `GET /api/questions/stats`：返回当前题库总数
 - `POST /api/questions/coverage`：返回多个目标条件下的题量盘点
 - `GET /api/questions`：按分页 / 学科 / 年级 / 学期 / 难度 / 关键词查看当前题库
-- `POST /api/questions/ai/runtime-check`：测试当前 AI 运行时连接
 - `PATCH /api/questions/batch/update`：批量更新题目的学科 / 年级 / 学期 / 难度
 - `POST /api/questions/batch/delete`：批量删除题目
 - `PATCH /api/questions/:id`：更新指定题目
@@ -304,7 +294,6 @@ Harness 的覆盖规则（服务端强制）：一次成功的提交会把 `teac
 
 `replace` 模式会先自动备份现有数据库，再用新题目整体替换。
 `GET /api/questions` 与导入接口、题库写接口共用同一套管理访问规则（见下一节）。
-`POST /api/questions/ai/runtime-check` 可以测试服务端默认 AI 配置，或测试“自带 API Key 的自定义运行时”；仅提供 `Base URL` 而不提供 `API Key` 的请求会被拒绝。
 
 ### 管理面 / External Harness 面的本机边界
 
@@ -312,8 +301,8 @@ Harness 的覆盖规则（服务端强制）：一次成功的提交会把 `teac
 
 | 面 | 例子 | 谁能用 |
 | --- | --- | --- |
-| A 学习面 | `random` / `stats` / `coverage` / `submit` / `review*`、`study-record-book`、`challenge-progress`、`growth-*` | 本机 + 手机 / 局域网都正常使用（即使里面是 PUT / POST / PATCH / DELETE） |
-| B 管理面 | `proposals`、`questions/import`、`questions/batch`、`questions/ai/runtime-check`、裸 `questions`、数字 id 的 PATCH / DELETE | 本机浏览器；非本机必须带 `x-admin-key` |
+| A 学习面 | `random` / `stats` / `coverage` / `submit` / `review/summary`、`study-record-book`、`challenge-progress`、`growth-*` | 本机 + 手机 / 局域网都正常使用（即使里面是 PUT / POST / PATCH / DELETE） |
+| B 管理面 | `proposals`、`questions/import`、`questions/batch`、裸 `questions`、数字 id 的 PATCH / DELETE | 本机浏览器；非本机必须带 `x-admin-key` |
 | C External Harness 面 | `/api/external-ai/**` | 只有本机的 DSH 直连 `http://127.0.0.1:8008`，任何浏览器都不经 Vite 代理它 |
 
 管理面的后端语义是：
@@ -395,7 +384,7 @@ npm run questions:import -- --from-seed --limit 20
 
 边界约定：
 
-- 系统不调用任何模型出题；保留的 AI 能力只有单题点评、TTS 和 runtime-check（整轮总结与首页欢迎语已本地化，不调用模型）；
+- 系统不调用任何模型出题；历史上保留的单题 AI 点评、在线 TTS 与 AI 连接探针（runtime-check）已删除；整轮总结与首页欢迎语由本地确定性规则生成，不调用模型；
 - Harness 不直接写 `questions`，唯一写库入口是人工 confirm；
 - 不存在 Question Draft / Request / Queue 这类中间态；
 - 正式入库必须经人在导入页确认，`confirm` 之外没有第二条写题库路径。

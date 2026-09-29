@@ -9,25 +9,6 @@ export const SETTINGS_SECTIONS = Object.freeze([
     dirtyKey: "profile"
   },
   {
-    id: "settings-ai",
-    href: "#settings-ai",
-    routeSlug: "ai",
-    navLabel: "AI 配置",
-    sectionTitle: "AI 配置",
-    category: "editor",
-    dirtyKey: "ai"
-  },
-  {
-    id: "settings-model-library",
-    href: "#settings-model-library",
-    routeSlug: "model-library",
-    navLabel: "模型管理",
-    sectionTitle: "模型管理",
-    category: "editor",
-    dirtyKey: "ai",
-    hidden: true
-  },
-  {
     id: "settings-coaching",
     href: "#settings-coaching",
     routeSlug: "coaching",

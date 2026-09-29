@@ -115,7 +115,7 @@ const stackGroups = computed(() => [
   },
   {
     title: "后端",
-    items: ["Node.js 24", "Express 5", "SQLite", "OpenAI SDK"]
+    items: ["Node.js 24", "Express 5", "SQLite", "External Harness"]
   },
   {
     title: "运行方式",

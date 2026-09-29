@@ -1,10 +1,9 @@
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { storeToRefs } from "pinia";
 import { useQuizAudio } from "../composables/useQuizAudio";
-import { createQuizAiReview } from "../composables/quiz/useQuizAiReview";
+import { createQuizSessionSummary } from "../composables/quiz/useQuizSessionSummary";
 import { createQuizTimer } from "../composables/quiz/useQuizTimer";
 import { submitQuestionAnswer } from "../services/questionsApi";
-import { useAudioStore } from "../stores/useAudioStore";
 import { ANSWER_STATUS, useQuizStore } from "../stores/useQuizStore";
 import { useSettingsStore } from "../stores/useSettingsStore";
 import { getEffectiveChallengeTimeLimitSeconds } from "../utils/challengeStageRules";
@@ -362,12 +361,10 @@ export function useQuizView(props, emit) {
   const quizStore = useQuizStore();
 
   const quizAudio = useQuizAudio();
-  const audioStore = useAudioStore();
   const settingsStore = useSettingsStore();
   settingsStore.hydrate();
 
   const { answerState, consecutiveCorrectCount, currentQuestionIndex, currentScore } = storeToRefs(quizStore);
-  const { masterVolume, sfxVolume } = storeToRefs(audioStore);
   const { coachingPreferences } = storeToRefs(settingsStore);
 
   let autoAdvanceTimer = null;
@@ -483,23 +480,6 @@ export function useQuizView(props, emit) {
       : props.questionTimeLimitSeconds
   );
 
-  const aiSpeechVolume = computed(() =>
-    Math.max(0, Math.min(1, Number(masterVolume.value || 0) * Number(sfxVolume.value || 0)))
-  );
-  const effectiveTtsVoice = computed(() => {
-    const runtimeVoice = String(settingsStore.effectiveTtsRuntimeConfig?.ttsVoice || "").trim();
-
-    return runtimeVoice || coachingPreferences.value?.aiReviewVoice || "coral";
-  });
-  const effectiveTtsAudioFormat = computed(() => {
-    const runtimeFormat = String(settingsStore.effectiveTtsRuntimeConfig?.ttsAudioFormat || "").trim().toLowerCase();
-
-    if (["mp3", "wav", "pcm16"].includes(runtimeFormat)) {
-      return runtimeFormat;
-    }
-
-    return "mp3";
-  });
   const quizTimer = createQuizTimer({
     ANSWER_STATUS,
     currentQuestion,
@@ -523,14 +503,15 @@ export function useQuizView(props, emit) {
     syncQuestionTimer,
     disposeQuizTimer
   } = quizTimer;
-  const quizAiReview = createQuizAiReview({
-    coachingPreferences,
-    settingsStore,
-    unlockAudio: () => quizAudio.unlockAudio(),
-    aiSpeechVolume,
-    effectiveTtsVoice,
-    effectiveTtsAudioFormat,
-    scheduleNextQuestion,
+  const {
+    quizSummary,
+    quizSummaryMeta,
+    quizSummaryStatus,
+    quizSummaryErrorMessage,
+    resetQuizSummaryState,
+    loadQuizSummary,
+    disposeQuizSessionSummary
+  } = createQuizSessionSummary({
     getAttempts: () => questionAttempts.value.filter(Boolean),
     getCurrentScore: () => currentScore.value,
     getCorrectCount: () => correctCount.value,
@@ -540,31 +521,6 @@ export function useQuizView(props, emit) {
     getPlayMode: () => props.playMode,
     getStageTitle: () => props.stageTitle
   });
-  const {
-    aiReview,
-    aiReviewStatus,
-    aiReviewErrorMessage,
-    isAiReviewExpanded,
-    hasExpandedAiReviewOnce,
-    aiSpeechStatus,
-    aiSpeechErrorMessage,
-    quizSummary,
-    quizSummaryMeta,
-    quizSummaryStatus,
-    quizSummaryErrorMessage,
-    quizSummarySpeechStatus,
-    quizSummarySpeechErrorMessage,
-    resetAiReviewState,
-    toggleAiReviewExpanded: toggleAiReviewExpandedState,
-    resetQuizSummaryState,
-    loadAiReview,
-    handlePlayAiReview,
-    loadQuizSummary,
-    handlePlayQuizSummary,
-    stopAiReviewSpeech,
-    stopQuizSummarySpeech,
-    disposeQuizAiReview
-  } = quizAiReview;
 
   function normalizeCompanionLine(value, maxLength = 42) {
     const normalizedValue = String(value || "").replace(/\s+/g, " ").trim();
@@ -1102,52 +1058,9 @@ export function useQuizView(props, emit) {
 
     return `正确答案是 ${correctAnswerLabel.value}。${penaltyText}${followupText}`;
   });
-  const aiReviewButtonLabel = computed(() => {
-    if (aiSpeechStatus.value === "loading") {
-      return "猫头鹰准备中...";
-    }
-
-    if (aiSpeechStatus.value === "playing") {
-      return "先停一下";
-    }
-
-    return "听猫头鹰讲解";
-  });
-
-  const showAiReviewVoiceButton = computed(() => Boolean(aiReview.value?.speechText));
-  const showAiReviewPanel = computed(
-    () => aiReviewStatus.value !== "idle" || Boolean(aiReview.value) || Boolean(aiReviewErrorMessage.value) || Boolean(aiSpeechErrorMessage.value)
-  );
-  const isCorrectReviewFeedback = computed(
-    () => showExplanation.value && answerState.value === ANSWER_STATUS.CORRECT
-  );
-  const showAiReviewDisclosure = computed(() => showExplanation.value && feedback.value && showAiReviewPanel.value);
-  const showExpandedAiReview = computed(() => showAiReviewDisclosure.value && isAiReviewExpanded.value);
-  const shouldRenderExpandedAiReview = computed(
-    () => showAiReviewDisclosure.value && (showExpandedAiReview.value || hasExpandedAiReviewOnce.value)
-  );
-  const aiReviewDisclosureButtonLabel = computed(() => {
-    if (isAiReviewExpanded.value) {
-      return "收起讲解";
-    }
-
-    return isCorrectReviewFeedback.value ? "查看猫头鹰讲解" : "展开讲解";
-  });
   const showQuizSummaryCard = computed(() => isFinished.value && questionAttempts.value.length > 0);
   const quizSummaryTone = computed(() => quizSummary.value?.tone || "steady");
   const quizSummaryTitle = computed(() => quizSummary.value?.title || "本轮猫头鹰总结");
-  const quizSummaryButtonLabel = computed(() => {
-    if (quizSummarySpeechStatus.value === "loading") {
-      return "猫头鹰准备中...";
-    }
-
-    if (quizSummarySpeechStatus.value === "playing") {
-      return "先停一下";
-    }
-
-    return "听猫头鹰总结";
-  });
-  const showQuizSummaryVoiceButton = computed(() => Boolean(quizSummary.value?.speechText));
   const quizSummaryFootnote = computed(() =>
     quizSummaryMeta.value?.source === "fallback"
       ? "已按本轮答题记录自动整理，可作为复盘参考。"
@@ -1245,7 +1158,6 @@ export function useQuizView(props, emit) {
     timedOut.value = false;
     hasReportedFinish.value = false;
     hasPlayedChallengeFinish.value = false;
-    resetAiReviewState();
     resetQuizSummaryState();
     quizStore.resetQuiz();
     syncQuestionTimer();
@@ -1268,7 +1180,6 @@ export function useQuizView(props, emit) {
     lastWrongPenalty.value = 0;
     selectedStrategyMode.value = PLAY_STRATEGY_MODE.STEADY;
     timedOut.value = false;
-    resetAiReviewState();
     quizStore.nextQuestion();
     syncQuestionTimer();
   }
@@ -1290,14 +1201,6 @@ export function useQuizView(props, emit) {
     }
 
     selectedStrategyMode.value = mode;
-  }
-
-  function toggleAiReviewExpanded() {
-    if (!showAiReviewDisclosure.value) {
-      return;
-    }
-
-    toggleAiReviewExpandedState();
   }
 
   function createQuestionSnapshot(question = currentQuestion.value) {
@@ -1335,7 +1238,6 @@ export function useQuizView(props, emit) {
     feedback.value = null;
     showExplanation.value = false;
     timedOut.value = false;
-    resetAiReviewState();
     submitController = new AbortController();
     isSubmitting.value = true;
 
@@ -1515,12 +1417,10 @@ export function useQuizView(props, emit) {
   }
 
   function handleNextStage() {
-    stopQuizSummarySpeech();
     emit("next-stage");
   }
 
   function handleOpenWrongReview() {
-    stopQuizSummarySpeech();
     emit("open-wrong-review");
   }
 
@@ -1529,7 +1429,6 @@ export function useQuizView(props, emit) {
       return;
     }
 
-    stopQuizSummarySpeech();
     emit("practice-knowledge", finishKnowledgeTag.value);
   }
 
@@ -1589,7 +1488,7 @@ export function useQuizView(props, emit) {
     clearResultAutoAdvanceTimer();
     disposeQuizTimer();
     clearSubmitController();
-    disposeQuizAiReview();
+    disposeQuizSessionSummary();
   });
 
   return {
@@ -1697,30 +1596,13 @@ export function useQuizView(props, emit) {
     correctFeedbackDetail,
     wrongFeedbackTitle,
     wrongFeedbackDetail,
-    aiReview,
-    aiReviewStatus,
-    aiReviewErrorMessage,
-    aiSpeechStatus,
-    aiSpeechErrorMessage,
-    aiReviewButtonLabel,
-    showAiReviewVoiceButton,
-    showAiReviewPanel,
-    isCorrectReviewFeedback,
-    showAiReviewDisclosure,
-    showExpandedAiReview,
-    shouldRenderExpandedAiReview,
-    aiReviewDisclosureButtonLabel,
     showQuizSummaryCard,
     quizSummary,
     quizSummaryMeta,
     quizSummaryStatus,
     quizSummaryErrorMessage,
-    quizSummarySpeechStatus,
-    quizSummarySpeechErrorMessage,
     quizSummaryTone,
     quizSummaryTitle,
-    quizSummaryButtonLabel,
-    showQuizSummaryVoiceButton,
     quizSummaryFootnote,
     finishEyebrow,
     finishHeading,
@@ -1737,13 +1619,7 @@ export function useQuizView(props, emit) {
     scheduleNextQuestion,
     selectAnswerStrategy,
     submitCurrentAnswer,
-    loadAiReview,
     loadQuizSummary,
-    handlePlayAiReview,
-    toggleAiReviewExpanded,
-    handlePlayQuizSummary,
-    stopAiReviewSpeech,
-    stopQuizSummarySpeech,
     handleOptionSelect,
     handleTimeExpired,
     getOptionClass,

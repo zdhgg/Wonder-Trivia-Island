@@ -1,17 +1,6 @@
 const express = require("express");
-const {
-  generateQuestionReview,
-  generateQuizSessionSummary,
-  synthesizeQuestionReviewSpeech
-} = require("../../services/questionReview");
-const {
-  get,
-  parseQuestionId,
-  normalizeRequestText,
-  parseAiRuntime,
-  findQuestionById,
-  buildQuestionReviewPayload
-} = require("./shared");
+const { generateQuizSessionSummary } = require("../../services/questionReview");
+const { get, normalizeRequestText } = require("./shared");
 
 const router = express.Router();
 
@@ -55,64 +44,8 @@ router.post("/submit", (req, res, next) => {
   }
 });
 
-router.post("/review", async (req, res, next) => {
-  try {
-    const questionId = parseQuestionId(req.body?.questionId);
-    const selectedOption = normalizeRequestText(req.body?.selectedOption, 12);
-    const model = normalizeRequestText(req.body?.model, 120);
-    const reviewLength = normalizeRequestText(req.body?.reviewLength, 20);
-    const aiRuntime = parseAiRuntime(req.body?.aiRuntime);
-
-    if (questionId === null || !selectedOption) {
-      res.status(400).json({
-        message: "questionId 和 selectedOption 为必填项。"
-      });
-      return;
-    }
-
-    const row = findQuestionById(req.db, questionId);
-
-    if (!row) {
-      res.status(404).json({
-        message: "题目不存在。"
-      });
-      return;
-    }
-
-    if (aiRuntime.issues.length > 0) {
-      res.status(400).json({
-        message: "AI 运行时配置无效。",
-        details: aiRuntime.issues
-      });
-      return;
-    }
-
-    const result = await generateQuestionReview({
-      ...buildQuestionReviewPayload(row, selectedOption, model),
-      aiRuntime: aiRuntime.config,
-      reviewLength
-    });
-
-    res.json({
-      message: "AI 点评已生成。",
-      data: result.review,
-      meta: result.meta
-    });
-  } catch (error) {
-    if (error?.statusCode) {
-      res.status(error.statusCode).json({
-        message: error.message,
-        details: error.details || []
-      });
-      return;
-    }
-
-    next(error);
-  }
-});
-
 // 整轮学习总结走本地确定性规则（buildSessionSummaryFallback），
-// 与模型配置无关；单题点评 /review 和语音 /review/speech 仍走模型。
+// 与模型配置无关；单题点评 /review 和语音 /review/speech 已删除。
 router.post("/review/summary", async (req, res, next) => {
   try {
     const attempts = Array.isArray(req.body?.attempts) ? req.body.attempts : [];
@@ -136,65 +69,10 @@ router.post("/review/summary", async (req, res, next) => {
     });
 
     res.json({
-      message: "本轮 AI 学习总结已生成。",
+      message: "本轮学习总结已生成。",
       data: result.summary,
       meta: result.meta
     });
-  } catch (error) {
-    if (error?.statusCode) {
-      res.status(error.statusCode).json({
-        message: error.message,
-        details: error.details || []
-      });
-      return;
-    }
-
-    next(error);
-  }
-});
-
-router.post("/review/speech", async (req, res, next) => {
-  try {
-    const text = normalizeRequestText(req.body?.text, 200);
-    const model = normalizeRequestText(req.body?.model, 120);
-    const voice = normalizeRequestText(req.body?.voice, 40);
-    const speed = Number(req.body?.speed);
-    const audioFormat = normalizeRequestText(req.body?.audioFormat, 20);
-    const aiRuntime = parseAiRuntime(req.body?.aiRuntime);
-
-    if (!text) {
-      res.status(400).json({
-        message: "text 为必填项。"
-      });
-      return;
-    }
-
-    if (aiRuntime.issues.length > 0) {
-      res.status(400).json({
-        message: "AI 运行时配置无效。",
-        details: aiRuntime.issues
-      });
-      return;
-    }
-
-    const audioResult = await synthesizeQuestionReviewSpeech({
-      text,
-      model,
-      aiRuntime: aiRuntime.config,
-      voice,
-      speed,
-      audioFormat
-    });
-
-    const contentType =
-      audioResult.format === "wav"
-        ? "audio/wav"
-        : audioResult.format === "pcm16"
-          ? "audio/L16; rate=24000; channels=1"
-          : "audio/mpeg";
-    res.setHeader("Content-Type", contentType);
-    res.setHeader("Cache-Control", "no-store");
-    res.send(audioResult.buffer);
   } catch (error) {
     if (error?.statusCode) {
       res.status(error.statusCode).json({

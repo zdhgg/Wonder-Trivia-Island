@@ -6,7 +6,6 @@ const {
   ALLOWED_SUBJECTS
 } = require("../../questions/repository");
 const { getKnowledgeTagSearchTerms } = require("../../questions/knowledgeTagAliases");
-const { normalizeRuntimeBaseUrl } = require("../../services/aiRuntimeConfig");
 const { MANAGEMENT_ACCESS, resolveManagementAccess } = require("../../security/localAccess");
 
 const ALLOWED_GRADE_SET = new Set(ALLOWED_GRADES);
@@ -147,52 +146,6 @@ function normalizeImageUrl(rawValue) {
   return normalizeRequestText(rawValue, 2000);
 }
 
-function parseAiRuntime(rawRuntime) {
-  if (!rawRuntime || typeof rawRuntime !== "object" || Array.isArray(rawRuntime)) {
-    return {
-      config: null,
-      issues: [],
-      usingRuntimeApiKey: false,
-      usingRuntimeBaseUrl: false
-    };
-  }
-
-  const providerLabel = normalizeRequestText(rawRuntime.providerLabel, 40);
-  const baseUrlInput = normalizeRequestText(rawRuntime.baseUrl, 240);
-  const baseUrl = normalizeRuntimeBaseUrl(rawRuntime.baseUrl);
-  const apiKey = normalizeRequestText(rawRuntime.apiKey, 240);
-  const normalizedTextApiMode = normalizeRequestText(rawRuntime.textApiMode, 32);
-  const textApiMode = ["auto", "responses", "chat-completions"].includes(normalizedTextApiMode)
-    ? normalizedTextApiMode
-    : "auto";
-  const ttsVoice = normalizeRequestText(rawRuntime.ttsVoice, 40);
-  const normalizedTtsAudioFormat = normalizeRequestText(rawRuntime.ttsAudioFormat || rawRuntime.audioFormat, 20).toLowerCase();
-  const ttsAudioFormat = ["mp3", "wav", "pcm16"].includes(normalizedTtsAudioFormat) ? normalizedTtsAudioFormat : "";
-  const issues = [];
-
-  if (baseUrlInput && !baseUrl) {
-    issues.push("aiRuntime.baseUrl 必须是有效的 http(s) 地址。");
-  }
-
-  if (baseUrl && !apiKey) {
-    issues.push("aiRuntime.baseUrl 仅在同时提供 aiRuntime.apiKey 时才允许自定义。");
-  }
-
-  return {
-    config: {
-      providerLabel,
-      baseUrl,
-      apiKey,
-      textApiMode,
-      ttsVoice,
-      ttsAudioFormat
-    },
-    issues,
-    usingRuntimeApiKey: Boolean(apiKey),
-    usingRuntimeBaseUrl: Boolean(baseUrl && apiKey)
-  };
-}
-
 function normalizeKnowledgeTag(rawValue) {
   return normalizeRequestText(rawValue, MAX_KNOWLEDGE_TAG_LENGTH).replace(/\s+/g, " ");
 }
@@ -222,29 +175,6 @@ function findQuestionById(db, questionId) {
     `,
     [questionId]
   );
-}
-
-function buildQuestionReviewPayload(row, selectedOption, model = "") {
-  const serializedQuestion = serializeQuestionRow(row);
-
-  return {
-    model,
-    selectedOption,
-    correctAnswer: serializedQuestion.answer,
-    explanation: serializedQuestion.explanation,
-    isCorrect: selectedOption === serializedQuestion.answer,
-    isTimeout: selectedOption === "__timeout__",
-    question: {
-      subject: serializedQuestion.subject,
-      grade: serializedQuestion.grade,
-      semester: serializedQuestion.semester,
-      knowledgeTag: serializedQuestion.knowledgeTag,
-      type: serializedQuestion.type,
-      content: serializedQuestion.content,
-      imageUrl: serializedQuestion.imageUrl,
-      options: serializedQuestion.options
-    }
-  };
 }
 
 function findQuestionsByIds(db, questionIds) {
@@ -516,11 +446,9 @@ module.exports = {
   parseQuestionOptions,
   normalizeRequestText,
   normalizeImageUrl,
-  parseAiRuntime,
   normalizeKnowledgeTag,
   serializeQuestionRow,
   findQuestionById,
-  buildQuestionReviewPayload,
   findQuestionsByIds,
   buildGroupedCounts,
   buildTopKnowledgeTags,

@@ -1,30 +1,15 @@
 <script setup>
 import { computed, nextTick, ref, watch } from "vue";
 import { storeToRefs } from "pinia";
-import { testAiRuntimeConnection } from "../services/questionsApi";
 import { useAudioStore } from "../stores/useAudioStore";
-import SettingsAiSection from "./settings/SettingsAiSection.vue";
 import SettingsAudioSection from "./settings/SettingsAudioSection.vue";
 import SettingsBackupSection from "./settings/SettingsBackupSection.vue";
 import SettingsCoachingSection from "./settings/SettingsCoachingSection.vue";
 import SettingsLogsSection from "./settings/SettingsLogsSection.vue";
-import SettingsModelLibrarySection from "./settings/SettingsModelLibrarySection.vue";
 import SettingsAboutSection from "./settings/SettingsAboutSection.vue";
 import SettingsProfileSection from "./settings/SettingsProfileSection.vue";
 import { getSettingsSectionById, SETTINGS_SECTION_IDS } from "./settings/settingsSections";
-import {
-  AI_MODEL_LIBRARY_TYPE_OPTIONS,
-  AI_REVIEW_LENGTH_OPTIONS,
-  AI_REVIEW_SPEED_OPTIONS,
-  AI_REVIEW_VOICE_OPTIONS,
-  AI_MODEL_MODE,
-  AUTO_ADVANCE_DELAY_OPTIONS,
-  PROFILE_GENDER_OPTIONS,
-  resolveAiModelNameForSelection,
-  resolveAiRuntimeConfigForSelection,
-  resolveAiRuntimeLabelForSelection,
-  useSettingsStore
-} from "../stores/useSettingsStore";
+import { AUTO_ADVANCE_DELAY_OPTIONS, PROFILE_GENDER_OPTIONS, useSettingsStore } from "../stores/useSettingsStore";
 
 const props = defineProps({
   activeSectionId: {
@@ -45,7 +30,7 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(["profile-saved", "export-backup", "import-backup", "dirty-state-change", "section-select"]);
+const emit = defineEmits(["profile-saved", "export-backup", "import-backup", "dirty-state-change"]);
 
 const settingsStore = useSettingsStore();
 const audioStore = useAudioStore();
@@ -54,18 +39,12 @@ audioStore.hydratePreferences();
 
 const activeSectionShellRef = ref(null);
 const shouldApplyProfileDefaults = ref(true);
-const aiConnectionTestStatus = ref("idle");
-const aiConnectionTestResult = ref(null);
-const aiConnectionTestErrorMessage = ref("");
 let sectionFocusFrame = 0;
-let aiConnectionTestController = null;
 
-const { profile, aiPreferences, coachingPreferences, activityLogs } = storeToRefs(settingsStore);
+const { profile, coachingPreferences, activityLogs } = storeToRefs(settingsStore);
 const { isSupported, masterVolume, musicEnabled, sfxEnabled } = storeToRefs(audioStore);
 const SECTION_COMPONENTS = Object.freeze({
   "settings-profile": SettingsProfileSection,
-  "settings-ai": SettingsAiSection,
-  "settings-model-library": SettingsModelLibrarySection,
   "settings-coaching": SettingsCoachingSection,
   "settings-audio": SettingsAudioSection,
   "settings-backup": SettingsBackupSection,
@@ -80,117 +59,19 @@ const profileDraft = ref({
   semester: "上册"
 });
 
-const aiDraft = ref(createAiPreferencesDraft());
-
 const coachingDraft = ref({
   autoAdvanceOnCorrect: false,
-  autoPlayAiReviewOnWrong: false,
-  autoPlayAiReviewOnCorrect: false,
-  autoAdvanceDelayMs: 1500,
-  aiReviewVoice: "coral",
-  aiReviewSpeed: 1,
-  aiReviewLength: "standard"
+  autoAdvanceDelayMs: 1500
 });
 
 const gradeOptions = Object.freeze(["一年级", "二年级", "三年级", "四年级", "五年级", "六年级"]);
 const semesterOptions = Object.freeze(["上册", "下册"]);
-
-function createAiModelDraft(defaultPresetModel = "") {
-  return {
-    mode: AI_MODEL_MODE.SERVICE_DEFAULT,
-    presetModel: defaultPresetModel,
-    customModel: ""
-  };
-}
-
-function createAiPreferencesDraft() {
-  return {
-    questionModel: createAiModelDraft("gpt-5.4-mini"),
-    reviewModel: createAiModelDraft("gpt-5.4-mini"),
-    ttsModel: createAiModelDraft("gpt-4o-mini-tts"),
-    customModelLibrary: []
-  };
-}
-
-function cloneAiPreferencesDraft(source = {}) {
-  return {
-    questionModel: {
-      ...createAiModelDraft("gpt-5.4-mini"),
-      ...(source.questionModel || {})
-    },
-    reviewModel: {
-      ...createAiModelDraft("gpt-5.4-mini"),
-      ...(source.reviewModel || {})
-    },
-    ttsModel: {
-      ...createAiModelDraft("gpt-4o-mini-tts"),
-      ...(source.ttsModel || {})
-    },
-    customModelLibrary: Array.isArray(source.customModelLibrary)
-      ? source.customModelLibrary.map((item) => (item && typeof item === "object" ? { ...item } : item))
-      : []
-  };
-}
-
-function isAiModelSelectionDirty(draftSelection = {}, savedSelection = {}) {
-  return (
-    draftSelection.mode !== savedSelection.mode ||
-    draftSelection.presetModel !== savedSelection.presetModel ||
-    draftSelection.customModel !== savedSelection.customModel
-  );
-}
-
-function resolveDraftAiSelectionModel(selection = {}) {
-  return resolveAiModelNameForSelection(selection, aiDraft.value.customModelLibrary);
-}
-
-function buildDraftServiceProbeConfig() {
-  return [
-    {
-      key: "questionModel",
-      label: "出题模型",
-      model: resolveDraftAiSelectionModel(aiDraft.value.questionModel),
-      runtime: resolveAiRuntimeConfigForSelection(aiDraft.value.questionModel, aiDraft.value.customModelLibrary),
-      runtimeLabel: resolveAiRuntimeLabelForSelection(aiDraft.value.questionModel, aiDraft.value.customModelLibrary),
-      payload: {
-        questionModel: resolveDraftAiSelectionModel(aiDraft.value.questionModel)
-      }
-    },
-    {
-      key: "reviewModel",
-      label: "点评模型",
-      model: resolveDraftAiSelectionModel(aiDraft.value.reviewModel),
-      runtime: resolveAiRuntimeConfigForSelection(aiDraft.value.reviewModel, aiDraft.value.customModelLibrary),
-      runtimeLabel: resolveAiRuntimeLabelForSelection(aiDraft.value.reviewModel, aiDraft.value.customModelLibrary),
-      payload: {
-        reviewModel: resolveDraftAiSelectionModel(aiDraft.value.reviewModel)
-      }
-    },
-    {
-      key: "ttsModel",
-      label: "语音模型",
-      model: resolveDraftAiSelectionModel(aiDraft.value.ttsModel),
-      runtime: resolveAiRuntimeConfigForSelection(aiDraft.value.ttsModel, aiDraft.value.customModelLibrary),
-      runtimeLabel: resolveAiRuntimeLabelForSelection(aiDraft.value.ttsModel, aiDraft.value.customModelLibrary),
-      payload: {
-        ttsModel: resolveDraftAiSelectionModel(aiDraft.value.ttsModel)
-      }
-    }
-  ];
-}
-
-function resetAiConnectionTestState() {
-  aiConnectionTestStatus.value = "idle";
-  aiConnectionTestResult.value = null;
-  aiConnectionTestErrorMessage.value = "";
-}
 
 const normalizedActiveSectionId = computed(() =>
   SETTINGS_SECTION_IDS.includes(String(props.activeSectionId || "").trim()) ? String(props.activeSectionId).trim() : "settings-profile"
 );
 const activityLogItems = computed(() => activityLogs.value.slice(0, 12));
 const profileUpdatedLabel = computed(() => formatTimestamp(profile.value.updatedAt));
-const aiUpdatedLabel = computed(() => formatTimestamp(aiPreferences.value.updatedAt));
 const coachingUpdatedLabel = computed(() => formatTimestamp(coachingPreferences.value.updatedAt));
 const profileDirty = computed(
   () =>
@@ -199,22 +80,10 @@ const profileDirty = computed(
     profileDraft.value.grade !== profile.value.grade ||
     profileDraft.value.semester !== profile.value.semester
 );
-const aiDirty = computed(
-  () =>
-    isAiModelSelectionDirty(aiDraft.value.questionModel, aiPreferences.value.questionModel) ||
-    isAiModelSelectionDirty(aiDraft.value.reviewModel, aiPreferences.value.reviewModel) ||
-    isAiModelSelectionDirty(aiDraft.value.ttsModel, aiPreferences.value.ttsModel) ||
-    JSON.stringify(aiDraft.value.customModelLibrary) !== JSON.stringify(aiPreferences.value.customModelLibrary)
-);
 const coachingDirty = computed(
   () =>
     coachingDraft.value.autoAdvanceOnCorrect !== coachingPreferences.value.autoAdvanceOnCorrect ||
-    coachingDraft.value.autoPlayAiReviewOnWrong !== coachingPreferences.value.autoPlayAiReviewOnWrong ||
-    coachingDraft.value.autoPlayAiReviewOnCorrect !== coachingPreferences.value.autoPlayAiReviewOnCorrect ||
-    coachingDraft.value.autoAdvanceDelayMs !== coachingPreferences.value.autoAdvanceDelayMs ||
-    coachingDraft.value.aiReviewVoice !== coachingPreferences.value.aiReviewVoice ||
-    coachingDraft.value.aiReviewSpeed !== coachingPreferences.value.aiReviewSpeed ||
-    coachingDraft.value.aiReviewLength !== coachingPreferences.value.aiReviewLength
+    coachingDraft.value.autoAdvanceDelayMs !== coachingPreferences.value.autoAdvanceDelayMs
 );
 const audioSectionSummary = computed(() => {
   if (!isSupported.value) {
@@ -241,20 +110,6 @@ const SECTION_SAVE_CONFIG = Object.freeze({
     cleanActionLabel: "档案已保存",
     dirtyActionLabel: "保存档案"
   },
-  "settings-ai": {
-    title: "AI 配置",
-    detailWhenDirty: "当前分区有未保存改动。",
-    detailWhenClean: "当前分区已经保存到本机。",
-    cleanActionLabel: "AI 已保存",
-    dirtyActionLabel: "保存 AI 配置"
-  },
-  "settings-model-library": {
-    title: "模型管理",
-    detailWhenDirty: "模型资产改动会和 AI 配置一起保存。",
-    detailWhenClean: "当前模型资产已经保存到本机。",
-    cleanActionLabel: "AI 已保存",
-    dirtyActionLabel: "保存 AI 配置"
-  },
   "settings-coaching": {
     title: "学习陪练",
     detailWhenDirty: "当前分区有未保存改动。",
@@ -270,10 +125,6 @@ const pendingSaveSections = computed(() => {
     sections.push("settings-profile");
   }
 
-  if (aiDirty.value) {
-    sections.push("settings-ai");
-  }
-
   if (coachingDirty.value) {
     sections.push("settings-coaching");
   }
@@ -284,14 +135,6 @@ const currentSaveSectionConfig = computed(() => SECTION_SAVE_CONFIG[normalizedAc
 const currentSectionIsDirty = computed(() => {
   if (normalizedActiveSectionId.value === "settings-profile") {
     return profileDirty.value;
-  }
-
-  if (normalizedActiveSectionId.value === "settings-ai") {
-    return aiDirty.value;
-  }
-
-  if (normalizedActiveSectionId.value === "settings-model-library") {
-    return aiDirty.value;
   }
 
   if (normalizedActiveSectionId.value === "settings-coaching") {
@@ -370,35 +213,12 @@ const activeSectionProps = computed(() => {
         semesterOptions,
         shouldApplyProfileDefaults: shouldApplyProfileDefaults.value
       };
-    case "settings-ai":
-      return {
-        aiDraft: aiDraft.value,
-        aiDirty: aiDirty.value,
-        aiUpdatedLabel: aiUpdatedLabel.value,
-        aiModelMode: AI_MODEL_MODE,
-        aiConnectionTestStatus: aiConnectionTestStatus.value,
-        aiConnectionTestResult: aiConnectionTestResult.value,
-        aiConnectionTestErrorMessage: aiConnectionTestErrorMessage.value,
-        effectiveQuestionModelLabel: settingsStore.effectiveQuestionModelLabel,
-        effectiveReviewModelLabel: settingsStore.effectiveReviewModelLabel,
-        effectiveTtsModelLabel: settingsStore.effectiveTtsModelLabel
-      };
-    case "settings-model-library":
-      return {
-        aiDraft: aiDraft.value,
-        aiDirty: aiDirty.value,
-        aiUpdatedLabel: aiUpdatedLabel.value,
-        aiModelLibraryTypeOptions: AI_MODEL_LIBRARY_TYPE_OPTIONS
-      };
     case "settings-coaching":
       return {
         coachingDraft: coachingDraft.value,
         coachingDirty: coachingDirty.value,
         coachingUpdatedLabel: coachingUpdatedLabel.value,
-        autoAdvanceDelayOptions: AUTO_ADVANCE_DELAY_OPTIONS,
-        aiReviewVoiceOptions: AI_REVIEW_VOICE_OPTIONS,
-        aiReviewSpeedOptions: AI_REVIEW_SPEED_OPTIONS,
-        aiReviewLengthOptions: AI_REVIEW_LENGTH_OPTIONS,
+        autoAdvanceDelayOptions: AUTO_ADVANCE_DELAY_OPTIONS
       };
     case "settings-backup":
       return {
@@ -425,16 +245,6 @@ const activeSectionListeners = computed(() => {
         "update:should-apply-profile-defaults": (value) => {
           shouldApplyProfileDefaults.value = value;
         }
-      };
-    case "settings-ai":
-      return {
-        save: handleSaveAiPreferences,
-        "test-connection": handleTestAiConnection,
-        "open-model-manager": () => handleSectionOpen("settings-model-library")
-      };
-    case "settings-model-library":
-      return {
-        "back-to-ai": () => handleSectionOpen("settings-ai")
       };
     case "settings-coaching":
       return {
@@ -468,45 +278,21 @@ watch(
 );
 
 watch(
-  aiPreferences,
-  (nextPreferences) => {
-    aiDraft.value = cloneAiPreferencesDraft(nextPreferences);
-  },
-  { deep: true, immediate: true }
-);
-
-watch(
-  aiDraft,
-  () => {
-    if (aiConnectionTestStatus.value !== "idle") {
-      resetAiConnectionTestState();
-    }
-  },
-  { deep: true }
-);
-
-watch(
   coachingPreferences,
   (nextPreferences) => {
     coachingDraft.value = {
       autoAdvanceOnCorrect: nextPreferences.autoAdvanceOnCorrect,
-      autoPlayAiReviewOnWrong: nextPreferences.autoPlayAiReviewOnWrong,
-      autoPlayAiReviewOnCorrect: nextPreferences.autoPlayAiReviewOnCorrect,
-      autoAdvanceDelayMs: nextPreferences.autoAdvanceDelayMs,
-      aiReviewVoice: nextPreferences.aiReviewVoice,
-      aiReviewSpeed: nextPreferences.aiReviewSpeed,
-      aiReviewLength: nextPreferences.aiReviewLength
+      autoAdvanceDelayMs: nextPreferences.autoAdvanceDelayMs
     };
   },
   { deep: true, immediate: true }
 );
 
 watch(
-  [profileDirty, aiDirty, coachingDirty],
-  ([nextProfileDirty, nextAiDirty, nextCoachingDirty]) => {
+  [profileDirty, coachingDirty],
+  ([nextProfileDirty, nextCoachingDirty]) => {
     emit("dirty-state-change", {
       profile: nextProfileDirty,
-      ai: nextAiDirty,
       coaching: nextCoachingDirty
     });
   },
@@ -540,96 +326,6 @@ function handleSaveProfile() {
   });
 }
 
-function handleSaveAiPreferences() {
-  settingsStore.saveAiPreferences(aiDraft.value);
-}
-
-async function handleTestAiConnection() {
-  aiConnectionTestController?.abort();
-  aiConnectionTestController = new AbortController();
-  aiConnectionTestStatus.value = "loading";
-  aiConnectionTestResult.value = null;
-  aiConnectionTestErrorMessage.value = "";
-
-  try {
-    const probeConfigs = buildDraftServiceProbeConfig();
-    const probeResults = await Promise.all(
-      probeConfigs.map(async (probeConfig) => {
-        try {
-          const payload = await testAiRuntimeConnection({
-            ...probeConfig.payload,
-            ...(probeConfig.runtime ? { aiRuntime: probeConfig.runtime } : {}),
-            signal: aiConnectionTestController.signal
-          });
-          const matchedTest = payload?.data?.tests?.find((item) => item.key === probeConfig.key) || null;
-
-          return {
-            key: probeConfig.key,
-            label: probeConfig.label,
-            runtimeLabel: probeConfig.runtimeLabel,
-            checkedAt: payload?.data?.checkedAt || "",
-            providerLabel: payload?.data?.provider?.label || probeConfig.runtimeLabel,
-            test: matchedTest || {
-              key: probeConfig.key,
-              label: probeConfig.label,
-              ok: false,
-              model: probeConfig.model || "跟随服务端默认",
-              detail: "测试结果缺失。"
-            }
-          };
-        } catch (error) {
-          if (error?.name === "AbortError") {
-            throw error;
-          }
-
-          return {
-            key: probeConfig.key,
-            label: probeConfig.label,
-            runtimeLabel: probeConfig.runtimeLabel,
-            checkedAt: new Date().toISOString(),
-            providerLabel: probeConfig.runtimeLabel,
-            test: {
-              key: probeConfig.key,
-              label: probeConfig.label,
-              ok: false,
-              model: probeConfig.model || "跟随服务端默认",
-              detail: error?.message || "连接测试失败。"
-            }
-          };
-        }
-      })
-    );
-
-    aiConnectionTestResult.value = {
-      checkedAt: probeResults.reduce((latest, item) => (!latest || item.checkedAt > latest ? item.checkedAt : latest), ""),
-      provider: {
-        label: "按模型设置自动选择"
-      },
-      allPassed: probeResults.every((item) => item.test.ok),
-      tests: probeResults.map((item) => ({
-        ...item.test,
-        runtimeLabel: item.runtimeLabel,
-        providerLabel: item.providerLabel
-      }))
-    };
-    aiConnectionTestStatus.value = "ready";
-    settingsStore.appendActivityLog({
-      scope: "ai",
-      title: "AI 连接测试已完成",
-      detail: aiConnectionTestResult.value.allPassed ? "全部模型通过" : "部分模型不可用"
-    });
-  } catch (error) {
-    if (error?.name === "AbortError") {
-      return;
-    }
-
-    aiConnectionTestStatus.value = "error";
-    aiConnectionTestErrorMessage.value = error?.message || "AI 连接测试失败。";
-  } finally {
-    aiConnectionTestController = null;
-  }
-}
-
 function handleSaveCoachingPreferences() {
   settingsStore.saveCoachingPreferences(coachingDraft.value);
 }
@@ -637,16 +333,6 @@ function handleSaveCoachingPreferences() {
 function handleSaveCurrentSection() {
   if (normalizedActiveSectionId.value === "settings-profile") {
     handleSaveProfile();
-    return;
-  }
-
-  if (normalizedActiveSectionId.value === "settings-ai") {
-    handleSaveAiPreferences();
-    return;
-  }
-
-  if (normalizedActiveSectionId.value === "settings-model-library") {
-    handleSaveAiPreferences();
     return;
   }
 
@@ -660,17 +346,9 @@ function handleSaveAllDirtySections() {
     handleSaveProfile();
   }
 
-  if (aiDirty.value) {
-    handleSaveAiPreferences();
-  }
-
   if (coachingDirty.value) {
     handleSaveCoachingPreferences();
   }
-}
-
-function handleSectionOpen(sectionId) {
-  emit("section-select", sectionId);
 }
 
 function handleClearActivityLogs() {

@@ -15,18 +15,6 @@ defineProps({
   autoAdvanceDelayOptions: {
     type: Array,
     default: () => []
-  },
-  aiReviewVoiceOptions: {
-    type: Array,
-    default: () => []
-  },
-  aiReviewSpeedOptions: {
-    type: Array,
-    default: () => []
-  },
-  aiReviewLengthOptions: {
-    type: Array,
-    default: () => []
   }
 });
 
@@ -46,7 +34,7 @@ const emit = defineEmits(["save"]);
       </div>
     </div>
 
-    <p class="settings-card__note">控制答题后的节奏、首页欢迎语音，以及猫头鹰讲解的音色和提醒密度。低年级会更短更口语，高年级会更稳一些。</p>
+    <p class="settings-card__note">控制答题后的节奏。开启自动继续后，答对题会按当前节奏自动跳到下一题。</p>
 
     <div class="settings-form settings-form--single">
       <label class="settings-switch-card">
@@ -56,22 +44,6 @@ const emit = defineEmits(["save"]);
           <span class="settings-switch-card__note">开启后，答对题会按当前节奏自动跳到下一题。</span>
         </span>
       </label>
-
-      <label class="settings-switch-card">
-        <input v-model="coachingDraft.autoPlayAiReviewOnWrong" type="checkbox" />
-        <span class="settings-switch-card__copy">
-          <strong class="settings-switch-card__title">答错后自动播报猫头鹰点评</strong>
-          <span class="settings-switch-card__note">开启后，答错或超时题会自动尝试播放猫头鹰讲解。</span>
-        </span>
-      </label>
-
-      <label class="settings-switch-card">
-        <input v-model="coachingDraft.autoPlayAiReviewOnCorrect" type="checkbox" />
-        <span class="settings-switch-card__copy">
-          <strong class="settings-switch-card__title">答对后自动播报猫头鹰点评</strong>
-          <span class="settings-switch-card__note">开启后，答对题也会自动播报一句提醒；若同时开启自动继续，会等播报结束后再切题。</span>
-        </span>
-      </label>
     </div>
 
     <div class="settings-form">
@@ -79,33 +51,6 @@ const emit = defineEmits(["save"]);
         <span class="settings-field__label">自动继续延时</span>
         <select v-model="coachingDraft.autoAdvanceDelayMs" class="quiz-toolbar__select">
           <option v-for="option in autoAdvanceDelayOptions" :key="option.value" :value="option.value">
-            {{ option.label }}
-          </option>
-        </select>
-      </label>
-
-      <label class="settings-field">
-        <span class="settings-field__label">猫头鹰音色</span>
-        <select v-model="coachingDraft.aiReviewVoice" class="quiz-toolbar__select">
-          <option v-for="option in aiReviewVoiceOptions" :key="option.value" :value="option.value">
-            {{ option.label }}
-          </option>
-        </select>
-      </label>
-
-      <label class="settings-field">
-        <span class="settings-field__label">猫头鹰语速</span>
-        <select v-model="coachingDraft.aiReviewSpeed" class="quiz-toolbar__select">
-          <option v-for="option in aiReviewSpeedOptions" :key="option.value" :value="option.value">
-            {{ option.label }}
-          </option>
-        </select>
-      </label>
-
-      <label class="settings-field">
-        <span class="settings-field__label">讲解长度</span>
-        <select v-model="coachingDraft.aiReviewLength" class="quiz-toolbar__select">
-          <option v-for="option in aiReviewLengthOptions" :key="option.value" :value="option.value">
             {{ option.label }}
           </option>
         </select>

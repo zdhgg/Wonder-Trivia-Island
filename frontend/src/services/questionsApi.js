@@ -159,80 +159,6 @@ export async function submitQuestionAnswer({ questionId, selectedOption, signal 
   return payload;
 }
 
-export async function generateQuestionReview({
-  questionId,
-  selectedOption,
-  model = "",
-  reviewLength = "",
-  aiRuntime = null,
-  signal
-} = {}) {
-  const response = await fetch("/api/questions/review", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      questionId,
-      selectedOption,
-      model,
-      reviewLength,
-      aiRuntime
-    }),
-    signal
-  });
-
-  const payload = await response.json().catch(() => null);
-
-  if (!response.ok) {
-    const error = new Error(payload?.message || `AI 点评失败：${response.status}`);
-    error.details = payload?.details || [];
-    throw error;
-  }
-
-  if (!payload?.data || typeof payload?.data?.speechText !== "string") {
-    throw new Error("AI 点评结果格式不正确。");
-  }
-
-  return payload;
-}
-
-export async function testAiRuntimeConnection({
-  questionModel = "",
-  reviewModel = "",
-  ttsModel = "",
-  aiRuntime = null,
-  signal
-} = {}) {
-  const response = await fetch("/api/questions/ai/runtime-check", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      questionModel,
-      reviewModel,
-      ttsModel,
-      aiRuntime
-    }),
-    signal
-  });
-
-  const payload = await response.json().catch(() => null);
-
-  if (!response.ok) {
-    const error = new Error(payload?.message || `AI 连接测试失败：${response.status}`);
-    error.details = payload?.details || [];
-    throw error;
-  }
-
-  if (!payload?.data || !Array.isArray(payload?.data?.tests)) {
-    throw new Error("AI 连接测试结果格式不正确。");
-  }
-
-  return payload;
-}
-
 export async function generateQuizSessionSummary({
   attempts = [],
   score = 0,
@@ -275,41 +201,6 @@ export async function generateQuizSessionSummary({
   }
 
   return payload;
-}
-
-export async function generateQuestionReviewSpeech({
-  text,
-  model = "",
-  voice = "",
-  speed,
-  audioFormat = "",
-  aiRuntime = null,
-  signal
-} = {}) {
-  const response = await fetch("/api/questions/review/speech", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      text,
-      model,
-      voice,
-      speed,
-      audioFormat,
-      aiRuntime
-    }),
-    signal
-  });
-
-  if (!response.ok) {
-    const payload = await response.json().catch(() => null);
-    const error = new Error(payload?.message || `点评语音生成失败：${response.status}`);
-    error.details = payload?.details || [];
-    throw error;
-  }
-
-  return response.blob();
 }
 
 function buildAdminHeaders(adminKey, includeJsonContentType = false) {
