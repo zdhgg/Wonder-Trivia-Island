@@ -26,7 +26,14 @@
 //   compact（默认）：阶段庆祝弹层里的小卡片；
 //   hero：独立知识岛页面。
 // 两种尺寸共用同一套世界坐标（见下方「世界坐标」一节），所以构图完全一致，只是缩放倍数不同。
-import { computed } from "vue";
+//
+// 轻互动（第四层，纯表现）：
+//   这一层只做「点一下有回应」，不写任何持久状态、不加奖励、不改印章或星星：
+//     - 热点按钮不放在 role="img" 里面，而是单独一层盖在画面上，
+//       位置由脚本按真实元素量出来（anchor 选择器），所以永远不会画歪、也不会盖住别的按钮；
+//     - 每次点按只有一个「正在回应」的热点，动画短、结束即复位；
+//     - 唯一的"状态"是组件内的临时 UI 状态（回合一结束就清掉），刷新页面即恢复原样。
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import {
   KNOWLEDGE_ISLAND_ZONES,
   buildKnowledgeIslandNextTerrainPreview,
@@ -107,6 +114,301 @@ function zoneStyle(zoneId) {
 // 下一阶段预告：谁才是下一阶段由 knowledgeIslandGrowth 说了算，
 // 这里只是拿它的 id 去地形表里取那条更宽的岸线；满级时自动是 null。
 const nextTerrainPreview = computed(() => buildKnowledgeIslandNextTerrainPreview(props.island));
+
+// ---------------------------------------------------------------------------
+// 轻互动：点一下有回应
+// ---------------------------------------------------------------------------
+// 这一层是「表现」，不是「成长」：
+//   - 它不读、不写任何账本，不加收藏 / 奖励 / 货币，也不碰印章与星星；
+//   - 阶段、进度、下一阶段仍然只有 knowledgeIslandGrowth 说了算；
+//   - 唯一的内存状态是"哪一个热点正在回应"和"提示文字是什么"，
+//     两者都由定时器复位，刷新页面立刻回到原样。
+// 热点位置不写死坐标：每帧按锚点选择器量真实元素的盒子，
+// 所以贝壳 / 石头 / 海鸥无论在哪个阶段、哪个尺寸下都贴在它自己身上。
+const figureRef = ref(null);
+const hotSpots = ref([]);
+const activeHotSpotId = ref("");
+const hintText = ref("");
+const ripples = ref([]);
+
+let syncFrame = 0;
+let resetTimer = 0;
+let hintTimer = 0;
+let rippleSeq = 0;
+let resizeObserver = null;
+// 涟漪的收尾定时器也登记进来：组件被关掉时一并清掉，
+// 避免回调回头去改一个已经没人看的 ref。
+const rippleTimers = new Set();
+
+// 锚点选择器 → 热点 id。没有对应元素时（例如繁荣度不足时没有海鸥）这个热点就不出现。
+// kind 决定这块热点长什么样：
+//   box  —— 盖住锚点元素本身（贝壳 / 石头 / 海鸥）；
+//   chip —— 只是一枚看得见的小牌子，钉在锚点的一个位置上（下一阶段预告）；
+//   band —— 一整条固定的画面区域（海面）。
+const HOT_SPOT_DEFS = Object.freeze([
+  { id: "shell", anchor: ".knowledge-island__shell", kind: "box" },
+  { id: "rock", anchor: ".knowledge-island__rock", kind: "box" },
+  { id: "gull", anchor: ".knowledge-island__gull--a", kind: "box" },
+  { id: "next", anchor: '[data-role="knowledge-island-next-terrain"]', kind: "chip" },
+  { id: "sea", anchor: null, kind: "band" }
+]);
+
+// 每个热点点一下说什么。全部是对孩子说的短句，不含任何新的成长规则。
+const HOT_SPOT_LABELS = Object.freeze({
+  shell: { label: "看看西岸的贝壳", hint: "发现了一枚贝壳" },
+  rock: { label: "看看西岸的石头", hint: "石头被浪花拍了一下" },
+  gull: { label: "看看天上飞过的海鸥", hint: "海鸥从岛上飞过" },
+  next: { label: "看看岛外面的虚线轮廓", hint: "" },
+  sea: { label: "点一点海面", hint: "海面泛起一圈小涟漪" }
+});
+
+// 「还差多少印章，长成什么样」这句话完全由 knowledgeIslandGrowth 已经算好的字段拼出来：
+// remainingToNext 是它算的差值，nextStage.name 是它认定的下一阶段，组件不重新判断阈值。
+const nextStageHintText = computed(() => {
+  const nextStage = props.island?.nextStage;
+  const remaining = Number(props.island?.remainingToNext) || 0;
+
+  if (!nextStage?.name) {
+    return "";
+  }
+
+  return `还差 ${remaining} 枚印章，将成长为「${nextStage.name}」`;
+});
+
+function hotSpotLabel(id) {
+  if (id === "next") {
+    return nextStageHintText.value || HOT_SPOT_LABELS.next.label;
+  }
+
+  return HOT_SPOT_LABELS[id]?.label || "";
+}
+
+function hotSpotHint(id) {
+  if (id === "next") {
+    return nextStageHintText.value;
+  }
+
+  return HOT_SPOT_LABELS[id]?.hint || "";
+}
+
+// 把每个锚点的真实盒子换算成「相对画面盒的百分比」，直接喂给热点层的内联样式。
+// 量的是画面盒（不是世界画布），所以 compact 与 hero 共用同一段换算。
+function syncHotSpots() {
+  const figure = figureRef.value;
+
+  if (!figure) {
+    hotSpots.value = [];
+    return;
+  }
+
+  const frame = figure.getBoundingClientRect();
+
+  if (frame.width <= 0) {
+    hotSpots.value = [];
+    return;
+  }
+
+  const toPercentBox = (rect) => ({
+    left: ((rect.left - frame.left) / frame.width) * 100,
+    top: ((rect.top - frame.top) / frame.height) * 100,
+    width: (rect.width / frame.width) * 100,
+    height: (rect.height / frame.height) * 100
+  });
+
+  const measured = HOT_SPOT_DEFS.map((definition) => {
+    if (definition.kind === "band") {
+      // 海面：画面下方一条横带。这里写的是"世界画布上的比例"，
+      // 与地形表无关，因此在任何阶段都是同一片开阔水面。
+      return { id: definition.id, box: { left: 0, top: 74, width: 100, height: 26 } };
+    }
+
+    const target = figure.querySelector(definition.anchor);
+
+    if (!target) {
+      return null;
+    }
+
+    const rect = target.getBoundingClientRect();
+
+    if (rect.width <= 0 || rect.height <= 0) {
+      return null;
+    }
+
+    if (definition.kind === "chip") {
+      // 预告轮廓只用一枚看得见的小牌子，不用整块轮廓当隐形热区：
+      // 轮廓在 400×225 的世界里比现在的岛只大一圈，
+      // 拿它的矩形当热区会几乎盖住整座岛，孩子点椰子树也会弹出"还差几枚"。
+      // 牌子钉在轮廓左端、也就是虚线最清楚的那一段上。
+      return {
+        id: definition.id,
+        box: {
+          left: ((rect.left - frame.left) / frame.width) * 100,
+          top: ((rect.top + rect.height * 0.52 - frame.top) / frame.height) * 100,
+          width: 0,
+          height: 0
+        }
+      };
+    }
+
+    return { id: definition.id, box: toPercentBox(rect) };
+  }).filter(Boolean);
+
+  hotSpots.value = measured;
+}
+
+function scheduleHotSpotSync() {
+  if (typeof window === "undefined" || !window.requestAnimationFrame) {
+    return;
+  }
+
+  if (syncFrame) {
+    window.cancelAnimationFrame(syncFrame);
+  }
+
+  syncFrame = window.requestAnimationFrame(() => {
+    syncFrame = 0;
+    syncHotSpots();
+  });
+}
+
+function clearTimers() {
+  if (typeof window !== "undefined") {
+    if (resetTimer) {
+      window.clearTimeout(resetTimer);
+      resetTimer = 0;
+    }
+    if (hintTimer) {
+      window.clearTimeout(hintTimer);
+      hintTimer = 0;
+    }
+  }
+
+  rippleTimers.forEach((timer) => window.clearTimeout(timer));
+  rippleTimers.clear();
+}
+
+function showHint(text) {
+  if (!text) {
+    return;
+  }
+
+  hintText.value = text;
+
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  if (hintTimer) {
+    window.clearTimeout(hintTimer);
+  }
+
+  // 提示只停留一会儿就自己收走，不需要孩子手动关。
+  hintTimer = window.setTimeout(() => {
+    hintText.value = "";
+    hintTimer = 0;
+  }, 2400);
+}
+
+function pushRipple(point) {
+  rippleSeq += 1;
+  const ripple = { key: rippleSeq, x: point.x, y: point.y };
+  ripples.value = [...ripples.value, ripple];
+
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const timer = window.setTimeout(() => {
+    rippleTimers.delete(timer);
+    ripples.value = ripples.value.filter((item) => item.key !== ripple.key);
+  }, 1200);
+
+  rippleTimers.add(timer);
+}
+
+function ripplePointFromEvent(event) {
+  const frame = figureRef.value;
+
+  if (!frame) {
+    return { x: 50, y: 88 };
+  }
+
+  const rect = frame.getBoundingClientRect();
+  const clientX = event?.clientX;
+  const clientY = event?.clientY;
+
+  if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) {
+    // 键盘触发没有坐标：落在水面正中，同样看得见。
+    return { x: 50, y: 88 };
+  }
+
+  return {
+    x: Math.max(0, Math.min(100, ((clientX - rect.left) / rect.width) * 100)),
+    y: Math.max(0, Math.min(100, ((clientY - rect.top) / rect.height) * 100))
+  };
+}
+
+function triggerHotSpot(id, event) {
+  // 一次只回应一个：连点不会叠成一堆动画，也不会一直吵。
+  activeHotSpotId.value = id;
+  showHint(hotSpotHint(id));
+
+  if (id === "sea") {
+    pushRipple(ripplePointFromEvent(event));
+  }
+
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  if (resetTimer) {
+    window.clearTimeout(resetTimer);
+  }
+
+  resetTimer = window.setTimeout(() => {
+    activeHotSpotId.value = "";
+    resetTimer = 0;
+  }, 1100);
+}
+
+onMounted(() => {
+  scheduleHotSpotSync();
+  nextTick(scheduleHotSpotSync);
+
+  if (typeof ResizeObserver === "undefined" || !figureRef.value) {
+    return;
+  }
+
+  // 画面盒尺寸一变（改窗口、换 compact/hero、字号变化）就重新量一遍热点位置。
+  resizeObserver = new ResizeObserver(scheduleHotSpotSync);
+  resizeObserver.observe(figureRef.value);
+});
+
+onBeforeUnmount(() => {
+  clearTimers();
+
+  if (typeof window !== "undefined" && syncFrame) {
+    window.cancelAnimationFrame(syncFrame);
+    syncFrame = 0;
+  }
+
+  if (resizeObserver) {
+    resizeObserver.disconnect();
+    resizeObserver = null;
+  }
+});
+
+// 阶段 / 繁荣度 / 尺寸一变，画面里的元素就换了一批，热点必须跟着重新量。
+watch(
+  () => [props.island?.currentStage?.id, prosperityKey(), sizeKey()],
+  () => {
+    clearTimers();
+    activeHotSpotId.value = "";
+    hintText.value = "";
+    scheduleHotSpotSync();
+    nextTick(scheduleHotSpotSync);
+  }
+);
 </script>
 
 <template>
@@ -118,22 +420,30 @@ const nextTerrainPreview = computed(() => buildKnowledgeIslandNextTerrainPreview
     :class="[
       `knowledge-island--${island.currentStage.id}`,
       `knowledge-island--prosperity-${prosperityKey()}`,
-      `knowledge-island--${sizeKey()}`
+      `knowledge-island--${sizeKey()}`,
+      { [`knowledge-island--active-${activeHotSpotId}`]: Boolean(activeHotSpotId) }
     ]"
   >
     <div
+      ref="figureRef"
       class="knowledge-island__figure"
       data-role="knowledge-island-figure"
-      role="img"
       :data-stage="island.currentStage.id"
       :data-prosperity="prosperityKey()"
-      :aria-label="`知识岛现在的样子：${island.currentStage.name}，${island.prosperityLabel}。${island.currentStage.summary}`"
     >
       <!-- 世界画布：固定 400 × 225 的设计画布（16:9），内部所有尺寸都按它换算。
            类名刻意用 __world 而不是 __stage：__stage 这个名字已经被信息区里
            「当前：XX」那个段落占用了，两处同名会让那条规则把段落也变成绝对定位、
-           铺满整张卡片（庆祝弹层里的按钮就是这样被盖住的）。 -->
-      <div class="knowledge-island__world">
+           铺满整张卡片（庆祝弹层里的按钮就是这样被盖住的）。
+
+           role="img" 与整段画面说明放在世界画布上，而不是画面盒上：
+           画面盒里还叠着一层可点的热点按钮，把 role="img" 留在外面
+           会让整层按钮对读屏软件变成装饰（role=img 的子树是纯展示的）。 -->
+      <div
+        class="knowledge-island__world"
+        role="img"
+        :aria-label="`知识岛现在的样子：${island.currentStage.name}，${island.prosperityLabel}。${island.currentStage.summary}`"
+      >
         <!-- 天空：留出一块明亮的绘本留白，再用太阳与云朵交代远景。 -->
         <span class="knowledge-island__sun" aria-hidden="true"></span>
         <span class="knowledge-island__cloud knowledge-island__cloud--left" aria-hidden="true"></span>
@@ -170,6 +480,7 @@ const nextTerrainPreview = computed(() => buildKnowledgeIslandNextTerrainPreview
         <svg
           v-if="nextTerrainPreview"
           class="knowledge-island__next-terrain"
+          :class="{ 'knowledge-island__next-terrain--tapped': activeHotSpotId === 'next' }"
           data-role="knowledge-island-next-terrain"
           :style="nextTerrainPreview.footprintStyle"
           viewBox="0 0 100 100"
@@ -226,11 +537,14 @@ const nextTerrainPreview = computed(() => buildKnowledgeIslandNextTerrainPreview
             <span class="knowledge-island__surf-ring knowledge-island__surf-ring--a"></span>
             <span v-if="isProsperityAtLeast(1)" class="knowledge-island__surf-ring knowledge-island__surf-ring--b"></span>
             <span v-if="isProsperityAtLeast(2)" class="knowledge-island__surf-ring knowledge-island__surf-ring--c"></span>
-            <span class="knowledge-island__shell" aria-hidden="true"></span>
+            <span class="knowledge-island__shell knowledge-island__shell--main" aria-hidden="true"></span>
             <span v-if="isProsperityAtLeast(1)" class="knowledge-island__shell knowledge-island__shell--lush-a" aria-hidden="true"></span>
             <span v-if="isProsperityAtLeast(1)" class="knowledge-island__shell knowledge-island__shell--lush-b" aria-hidden="true"></span>
             <span v-if="isProsperityAtLeast(2)" class="knowledge-island__shell knowledge-island__shell--flourishing" aria-hidden="true"></span>
-            <span class="knowledge-island__rock" aria-hidden="true"></span>
+            <span class="knowledge-island__rock knowledge-island__rock--main" aria-hidden="true">
+              <!-- 石头脚下那一小圈水：被点时才荡开，平时是透明的。 -->
+              <span class="knowledge-island__rock-splash"></span>
+            </span>
             <span v-if="isProsperityAtLeast(1)" class="knowledge-island__rock knowledge-island__rock--lush" aria-hidden="true"></span>
             <span v-if="isProsperityAtLeast(2)" class="knowledge-island__rock knowledge-island__rock--flourishing" aria-hidden="true"></span>
           </div>
@@ -363,6 +677,64 @@ const nextTerrainPreview = computed(() => buildKnowledgeIslandNextTerrainPreview
           </div>
         </div>
       </div>
+
+      <!-- ============ 轻互动层 ============
+           一层透明按钮，贴在画面上、盖住对应元素。
+           位置不是写死的坐标，而是每次按锚点元素量出来的百分比，
+           所以贝壳 / 石头 / 海鸥换了阶段也永远贴着自己，不会飘。
+           这一层整体不吃点击（pointer-events: none），
+           只有按钮本身可点，因此不会挡住卡片里的任何其它东西。 -->
+      <div
+        class="knowledge-island__hotspots"
+        data-role="knowledge-island-hotspots"
+        :class="{ 'knowledge-island__hotspots--active': Boolean(activeHotSpotId) }"
+      >
+        <span
+          v-for="ripple in ripples"
+          :key="ripple.key"
+          class="knowledge-island__ripple"
+          :style="{ left: `${ripple.x}%`, top: `${ripple.y}%` }"
+          aria-hidden="true"
+        ></span>
+
+        <button
+          v-for="hotSpot in hotSpots"
+          :key="hotSpot.id"
+          type="button"
+          :class="[
+            'knowledge-island__hotspot',
+            `knowledge-island__hotspot--${hotSpot.id}`,
+            { 'knowledge-island__hotspot--on': activeHotSpotId === hotSpot.id }
+          ]"
+          :style="{
+            left: `${hotSpot.box.left}%`,
+            top: `${hotSpot.box.top}%`,
+            width: `${hotSpot.box.width}%`,
+            height: `${hotSpot.box.height}%`
+          }"
+          :data-role="`knowledge-island-hotspot-${hotSpot.id}`"
+          :aria-label="hotSpotLabel(hotSpot.id)"
+          @click="triggerHotSpot(hotSpot.id, $event)"
+        >
+          <!-- 只有"下一阶段预告"是一枚看得见的牌子：其余热点保持透明，
+               画面上不会多出一堆方框。牌子上的数字同样来自 knowledgeIslandGrowth。 -->
+          <template v-if="hotSpot.id === 'next'">
+            <span class="knowledge-island__hotspot-chip">还差 {{ island.remainingToNext }} 枚</span>
+          </template>
+        </button>
+      </div>
+
+      <!-- 回话气泡：点一下才出现，一会儿自己收走。
+           用 aria-live 播报，键盘和读屏用户点完热点同样知道发生了什么。 -->
+      <p
+        v-if="hintText"
+        class="knowledge-island__hint"
+        data-role="knowledge-island-hint"
+        role="status"
+        aria-live="polite"
+      >
+        {{ hintText }}
+      </p>
     </div>
 
     <div class="knowledge-island__info">
@@ -553,47 +925,66 @@ const nextTerrainPreview = computed(() => buildKnowledgeIslandNextTerrainPreview
   opacity: 0.72;
 }
 
-/* 海鸥：两笔就够像一只鸟，不引入动画系统。 */
+/* 海鸥：一只飞鸟的轮廓是「两道向上张开的翅膀 + 中间一个身子」，
+   以前是两段半圆弧，远看只是天上两个小点。
+   现在把一只海鸥拆成三个笔画画在同一个盒子里：
+     容器本身只负责摆位置和大小；
+     ::before / ::after 是左右两边的翅膀（四分之一圆弧，外端高、中间低，
+       所以两翼在正中间形成一个浅浅的 V，这就是海鸥的标志性剪影）；
+     盒子的背景层是身子（一个小小的深色椭圆），让「这是一只鸟」更确定。
+   尺寸比原来大了一圈，缩到 compact 时也还认得出来。 */
 .knowledge-island__gull {
   position: absolute;
-  width: calc(var(--ki-u) * 9);
-  height: calc(var(--ki-u) * 4);
-  border-top: calc(var(--ki-u) * 2) solid rgba(72, 130, 156, 0.66);
-  border-radius: 50% 50% 0 0 / 100% 100% 0 0;
-  transform: rotate(-8deg);
+  width: calc(var(--ki-u) * 14);
+  height: calc(var(--ki-u) * 7);
+  /* 身子：两翼正中间那一小团深色。没有它，两道弧线会被看成两道云。 */
+  background: radial-gradient(
+    ellipse calc(var(--ki-u) * 3.6) calc(var(--ki-u) * 2.2) at 50% 70%,
+    rgba(52, 104, 138, 0.88) 0%,
+    rgba(52, 104, 138, 0) 74%
+  );
   z-index: 1;
 }
 
+.knowledge-island__gull::before,
 .knowledge-island__gull::after {
   content: "";
   position: absolute;
-  left: calc(var(--ki-u) * 1);
-  top: calc(var(--ki-u) * 1);
-  width: calc(var(--ki-u) * 7);
-  height: calc(var(--ki-u) * 4);
-  border-top: calc(var(--ki-u) * 2) solid rgba(72, 130, 156, 0.66);
-  border-radius: 0 0 50% 50% / 0 0 100% 100%;
-  transform: rotate(6deg);
+  bottom: 22%;
+  width: 56%;
+  height: 74%;
+  border-top: calc(var(--ki-u) * 1.7) solid rgba(52, 104, 138, 0.82);
+}
+
+.knowledge-island__gull::before {
+  left: 0;
+  border-top-right-radius: 100% 100%;
+  transform: rotate(-4deg);
+}
+
+.knowledge-island__gull::after {
+  right: 0;
+  border-top-left-radius: 100% 100%;
+  transform: rotate(4deg);
 }
 
 .knowledge-island__gull--a {
-  top: calc(var(--ki-u) * 42);
-  left: calc(var(--ki-u) * 252);
-  transform: rotate(-8deg) scale(0.9);
+  top: calc(var(--ki-u) * 40);
+  left: calc(var(--ki-u) * 250);
 }
 
 .knowledge-island__gull--b {
-  top: calc(var(--ki-u) * 58);
-  left: calc(var(--ki-u) * 280);
-  transform: rotate(-8deg) scale(0.7);
-  opacity: 0.78;
+  top: calc(var(--ki-u) * 57);
+  left: calc(var(--ki-u) * 282);
+  transform: scale(0.72);
+  opacity: 0.8;
 }
 
 .knowledge-island__gull--c {
-  top: calc(var(--ki-u) * 32);
-  left: calc(var(--ki-u) * 208);
-  transform: rotate(-8deg) scale(0.6);
-  opacity: 0.66;
+  top: calc(var(--ki-u) * 30);
+  left: calc(var(--ki-u) * 206);
+  transform: scale(0.62);
+  opacity: 0.68;
 }
 
 /* ---------- 海（画布级背景） ---------- */
@@ -878,6 +1269,13 @@ const nextTerrainPreview = computed(() => buildKnowledgeIslandNextTerrainPreview
   z-index: 6;
 }
 
+/* 西岸这一层压在中央绿地之上。
+   贝壳、圆石、礁石都是"沙滩上的前景"，本来就该挡在草后面；
+   而且这一层里有可点的热点，元素被草盖住就等于点不到了。 */
+.knowledge-island__zone--west-shore {
+  z-index: 7;
+}
+
 /* 街区里的东西按「街区盒子的百分比」摆放：这样它们跟着岛一起缩放，
    不需要为每个阶段各写一套 px 坐标。 */
 .knowledge-island__zone > * {
@@ -919,70 +1317,149 @@ const nextTerrainPreview = computed(() => buildKnowledgeIslandNextTerrainPreview
   opacity: 0.8;
 }
 
+/* ---------- 贝壳 ----------
+   以前是一只描边的半圆，看着像个月牙或者羊角。现在画成真正的扇贝：
+     - 壳体：上宽下窄的扇面（圆角 + 上半部更鼓），底边收成一个小壳脐；
+     - 壳肋：从壳脐往外发散的放射线，这是扇贝最认得出的特征；
+     - 边缘：外沿有一圈更深的描边，让它在沙滩上也跳得出来。
+   壳肋用 repeating-conic-gradient 从壳脐往上发散，
+   角度步长固定成"隔一条亮一条"，远处看也还是一把扇子。 */
+/* 西岸这几件东西的落点是分开摆的，不是挤在一处：
+   贝壳在低处靠水，石头在高处靠沙，其它贝壳 / 礁石再错开。
+   这样点贝壳不会点到石头，点石头也不会点到贝壳。 */
 .knowledge-island__shell {
-  left: 50%;
-  bottom: 30%;
-  width: calc(var(--ki-u) * 11 * var(--ki-unit, 1));
-  height: calc(var(--ki-u) * 8 * var(--ki-unit, 1));
-  margin-left: calc(calc(var(--ki-u) * -5.5) * var(--ki-unit, 1));
-  border: calc(var(--ki-u) * 2) solid #efad83;
-  border-bottom: 0;
-  border-radius: calc(var(--ki-u) * 12) calc(var(--ki-u) * 12) 0 0;
+  left: 62%;
+  bottom: 2%;
+  width: calc(var(--ki-u) * 15 * var(--ki-unit, 1));
+  height: calc(var(--ki-u) * 13 * var(--ki-unit, 1));
+  margin-left: calc(calc(var(--ki-u) * -7.5) * var(--ki-unit, 1));
+  border: calc(var(--ki-u) * 1.1) solid rgba(201, 118, 74, 0.85);
+  border-radius: 50% 50% 26% 26% / 88% 88% 30% 30%;
+  background: linear-gradient(180deg, #fff3e0 0%, #fbcf9f 58%, #f0a878 100%);
+  box-shadow:
+    inset 0 calc(var(--ki-u) * -1.2) 0 rgba(214, 122, 76, 0.45),
+    0 calc(var(--ki-u) * 1.5) calc(var(--ki-u) * 3) calc(var(--ki-u) * -1.6) rgba(150, 86, 52, 0.45);
   transform: rotate(-16deg);
-  box-shadow: inset 0 calc(var(--ki-u) * 2) 0 rgba(255, 244, 214, 0.72);
+}
+
+/* 壳肋：圆锥渐变从正下方（壳脐）往上发散，隔一条深色。 */
+.knowledge-island__shell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: repeating-conic-gradient(
+    from 118deg at 50% 100%,
+    rgba(201, 118, 74, 0.38) 0deg 3.6deg,
+    rgba(255, 255, 255, 0) 3.6deg 13deg
+  );
+}
+
+/* 壳脐：底边正中一颗小圆点，是扇贝转轴的位置，也让"这是壳"更确定。 */
+.knowledge-island__shell::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--ki-u) * -0.6);
+  width: calc(var(--ki-u) * 4.2);
+  height: calc(var(--ki-u) * 3);
+  margin-left: calc(var(--ki-u) * -2.1);
+  border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+  background: linear-gradient(180deg, #e39a68 0%, #c9713f 100%);
 }
 
 .knowledge-island__shell--lush-a {
-  left: 32%;
-  bottom: 56%;
-  opacity: 0.9;
-  transform: rotate(12deg);
+  left: 26%;
+  bottom: 44%;
+  opacity: 0.92;
+  transform: rotate(14deg) scale(0.86);
 }
 
 .knowledge-island__shell--lush-b {
-  left: 70%;
-  bottom: 44%;
-  opacity: 0.82;
-  transform: rotate(-28deg);
+  left: 52%;
+  bottom: 26%;
+  opacity: 0.84;
+  transform: rotate(-30deg) scale(0.76);
 }
 
 .knowledge-island__shell--flourishing {
-  left: 44%;
-  bottom: 74%;
-  opacity: 0.88;
-  transform: rotate(22deg);
+  left: 42%;
+  bottom: 72%;
+  opacity: 0.9;
+  transform: rotate(24deg) scale(0.8);
 }
 
-.knowledge-island__rock {
+/* ---------- 石头 ----------
+   刻意分成两种，长得不一样才叫"石头"：
+     - 圆石（--main）：一块圆润的大卵石，卧在沙上，脚下压一圈湿沙；
+     - 礁石（--lush / --flourishing）：棱角分明的暗色礁岩，顶上带一小撮海草，
+       形状用 clip-path 切出尖角，和圆石的圆弧轮廓一眼能分开。 */
+.knowledge-island__rock--main {
+  left: 6%;
+  bottom: 34%;
+  width: calc(var(--ki-u) * 21 * var(--ki-unit, 1));
+  height: calc(var(--ki-u) * 15 * var(--ki-unit, 1));
+  margin-left: calc(calc(var(--ki-u) * -10.5) * var(--ki-unit, 1));
+  border-radius: 52% 48% 44% 56% / 64% 62% 38% 36%;
+  background: linear-gradient(148deg, #9db0b1 0%, #71868a 50%, #4c6369 100%);
+  box-shadow:
+    inset calc(var(--ki-u) * 2.6) calc(var(--ki-u) * 2.4) 0 rgba(255, 255, 255, 0.62),
+    inset calc(var(--ki-u) * -2.2) calc(var(--ki-u) * -1.8) 0 rgba(44, 70, 78, 0.5),
+    0 calc(var(--ki-u) * 4) calc(var(--ki-u) * 7) calc(var(--ki-u) * -6) rgba(38, 76, 86, 0.75);
+  transform: rotate(-9deg);
+}
+
+/* 圆石脚下那圈被浪打湿的沙：没有它，石头会像浮在沙滩上。 */
+.knowledge-island__rock--main::after {
+  content: "";
+  position: absolute;
   left: 50%;
-  bottom: 30%;
-  width: calc(var(--ki-u) * 15 * var(--ki-unit, 1));
-  height: calc(var(--ki-u) * 9 * var(--ki-unit, 1));
-  margin-left: calc(calc(var(--ki-u) * -7.5) * var(--ki-unit, 1));
-  border-radius: 70% 50% 48% 60%;
-  background: linear-gradient(145deg, #9caeb0 0%, #6c898e 100%);
-  box-shadow: inset calc(var(--ki-u) * 2) calc(var(--ki-u) * 2) 0 rgba(255, 255, 255, 0.38), 0 calc(var(--ki-u) * 4) calc(var(--ki-u) * 8) calc(var(--ki-u) * -7) rgba(38, 76, 86, 0.8);
-  transform: rotate(-12deg);
+  bottom: calc(var(--ki-u) * -2.4);
+  width: 118%;
+  height: 42%;
+  margin-left: -59%;
+  border-radius: 50%;
+  background: rgba(214, 178, 118, 0.75);
 }
 
+/* 礁石：尖角 + 亮顶暗底 + 顶上一撮海草，和圆石完全不是一个轮廓。 */
 .knowledge-island__rock--lush {
-  left: 82%;
-  bottom: 22%;
-  width: calc(var(--ki-u) * 13 * var(--ki-unit, 1));
-  height: calc(var(--ki-u) * 8 * var(--ki-unit, 1));
-  margin-left: calc(calc(var(--ki-u) * -6.5) * var(--ki-unit, 1));
-  transform: rotate(17deg);
-  opacity: 0.82;
+  left: 36%;
+  bottom: 40%;
+  width: calc(var(--ki-u) * 19 * var(--ki-unit, 1));
+  height: calc(var(--ki-u) * 20 * var(--ki-unit, 1));
+  margin-left: calc(calc(var(--ki-u) * -9.5) * var(--ki-unit, 1));
+  clip-path: polygon(4% 100%, 0% 44%, 20% 10%, 50% 0%, 78% 16%, 100% 50%, 96% 100%);
+  /* 礁石不能画成一团黑影：上亮下暗 + 一道明显的亮面，
+     远看才是一块有棱角的石头，而不是地上的影子。 */
+  background: linear-gradient(168deg, #d3dcdd 0%, #a3b2b6 30%, #6f868d 68%, #4a646e 100%);
+  filter: drop-shadow(0 calc(var(--ki-u) * 2) calc(var(--ki-u) * 3) calc(var(--ki-u) * -2) rgba(38, 76, 86, 0.7));
+}
+
+.knowledge-island__rock--lush::after {
+  content: "";
+  position: absolute;
+  left: 32%;
+  top: calc(var(--ki-u) * -1.8);
+  width: 36%;
+  height: 32%;
+  border-radius: 60% 20% 60% 20%;
+  background: linear-gradient(180deg, #7cc86e 0%, #3d8a4a 100%);
+  transform: rotate(-16deg);
 }
 
 .knowledge-island__rock--flourishing {
-  left: 14%;
-  bottom: 48%;
+  left: 68%;
+  bottom: 52%;
   width: calc(var(--ki-u) * 12 * var(--ki-unit, 1));
-  height: calc(var(--ki-u) * 7 * var(--ki-unit, 1));
+  height: calc(var(--ki-u) * 9 * var(--ki-unit, 1));
   margin-left: calc(calc(var(--ki-u) * -6) * var(--ki-unit, 1));
-  transform: rotate(8deg);
-  opacity: 0.8;
+  /* 第二块礁石：比第一块更瘦更斜，两块礁石不重样。 */
+  clip-path: polygon(10% 100%, 4% 40%, 30% 4%, 62% 10%, 96% 44%, 88% 100%);
+  background: linear-gradient(150deg, #cdd7d9 0%, #9babb0 34%, #657d86 72%, #465f69 100%);
+  filter: drop-shadow(0 calc(var(--ki-u) * 2) calc(var(--ki-u) * 3) calc(var(--ki-u) * -2) rgba(38, 76, 86, 0.65));
+  transform: rotate(-14deg);
+  opacity: 0.95;
 }
 
 /* ---------- 中央绿地：嫩芽 / 草丛 / 花 ---------- */
@@ -1798,11 +2275,16 @@ const nextTerrainPreview = computed(() => buildKnowledgeIslandNextTerrainPreview
    compact 与 hero 现在共用同一套世界坐标与同一个 16:9 画面盒，
    所以这里不再有任何"按视口分档缩放"的魔法数字：两种尺寸只有卡片内边距和圆角不同。
    画面内容、元素数量、解锁规则完全一样，构图也完全一样。
+
+   hero 额外加了一条上限：桌面端不再让画面铺满整屏。
+   画面盒仍是 16:9、仍按 100% 宽缩放，只是整张卡片封顶并居中，
+   于是宽屏上画面稳定在约 1020 × 575，下面的成长信息能露出来一截；
+   窄屏（820 / 390）因为卡片本来就比上限窄，仍然是接近满宽的整幅画面。
    =========================================================================== */
 .knowledge-island--hero {
   gap: 0;
-  padding: 18px 20px 20px;
-  border-radius: 30px;
+  padding: 10px 12px 12px;
+  border-radius: 26px;
   box-shadow:
     0 30px 52px -40px rgba(37, 106, 126, 0.62),
     inset 0 1px 0 rgba(255, 255, 255, 0.86);
@@ -1835,6 +2317,304 @@ const nextTerrainPreview = computed(() => buildKnowledgeIslandNextTerrainPreview
   }
 }
 
+/* ===========================================================================
+   轻互动层
+   ---------------------------------------------------------------------------
+   画面本身是 role="img"（一整幅插画），所以可点的按钮不能画在里面——
+   role=img 的子树对读屏软件是纯展示的。这一层是画面盒里的兄弟节点，
+   透明按钮按锚点元素量出来的百分比盖在对应东西上。
+
+   几条硬约束都写在这里，改的时候别破坏：
+     1) 整层 pointer-events: none，只有按钮 auto —— 不会挡住卡片里的其它东西；
+     2) 每一层 z-index 都压在画面元素之上，但按钮之间按"小 → 大"排，
+        所以点贝壳不会先被海面接走；
+     3) 小热点用 min-width / min-height 撑到 44px 左右的可点范围，
+        但盒子仍以锚点为中心，所以既不误触、也不和邻居打架；
+     4) 动画都由 .knowledge-island__hotspot--on 触发，1.1 秒后由脚本摘掉。
+   =========================================================================== */
+.knowledge-island__hotspots {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 20;
+}
+
+.knowledge-island__hotspot {
+  position: absolute;
+  display: block;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  pointer-events: auto;
+  -webkit-appearance: none;
+  appearance: none;
+  transform: translate(-50%, -50%);
+  transition:
+    transform 180ms ease,
+    filter 180ms ease;
+}
+
+.knowledge-island__hotspot:focus-visible {
+  outline: 3px solid rgba(255, 141, 74, 0.95);
+  outline-offset: 3px;
+  border-radius: 14px;
+}
+
+/* 预告那枚小牌本身是胶囊，聚焦时不要被上面的通用圆角改成方块。 */
+.knowledge-island__hotspot--next:focus-visible {
+  border-radius: 999px;
+}
+
+/* 海面垫底：它是最大的一块，点在没被别的东西接住的位置就是点到了水。 */
+.knowledge-island__hotspot--sea {
+  z-index: 1;
+  transform: none;
+}
+
+/* 下一阶段预告不是一块盖住整座岛的隐形热区 —— 那样点椰子树也会弹出"还差几枚"。
+   它是一枚看得见的小牌子，钉在虚线轮廓最清楚的那一段上。 */
+.knowledge-island__hotspot--next {
+  z-index: 4;
+  width: 0;
+  height: 0;
+  padding: 5px 11px;
+  border: 1.5px solid rgba(150, 106, 24, 0.34);
+  border-radius: 999px;
+  /* 暖白小牌：压在蓝色海面和白色虚线上都读得清，
+     一眼就知道"这里可以点，点它告诉我还差多少"。 */
+  background: rgba(255, 249, 228, 0.96);
+  box-shadow: 0 8px 16px -12px rgba(10, 40, 60, 0.9);
+  color: #8a5a00;
+  white-space: nowrap;
+}
+
+.knowledge-island__hotspot--next:hover {
+  background: #fff6da;
+}
+
+.knowledge-island__hotspot--next.knowledge-island__hotspot--on {
+  border-color: rgba(150, 106, 24, 0.7);
+  background: #fff2cc;
+}
+
+.knowledge-island__hotspot-chip {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 900;
+  line-height: 1.3;
+}
+
+.knowledge-island__hotspot--shell,
+.knowledge-island__hotspot--rock,
+.knowledge-island__hotspot--gull {
+  z-index: 3;
+  /* 触屏友好：把小小的贝壳 / 石头 / 海鸥撑成一块好点的小方块，
+     但仍然以元素本身为中心，所以不会伸到旁边的元素上去。
+     下限跟着画面盒宽度走（画面盒是 inline-size 容器，10cqw 就是它宽度的 10%）：
+       - 独立页大画面 → 10cqw 远大于 44px，取 44px，手指点得准；
+       - 390 窄屏 / 庆祝弹层里的小卡片 → 自动收到 30 上下，
+         这样贝壳和石头两块热区在西岸那条窄街上才不会挤到一起（挤到就是误触）。
+     30px 上下仍然明显大于 WCAG 2.2 的 24px 最小目标。 */
+  min-width: min(44px, 10cqw);
+  min-height: min(44px, 10cqw);
+}
+
+/* 悬停 / 按下只给一点点回弹，提示"这里可以点"，不做持续动画。 */
+.knowledge-island__hotspot--shell:hover,
+.knowledge-island__hotspot--rock:hover,
+.knowledge-island__hotspot--gull:hover {
+  transform: translate(-50%, -50%) scale(1.06);
+}
+
+.knowledge-island__hotspot--shell:active,
+.knowledge-island__hotspot--rock:active,
+.knowledge-island__hotspot--gull:active {
+  transform: translate(-50%, -50%) scale(0.96);
+}
+
+/* --- 被点到的瞬间：画面上真正动起来的是元素自己，不是这块透明按钮 ---
+   触发方式是根节点上的 .knowledge-island--active-<热点 id>，
+   因为画面（role=img）和热点按钮是兄弟节点，CSS 兄弟选择器跨不过去。 */
+
+/* 贝壳：轻轻弹一下。 */
+.knowledge-island--active-shell .knowledge-island__shell--main {
+  animation: knowledge-island-shell-bounce 720ms ease;
+}
+
+/* 石头：晃一下，脚下溅一点水。 */
+.knowledge-island--active-rock .knowledge-island__rock--main {
+  animation: knowledge-island-rock-wobble 720ms ease;
+}
+
+.knowledge-island__rock-splash {
+  position: absolute;
+  left: 50%;
+  bottom: 4%;
+  width: calc(var(--ki-u) * 20);
+  height: calc(var(--ki-u) * 7);
+  margin-left: calc(var(--ki-u) * -10);
+  border: calc(var(--ki-u) * 1.4) solid rgba(255, 255, 255, 0.85);
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 12;
+}
+
+.knowledge-island--active-rock .knowledge-island__rock-splash {
+  animation: knowledge-island-rock-splash 720ms ease-out;
+}
+
+/* 海鸥：短距离飞一段再回来，不做连续飞行动画。 */
+.knowledge-island--active-gull .knowledge-island__gull--a {
+  animation: knowledge-island-gull-glide 900ms ease;
+}
+
+/* 涟漪：点在哪儿就在哪儿荡一圈。 */
+.knowledge-island__ripple {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  border: 2px solid rgba(255, 255, 255, 0.92);
+  border-radius: 50%;
+  pointer-events: none;
+  animation: knowledge-island-ripple 1100ms ease-out forwards;
+}
+
+/* 预告轮廓：点一下虚线加粗一档。
+   这里刻意不叠第二个动画——那条虚线本来就在缓慢呼吸，
+   两个 animation 叠在一起会互相顶掉；加粗描边是静态状态，
+   减少动态偏好下也照样看得见「我点到它了」。 */
+.knowledge-island__next-terrain--tapped .knowledge-island__next-outline {
+  stroke-width: 2.6;
+  stroke: rgba(255, 255, 255, 0.98);
+}
+
+.knowledge-island__next-terrain--tapped .knowledge-island__next-fill {
+  fill: rgba(255, 255, 255, 0.3);
+}
+
+/* 回话气泡：贴在画面下沿，不遮岛上的东西。 */
+.knowledge-island__hint {
+  position: absolute;
+  left: 50%;
+  bottom: calc(2.5% + 6px);
+  z-index: 30;
+  max-width: min(86%, 420px);
+  margin: 0;
+  padding: 9px 16px;
+  border: 1.5px solid rgba(255, 255, 255, 0.86);
+  border-radius: 999px;
+  background: rgba(24, 62, 84, 0.86);
+  box-shadow: 0 12px 24px -18px rgba(10, 40, 60, 0.9);
+  color: #ffffff;
+  font-size: 0.86rem;
+  font-weight: 800;
+  line-height: 1.4;
+  text-align: center;
+  transform: translateX(-50%);
+  animation: knowledge-island-hint-in 220ms ease;
+  pointer-events: none;
+}
+
+@keyframes knowledge-island-shell-bounce {
+  0% {
+    transform: rotate(0deg) translateY(0);
+  }
+  35% {
+    transform: rotate(9deg) translateY(calc(var(--ki-u) * -3));
+  }
+  70% {
+    transform: rotate(-5deg) translateY(0);
+  }
+  100% {
+    transform: rotate(0deg) translateY(0);
+  }
+}
+
+@keyframes knowledge-island-rock-wobble {
+  0% {
+    transform: rotate(0deg);
+  }
+  30% {
+    transform: rotate(-7deg) translateX(calc(var(--ki-u) * -0.8));
+  }
+  65% {
+    transform: rotate(5deg) translateX(calc(var(--ki-u) * 0.6));
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}
+
+@keyframes knowledge-island-rock-splash {
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  30% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.5);
+  }
+}
+
+@keyframes knowledge-island-gull-glide {
+  0% {
+    transform: translate(0, 0);
+  }
+  40% {
+    transform: translate(calc(var(--ki-u) * -9), calc(var(--ki-u) * -4));
+  }
+  75% {
+    transform: translate(calc(var(--ki-u) * 7), calc(var(--ki-u) * 2));
+  }
+  100% {
+    transform: translate(0, 0);
+  }
+}
+
+@keyframes knowledge-island-ripple {
+  0% {
+    opacity: 0.85;
+    transform: scale(0.35);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(7);
+  }
+}
+
+@keyframes knowledge-island-hint-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+/* 繁荣度只轻微影响互动的手感：基础档就是轻轻动一下，
+   丰盛 / 繁荣档多一圈光效，看着更"有生活气"。
+   它不改变任何阶段、印章或星星，只影响这几秒的动画。 */
+.knowledge-island--prosperity-lush .knowledge-island__hotspot--shell.knowledge-island__hotspot--on,
+.knowledge-island--prosperity-flourishing .knowledge-island__hotspot--shell.knowledge-island__hotspot--on {
+  box-shadow: 0 0 0 6px rgba(255, 214, 140, 0.35);
+}
+
+.knowledge-island--prosperity-flourishing .knowledge-island__hotspot--gull.knowledge-island__hotspot--on {
+  box-shadow: 0 0 0 6px rgba(198, 141, 26, 0.28);
+}
+
+
 /* 动效全部是可关的：减少动态偏好下不呼吸、不冒烟、不闪灯。 */
 @media (prefers-reduced-motion: reduce) {
   .knowledge-island__beam,
@@ -1851,6 +2631,47 @@ const nextTerrainPreview = computed(() => buildKnowledgeIslandNextTerrainPreview
 
   .knowledge-island__fill {
     transition: none;
+  }
+
+  /* ---- 轻互动在减少动态下同样可用，只是不再晃 ----
+     反馈不能只剩动画：热点本身会亮起一圈静态描边，
+     回话气泡照常出现，所以「点了有反应」这件事一点没少。 */
+  .knowledge-island--active-shell .knowledge-island__shell--main,
+  .knowledge-island--active-rock .knowledge-island__rock--main,
+  .knowledge-island--active-rock .knowledge-island__rock-splash,
+  .knowledge-island--active-gull .knowledge-island__gull--a,
+  .knowledge-island__ripple,
+  .knowledge-island__next-terrain,
+  .knowledge-island__hint {
+    animation: none;
+  }
+
+  .knowledge-island__hotspot {
+    transition: none;
+  }
+
+  /* 只把小热点（贝壳 / 石头 / 海鸥）的悬停回弹关掉。
+     绝不能写成 .knowledge-island__hotspot:hover —— 海面热点平时是
+     transform: none（它按左上角定位），一旦被通用的居中 transform 接管，
+     鼠标移上去它就会整体错位，点击落到别处去，海面就点不响了。 */
+  .knowledge-island__hotspot--shell:hover,
+  .knowledge-island__hotspot--rock:hover,
+  .knowledge-island__hotspot--gull:hover,
+  .knowledge-island__hotspot--shell:active,
+  .knowledge-island__hotspot--rock:active,
+  .knowledge-island__hotspot--gull:active {
+    transform: translate(-50%, -50%);
+  }
+
+  /* 静态替代：被点到的热点亮起一圈描边，不做任何位移。 */
+  .knowledge-island__hotspot--on {
+    outline: 3px solid rgba(255, 141, 74, 0.95);
+    outline-offset: 2px;
+  }
+
+  /* 涟漪在减少动态下缩成一个小圈慢慢淡出：仍然看得见"水面动了一下"。 */
+  .knowledge-island--active-sea .knowledge-island__hotspot--sea {
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.42) 0%, rgba(255, 255, 255, 0) 70%);
   }
 }
 </style>

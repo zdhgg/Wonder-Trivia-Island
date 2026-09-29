@@ -134,8 +134,19 @@ function goHome() {
 <style scoped>
 .island-page {
   display: grid;
-  gap: 16px;
   min-width: 0;
+  /* 桌面端整页收进一个居中的内容列。
+     以前这一页是「一张铺满首屏的大画面 + 下面一排小卡片」，
+     画面几乎顶满整屏，成长信息要一直往下滑才看得到。
+     现在整页（含标题、场景、成长信息）共用一条约 1050px 的列：
+       - 16:9 的画面盒随之稳定在约 1024 × 576，1440 宽下不再占满首屏；
+       - 行距与标题一起收一档，省下的高度全部留给「首屏底部看得见成长信息」；
+       - 820 / 390 窄屏本来就比这条列窄，仍然是接近满宽的整幅画面。
+     这里只改"画多大"，不碰 400×225 的世界坐标，也不碰任何阶段规则。 */
+  width: 100%;
+  max-width: 1050px;
+  margin-inline: auto;
+  gap: 12px;
 }
 
 .island-page__hero {
@@ -144,9 +155,11 @@ function goHome() {
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  padding: 20px 22px;
+  /* 顶部摘要收紧一档：整页已经收进内容列，
+     再把这一块压薄一点，首屏底部就能露出下面的成长信息。 */
+  padding: 12px 18px;
   border: 1.5px solid rgba(36, 50, 74, 0.1);
-  border-radius: 28px;
+  border-radius: 24px;
   background:
     radial-gradient(circle at top right, rgba(173, 235, 255, 0.42) 0%, rgba(173, 235, 255, 0) 36%),
     linear-gradient(180deg, rgba(255, 253, 248, 0.96) 0%, rgba(255, 255, 255, 0.88) 100%);
@@ -157,7 +170,7 @@ function goHome() {
 
 .island-page__hero-copy {
   display: grid;
-  gap: 6px;
+  gap: 3px;
   min-width: 0;
 }
 
@@ -166,27 +179,30 @@ function goHome() {
   color: var(--color-ink-soft);
   font-size: 0.78rem;
   letter-spacing: 0.14em;
+  line-height: 1.3;
 }
 
 .island-page__title {
   margin: 0;
   font-family: "ZCOOL KuaiLe", "Baloo 2", "Trebuchet MS", sans-serif;
-  font-size: 1.9rem;
-  line-height: 1.15;
+  font-size: 1.55rem;
+  line-height: 1.12;
 }
 
 .island-page__lead {
   margin: 0;
   color: var(--color-ink-soft);
-  font-size: 0.95rem;
+  font-size: 0.88rem;
   font-weight: 700;
-  line-height: 1.6;
+  line-height: 1.5;
 }
 
 .island-page__hero-side {
-  display: grid;
-  justify-items: end;
-  gap: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
   min-width: 0;
 }
 
@@ -202,12 +218,12 @@ function goHome() {
   display: grid;
   place-items: center;
   flex-shrink: 0;
-  width: 44px;
-  height: 44px;
+  width: 38px;
+  height: 38px;
   border: 1px solid rgba(72, 154, 148, 0.24);
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.82);
-  font-size: 1.5rem;
+  font-size: 1.3rem;
   line-height: 1;
 }
 
@@ -247,10 +263,12 @@ function goHome() {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  /* 顶部摘要压薄了，但按钮本身仍保持 42px 的可点高度 ——
+     省下来的高度来自标题行距，不是来自把按钮变小。 */
   min-height: 42px;
-  padding: 10px 18px;
+  padding: 9px 18px;
   border: 1.5px solid rgba(36, 50, 74, 0.14);
-  border-radius: 16px;
+  border-radius: 14px;
   background: rgba(255, 255, 255, 0.9);
   color: var(--color-ink);
   font: inherit;
@@ -400,7 +418,7 @@ function goHome() {
 
   /* 窄屏顶部摘要改成左对齐一列，按钮仍占满一行方便点。 */
   .island-page__hero-side {
-    justify-items: start;
+    justify-content: flex-start;
     width: 100%;
   }
 
