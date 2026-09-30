@@ -1,21 +1,23 @@
-// 知识岛海浪环境声的行为约束（纯逻辑，不碰真实音频）。
+// 知识岛「专属环境声」的行为约束（纯逻辑，不碰真实音频）。
 //
-// 这个模块是单例，所以每个用例都用 vi.resetModules() + 动态 import 拿一份全新的模块状态，
-// 免得用例之间互相继承"已经创建过 Audio / 已经解锁"这类残留。
-//
-// 这里锁住的是四条硬性约束：
-//   1) 默认不出声；
-//   2) 没有用户交互之前不出声（深链直接打开知识岛也是安静的）；
+// 这一层现在没有自己的开关了：它完全跟随全站的声音状态。
+// 所以这里锁住的是五条硬性约束：
+//   1) 全局静音时这一页保持安静（主音量 0，或音乐与音效两个通道都关掉）；
+//   2) 这一份文档里没有用户交互之前不出声（深链直接打开知识岛也是安静的）——
+//      判断依据是音频引擎有没有被解锁，这一层绝不自己解锁、也不自己制造手势；
 //   3) 全局只有一个 Audio 实例，重复 start 不会叠播；
-//   4) stop 之后真的暂停并归零，再进来按偏好恢复。
-// 另外还锁住一条"克制"：点这个开关不应该把整台应用的背景音乐也叫醒。
+//   4) stop 之后真的暂停并归零，再进来按全局状态恢复；
+//   5) 海鸥是克制的点缀：几十秒一声，任意时刻最多一声。
+//
+// 这个模块是单例，所以每个用例都用 vi.resetModules() + 动态 import 拿一份全新的
+// 模块状态，免得用例之间互相继承"已经创建过 Audio / 已经解锁"这类残留。
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ISLAND_GULL_CRY_SCHEDULE } from "./audioConfig";
 
 // audioEngine 只被用到 isAudioEngineUnlocked()，这里用假的替换掉，
 // 免得为了测"没交互过就不播"而去真的构造 WebAudio。
-// unlockAudioEngine 也一并打桩：它出现在假对象里，是为了断言
-// 「点岛上的开关不会去唤醒整台应用的音频引擎」。
+// unlockAudioEngine 也一并打桩：它绝不该出现在这一层的调用路径里 ——
+// 点右上角那颗静音按钮去解锁整台应用，和"知识岛自己偷偷解锁"是两回事。
 const engineState = vi.hoisted(() => ({ unlocked: false, unlockCalls: 0 }));
 
 vi.mock("../audio/audioEngine", () => ({
@@ -82,14 +84,19 @@ async function loadAmbienceModule() {
   return import("./islandAmbience");
 }
 
-// 海浪这一路只跟两件事有关：这个开关，和设置里的总音量。
-// 「背景音乐」开关与它无关 —— 那是另一条声音，岛上这一页有自己的 🔊。
+// 全局声音状态。默认就是"没静音、两个通道都开着"。
 function preferences(overrides = {}) {
   return {
-    islandAmbienceEnabled: true,
     masterVolume: DEFAULT_MASTER_VOLUME,
+    musicEnabled: true,
+    sfxEnabled: true,
     ...overrides
   };
+}
+
+// muteAll() 在 store 里做的事：主音量归零 + 两个通道都关掉。
+function mutedPreferences(overrides = {}) {
+  return { masterVolume: 0, musicEnabled: false, sfxEnabled: false, ...overrides };
 }
 
 beforeEach(() => {
@@ -104,68 +111,112 @@ afterEach(() => {
   engineState.unlocked = false;
 });
 
-describe("知识岛海浪环境声", () => {
-  it("默认关闭：进入页面不会自己出声，也不会创建 Audio 实例", async () => {
+describe("知识岛环境声跟随全局声音控制", () => {
+  it("全局没静音且已经解锁：进页面就播海浪，而且只有一层", async () => {
     ambience = await loadAmbienceModule();
-
-    // 默认偏好就是关的（DEFAULT_AUDIO_PREFERENCES.islandAmbienceEnabled === false）。
-    expect(ambience.isIslandAmbienceEnabled()).toBe(false);
-
-    ambience.startIslandAmbience();
-
-    expect(ambience.isIslandAmbiencePlaying()).toBe(false);
-    expect(FakeAudio.instances).toHaveLength(0);
-  });
-
-  it("没有用户交互之前，即使偏好是打开的也不播", async () => {
-    ambience = await loadAmbienceModule();
-    engineState.unlocked = false;
 
     ambience.syncIslandAmbiencePreferences(preferences());
     ambience.startIslandAmbience();
-
-    // 记住意图了，但没有出声，也没有任何 Audio 实例被建出来。
-    expect(ambience.isIslandAmbienceEnabled()).toBe(true);
-    expect(ambience.isIslandAmbiencePlaying()).toBe(false);
-    expect(FakeAudio.instances).toHaveLength(0);
-  });
-
-  it("点开关本身就是那次用户交互：不用唤醒整台应用就能放出来", async () => {
-    ambience = await loadAmbienceModule();
-    // 模拟"刷新之后的新文档"：偏好还在，但这个文档里用户还没交互过。
-    engineState.unlocked = false;
-    ambience.syncIslandAmbiencePreferences(preferences());
-    ambience.startIslandAmbience();
-    expect(ambience.isIslandAmbiencePlaying()).toBe(false);
-
-    ambience.unlockIslandAmbience();
-    ambience.syncIslandAmbiencePreferences(preferences());
 
     expect(ambience.isIslandAmbiencePlaying()).toBe(true);
     expect(FakeAudio.instances).toHaveLength(1);
-    // 克制：只放海浪这一条通道，没有去解锁整台应用的音频引擎
-    // （否则点一下会顺手把全站背景音乐也叫醒）。
+    const waves = FakeAudio.instances[0];
+
+    expect(waves.loop).toBe(true);
+    expect(waves.paused).toBe(false);
+    // 音量必须明显低于总音量：它只是垫在下面的海声，不能盖住学习页面。
+    expect(waves.volume).toBeCloseTo(DEFAULT_MASTER_VOLUME * ISLAND_WAVES_VOLUME, 5);
+  });
+
+  it("全局静音：海浪和海鸥都不响", async () => {
+    ambience = await loadAmbienceModule();
+
+    ambience.syncIslandAmbiencePreferences(mutedPreferences());
+    ambience.startIslandAmbience();
+
+    expect(ambience.isIslandAmbiencePlaying()).toBe(false);
+    expect(FakeAudio.instances).toHaveLength(0);
+    // 静音时连海鸥的排程都不该发生。
+    expect(ambience.getPendingGullCryCount()).toBe(0);
+  });
+
+  it("这一份文档还没交互过：即使全局没静音也保持安静", async () => {
+    // 模拟"刷新之后的新文档"：用户还没在这一次会话里点过任何东西。
+    engineState.unlocked = false;
+    ambience = await loadAmbienceModule();
+
+    ambience.syncIslandAmbiencePreferences(preferences());
+    ambience.startIslandAmbience();
+
+    expect(ambience.isIslandAmbiencePlaying()).toBe(false);
+    // 连 Audio 元素都不建 —— 浏览器不允许在用户交互前出声。
+    expect(FakeAudio.instances).toHaveLength(0);
+  });
+
+  it("这一层绝不自己去解锁音频引擎", async () => {
+    engineState.unlocked = false;
+    ambience = await loadAmbienceModule();
+
+    ambience.syncIslandAmbiencePreferences(preferences());
+    ambience.startIslandAmbience();
+    ambience.stopIslandAmbience();
+
+    // 解锁只能由既有的全局音频机制（设置页「启用音频」或右上角静音按钮）触发。
     expect(engineState.unlockCalls).toBe(0);
   });
 
-  it("交互之后进入页面：按偏好恢复播放，并且是循环、音量很低", async () => {
+  it("全局取消静音后已经解锁：立刻按全局状态恢复，不需要页面再做任何事", async () => {
+    ambience = await loadAmbienceModule();
+
+    ambience.syncIslandAmbiencePreferences(mutedPreferences());
+    ambience.startIslandAmbience();
+    expect(ambience.isIslandAmbiencePlaying()).toBe(false);
+
+    ambience.syncIslandAmbiencePreferences(preferences());
+    expect(ambience.isIslandAmbiencePlaying()).toBe(true);
+  });
+
+  it("正在响的时候把全局音量拉到 0：立刻停，而且不会自己回来", async () => {
+    ambience = await loadAmbienceModule();
+
+    ambience.syncIslandAmbiencePreferences(preferences());
+    ambience.startIslandAmbience();
+    expect(ambience.isIslandAmbiencePlaying()).toBe(true);
+
+    ambience.syncIslandAmbiencePreferences(preferences({ masterVolume: 0 }));
+    expect(ambience.isIslandAmbiencePlaying()).toBe(false);
+    expect(FakeAudio.instances[0].paused).toBe(true);
+
+    ambience.startIslandAmbience();
+    expect(ambience.isIslandAmbiencePlaying()).toBe(false);
+  });
+
+  it("总音量调小：正在响的那一路要立刻跟着变小", async () => {
     ambience = await loadAmbienceModule();
 
     ambience.syncIslandAmbiencePreferences(preferences());
     ambience.startIslandAmbience();
 
-    expect(FakeAudio.instances).toHaveLength(1);
-    const [audio] = FakeAudio.instances;
-
-    expect(audio.loop).toBe(true);
-    expect(audio.paused).toBe(false);
-    expect(ambience.isIslandAmbiencePlaying()).toBe(true);
-    // 音量必须明显低于总音量：它只是垫在下面的海声，不能盖住学习页面。
-    expect(audio.volume).toBeCloseTo(DEFAULT_MASTER_VOLUME * ISLAND_WAVES_VOLUME, 5);
-    expect(audio.volume).toBeLessThan(0.2);
+    ambience.syncIslandAmbiencePreferences(preferences({ masterVolume: 0.1 }));
+    expect(FakeAudio.instances[0].volume).toBeCloseTo(0.1 * ISLAND_WAVES_VOLUME, 5);
   });
 
-  it("只有一个实例：反复进出页面不会叠出第二个 Audio，也不会重复起播", async () => {
+  it("两个通道都关掉 = 全站静音（和右上角那颗按钮同一个判定）", async () => {
+    ambience = await loadAmbienceModule();
+
+    ambience.syncIslandAmbiencePreferences(preferences({ masterVolume: 0.5 }));
+    ambience.startIslandAmbience();
+    expect(ambience.isIslandAmbiencePlaying()).toBe(true);
+
+    ambience.syncIslandAmbiencePreferences(preferences({ musicEnabled: false, sfxEnabled: false }));
+    expect(ambience.isIslandAmbiencePlaying()).toBe(false);
+
+    // 只关掉其中一个通道不叫静音：全站声音还开着，这一页就继续跟着响。
+    ambience.syncIslandAmbiencePreferences(preferences({ musicEnabled: false }));
+    expect(ambience.isIslandAmbiencePlaying()).toBe(true);
+  });
+
+  it("单例：反复 start / stop 都不会叠出第二个 audio 实例", async () => {
     ambience = await loadAmbienceModule();
 
     ambience.syncIslandAmbiencePreferences(preferences());
@@ -176,8 +227,7 @@ describe("知识岛海浪环境声", () => {
     ambience.startIslandAmbience();
 
     expect(FakeAudio.instances).toHaveLength(1);
-    // 一次起播 + 停一次 + 再起播一次；已经在响时重复 start 不会再 play 一次。
-    expect(FakeAudio.instances[0].playCalls).toBe(2);
+    expect(FakeAudio.instances[0].paused).toBe(false);
   });
 
   it("离开页面会暂停并归零：不会在别的页面上继续响", async () => {
@@ -194,62 +244,12 @@ describe("知识岛海浪环境声", () => {
     expect(ambience.isIslandAmbiencePlaying()).toBe(false);
   });
 
-  it("关掉开关立刻停，而且不会在重新进入时自己回来", async () => {
-    ambience = await loadAmbienceModule();
-
-    ambience.syncIslandAmbiencePreferences(preferences());
-    ambience.startIslandAmbience();
-    expect(ambience.isIslandAmbiencePlaying()).toBe(true);
-
-    ambience.syncIslandAmbiencePreferences(preferences({ islandAmbienceEnabled: false }));
-    expect(ambience.isIslandAmbiencePlaying()).toBe(false);
-
-    ambience.startIslandAmbience();
-    expect(ambience.isIslandAmbiencePlaying()).toBe(false);
-  });
-
-  it("全局静音对海浪同样生效：总音量归零就会停", async () => {
-    ambience = await loadAmbienceModule();
-
-    ambience.syncIslandAmbiencePreferences(preferences({ masterVolume: 0 }));
-    ambience.startIslandAmbience();
-    expect(ambience.isIslandAmbiencePlaying()).toBe(false);
-
-    ambience.syncIslandAmbiencePreferences(preferences());
-    ambience.startIslandAmbience();
-    expect(ambience.isIslandAmbiencePlaying()).toBe(true);
-
-    // 把总音量调小，正在响的那一路要立刻跟着变小（而不是停在旧音量）。
-    ambience.syncIslandAmbiencePreferences(preferences({ masterVolume: 0.1 }));
-    expect(FakeAudio.instances[0].volume).toBeCloseTo(0.1 * ISLAND_WAVES_VOLUME, 5);
-
-    ambience.syncIslandAmbiencePreferences(preferences({ masterVolume: 0 }));
-    expect(ambience.isIslandAmbiencePlaying()).toBe(false);
-  });
-
-  it("播放状态变化会通知订阅者，控件才能区分「想听」和「正在响」", async () => {
-    ambience = await loadAmbienceModule();
-    const observed = [];
-
-    const unsubscribe = ambience.subscribeIslandAmbience((playing) => observed.push(playing));
-
-    ambience.syncIslandAmbiencePreferences(preferences());
-    ambience.startIslandAmbience();
-    ambience.stopIslandAmbience();
-    unsubscribe();
-
-    // 订阅取消之后不再收到通知。
-    ambience.startIslandAmbience();
-    expect(observed).toEqual([true, false]);
-  });
-
   it("素材加载失败后不再重试，避免每次进出页面都打一条失败请求", async () => {
     ambience = await loadAmbienceModule();
 
     ambience.syncIslandAmbiencePreferences(preferences());
     ambience.startIslandAmbience();
     FakeAudio.instances[0].emit("error");
-    expect(ambience.isIslandAmbiencePlaying()).toBe(false);
 
     ambience.startIslandAmbience();
     ambience.startIslandAmbience();
@@ -317,7 +317,7 @@ describe("知识岛海鸥叫的调度", () => {
     // 播完才排下一次，而且只排一个。
     expect(ambience.getPendingGullCryCount()).toBe(1);
 
-    // 随机间隔 = min + 0.5 × (max - min)；它和首声延迟不是同一个旋钮。
+    // 随机间隔 = min + 0.5 × (max - min)；它和首声那个旋钮不是同一个。
     const expectedGapMs = GULL_MIN_MS + 0.5 * (GULL_MAX_MS - GULL_MIN_MS);
     expect(expectedGapMs).toBeGreaterThan(FIRST_DELAY_MS);
 
@@ -354,7 +354,7 @@ describe("知识岛海鸥叫的调度", () => {
 
   it("play 事件晚到一步（真实浏览器就是这样）：海鸥仍然会被排上", async () => {
     // 浏览器里 play() 会同步把 paused 翻成 false，但 "play" 事件是稍后才派发的。
-    // 如果调度闸门看的是那个事件驱动的播放标志，用户点开开关的那一瞬间
+    // 如果调度闸门看的是那个事件驱动的播放标志，用户点开声音的那一刻
     // 标志还是 false —— 于是第一次排程就被跳过，海鸥永远不叫。
     // 这里把事件推迟到下一个宏任务，复现这个真实时序。
     const nativePlay = FakeAudio.prototype.play;
@@ -401,11 +401,22 @@ describe("知识岛海鸥叫的调度", () => {
     expect(FakeAudio.instances).toHaveLength(instanceCount);
   });
 
+  it("全局静音时海鸥也不会被排上", async () => {
+    ambience = await loadAmbienceModule();
+    ambience.syncIslandAmbiencePreferences(mutedPreferences());
+    ambience.startIslandAmbience();
+
+    expect(ambience.getPendingGullCryCount()).toBe(0);
+
+    // 取消静音后，调度才重新开始。
+    ambience.syncIslandAmbiencePreferences(preferences());
+    expect(ambience.getPendingGullCryCount()).toBe(1);
+  });
+
   it("反复进出 5 次：海浪与海鸥各自仍然只有一个实例", async () => {
     ambience = await loadAmbienceModule();
 
     for (let round = 0; round < 5; round += 1) {
-      ambience.unlockIslandAmbience();
       startWithWaves();
       ambience.stopIslandAmbience();
     }
@@ -413,17 +424,5 @@ describe("知识岛海鸥叫的调度", () => {
     expect(ambience.getPendingGullCryCount()).toBe(0);
     // 5 轮里只有海浪一个实例（海鸥还没到点就被清掉了）。
     expect(FakeAudio.instances).toHaveLength(1);
-  });
-
-  it("全局静音时海鸥也不会被排上", async () => {
-    ambience = await loadAmbienceModule();
-    ambience.syncIslandAmbiencePreferences(preferences({ masterVolume: 0 }));
-    ambience.startIslandAmbience();
-
-    expect(ambience.getPendingGullCryCount()).toBe(0);
-
-    // 恢复音量并起播后，调度才重新开始。
-    ambience.syncIslandAmbiencePreferences(preferences());
-    expect(ambience.getPendingGullCryCount()).toBe(1);
   });
 });

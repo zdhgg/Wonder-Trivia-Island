@@ -9,7 +9,9 @@
 //   2) 离开知识岛 → 按进入前的状态原样恢复；
 //   3) 进入前本来就没播 → 离开时绝不擅自启动；
 //   4) suspend 幂等：连续借两次不会把「在播」记丢（否则 BGM 再也回不来）；
-//   5) 全局静音优先：借出期间不会被偏好同步重新拉起来，resume 后仍然静音。
+//   5) 恢复要四个条件同时成立：进入前在播 + musicEnabled 仍开着 +
+//      没有全局静音 + 音量够听。用户在岛上期间改了其中任何一项，
+//      离开时都必须尊重，绝不能擅自把 BGM 打开。
 //
 // 测试环境没有 window，所以 WebAudio 那条路整个走不通（createAudioGraph 返回 null），
 // 只剩 <audio> 元素这一条分支 —— 正好就是被借用的那一条。
@@ -144,6 +146,83 @@ describe("知识岛借走系统背景音乐", () => {
 
     expect(FakeAudio.instances).toHaveLength(instanceCount);
     expect(FakeAudio.instances[0]).toBe(music);
+  });
+
+  it("在知识岛上才第一次打开声音：离开时 BGM 必须还回来", async () => {
+    engine = await loadEngine();
+    // 这一次文档里从来没交互过：进岛时引擎还没解锁，BGM 也没在播。
+    expect(engine.isBackgroundMusicPlaying()).toBe(false);
+
+    engine.suspendBackgroundMusic();
+    expect(engine.isBackgroundMusicPlaying()).toBe(false);
+
+    // 用户在知识岛这一页点了右上角「取消静音」—— 那一下把引擎解锁了。
+    // BGM 之所以还没响，唯一原因就是被我们借出期间按住了。
+    await engine.unlockAudioEngine();
+    // 借出期间 unlockAudioEngine 也不能把 BGM 抢着播起来。
+    expect(engine.isBackgroundMusicPlaying()).toBe(false);
+
+    const resumed = engine.resumeBackgroundMusic();
+
+    expect(resumed).toBe(true);
+    expect(engine.isBackgroundMusicPlaying()).toBe(true);
+  });
+
+  it("在知识岛上打开声音之后又静音：离开时仍然不擅自打开", async () => {
+    engine = await loadEngine();
+    engine.suspendBackgroundMusic();
+    await engine.unlockAudioEngine();
+    // muteAll()：主音量归零 + 两个通道都关掉。
+    engine.syncAudioSettings({ masterVolume: 0, musicEnabled: false, sfxEnabled: false });
+
+    engine.resumeBackgroundMusic();
+
+    expect(engine.isBackgroundMusicPlaying()).toBe(false);
+  });
+
+  it("知识岛期间关掉背景音乐：离开时绝不擅自重新打开", async () => {
+    await unlockWithMusicPlaying();
+    const music = backgroundAudio();
+
+    engine.suspendBackgroundMusic();
+    expect(engine.isBackgroundMusicPlaying()).toBe(false);
+
+    // 知识岛页面上没有自己的声音开关了，所以"关掉音乐"只能发生在全局设置里。
+    // 孩子在那期间把背景音乐关了 —— 离开时必须尊重这个选择。
+    engine.syncAudioSettings({ musicEnabled: false });
+    const playCallsWhileSuppressed = music.playCalls;
+    const resumed = engine.resumeBackgroundMusic();
+
+    // 返回值仍然诚实地报告"进入前是在播的"，但真实播放状态是静音。
+    expect(resumed).toBe(true);
+    expect(engine.isBackgroundMusicPlaying()).toBe(false);
+    expect(music.playCalls).toBe(playCallsWhileSuppressed);
+  });
+
+  it("知识岛期间全局静音：离开时同样不恢复", async () => {
+    await unlockWithMusicPlaying();
+    const music = backgroundAudio();
+
+    engine.suspendBackgroundMusic();
+    // muteAll() 在 store 里做的事：主音量归零 + 两个通道都关掉。
+    engine.syncAudioSettings({ masterVolume: 0, musicEnabled: false, sfxEnabled: false });
+    engine.resumeBackgroundMusic();
+
+    expect(engine.isBackgroundMusicPlaying()).toBe(false);
+    expect(music.volume).toBe(0);
+  });
+
+  it("知识岛期间把音乐音量拉到 0：离开时不恢复；拉回来之后才会响", async () => {
+    await unlockWithMusicPlaying();
+
+    engine.suspendBackgroundMusic();
+    engine.syncAudioSettings({ musicVolume: 0 });
+    engine.resumeBackgroundMusic();
+    expect(engine.isBackgroundMusicPlaying()).toBe(false);
+
+    // 用户后来又把音乐音量调回来了 —— 这时恢复 BGM 是顺着用户的意愿，不算擅自打开。
+    engine.syncAudioSettings({ musicVolume: 0.42 });
+    expect(engine.isBackgroundMusicPlaying()).toBe(true);
   });
 
   it("全局静音优先：借出期间不会被偏好同步拉起来，还回来之后仍然是静音", async () => {

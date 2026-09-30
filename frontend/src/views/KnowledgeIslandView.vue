@@ -12,19 +12,21 @@
 //   所以三处永远是同一个阶段、同一档繁荣度、同一颗星星。
 //
 // 这一页额外做一件与成长无关的事：让知识岛有一整套「专属环境声」。
-//   - 开关状态读既有的 useAudioStore（记住的地方还是同一个 localStorage key），
-//     不新增 DB、API 或第二套偏好机制；
-//   - 默认是关的，而且没发生过用户交互之前一律不出声（深链直接打开也是安静的）；
-//   - 组件卸载时暂停并归零，再进来按偏好恢复；
-//   - 播放由 islandAmbience 负责，每种素材各一个实例，快速进出不会叠播；
-//   - 刻意不去解锁整台应用的音频引擎：点这个开关只该多出海的声音。
+//   - 没有自己的按钮、自己的开关、自己的偏好 —— 上一轮那颗「海岛声音」已经删掉，
+//     现在它完全跟随全站的声音状态：右上角那一颗静音按钮就是全站唯一的声音入口，
+//     它管背景音乐、答题音效，也管这一页的海浪与海鸥；
+//   - 默认不出声，而且没发生过用户交互之前一律不出声（深链直接打开也是安静的）；
+//     这一层绝不自己制造手势，也不自己去解锁音频引擎 —— 只等既有的全局音频机制
+//     （设置页「启用音频」，或右上角静音按钮的取消静音）先拿到那次合法交互；
+//   - 组件卸载时暂停并归零，再进来按全局状态恢复；
+//   - 播放由 islandAmbience 负责，每种素材各一个实例，快速进出不会叠播。
 //
 // 还有一个「借」的动作：系统背景音乐和海浪一起响会显繁杂，
 // 所以进入这一页时把系统 BGM 临时让出来，离开时原样还回去。
 // 这是 route/page 生命周期内的临时 pause/resume，
 // 不是修改用户的全局背景音乐设置 —— 用户的 BGM 开关、音量、偏好一个字都不动，
-// 而且进入前 BGM 本来就没播的话，离开时也不会被擅自打开。
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+// 而且离开时的恢复有四个条件同时成立才生效（见 audioEngine 的注释）。
+import { computed, onBeforeUnmount, onMounted, watch } from "vue";
 import { storeToRefs } from "pinia";
 import { useRouter } from "vue-router";
 import KnowledgeIslandGrowth from "../components/KnowledgeIslandGrowth.vue";
@@ -32,9 +34,7 @@ import { resumeBackgroundMusic, suspendBackgroundMusic } from "../audio/audioEng
 import {
   startIslandAmbience,
   stopIslandAmbience,
-  subscribeIslandAmbience,
-  syncIslandAmbiencePreferences,
-  unlockIslandAmbience
+  syncIslandAmbiencePreferences
 } from "../audio/islandAmbience";
 import { useAudioStore } from "../stores/useAudioStore";
 import { APP_ROUTE_NAME } from "../router/routes.js";
@@ -51,77 +51,46 @@ const props = defineProps({
 const router = useRouter();
 const audioStore = useAudioStore();
 
-const { islandAmbienceEnabled, masterVolume } = storeToRefs(audioStore);
+const { audioReady, masterVolume, musicEnabled, sfxEnabled } = storeToRefs(audioStore);
 
-// 「想听」「正在响」「记下来了」是三件事，控件上分别对应三个信号：
-//   data-enabled —— 记住的选择（localStorage 里那一位）；
-//   data-playing —— 此刻真的在不在响；
-//   图标 / aria-pressed —— 跟着「此刻有没有声音」走。
-// 之所以图标跟播放状态而不是跟偏好：刷新之后偏好还在，但新文档里用户还没交互过，
-// 浏览器不允许自动出声。这时如果图标显示"开"，孩子点了反而会把它关掉 ——
-// 所以图标必须诚实地说"现在没有声音"，点一下就真的把它放出来。
-const isAmbiencePlaying = ref(false);
-let unsubscribeAmbience = null;
-
-const ambienceGlyph = computed(() => (isAmbiencePlaying.value ? "🔊" : "🔇"));
-const ambienceToggleClass = computed(() => [
-  "island-page__ambience",
-  { "island-page__ambience--on": isAmbiencePlaying.value }
-]);
-
+// 把全站声音状态原样递给 islandAmbience，由它决定这一页该响还是该安静。
+// audioReady 也要带上：取消静音时 unlockAudioEngine() 是异步的，
+// 静音按钮先把音量改回来（此时还没解锁），过一会儿才解锁成功。
+// 不监听它的话，那一次取消静音就永远等不到"可以播了"的那一刻。
 function currentAmbiencePreferences() {
   return {
-    islandAmbienceEnabled: islandAmbienceEnabled.value,
-    masterVolume: masterVolume.value
+    masterVolume: masterVolume.value,
+    musicEnabled: musicEnabled.value,
+    sfxEnabled: sfxEnabled.value
   };
-}
-
-function toggleAmbience() {
-  // 正在响 → 关掉；没有在响 → 点一下就放出来（这一次点击本身就是用户手势）。
-  if (isAmbiencePlaying.value) {
-    audioStore.setIslandAmbienceEnabled(false);
-    syncIslandAmbiencePreferences(currentAmbiencePreferences());
-    return;
-  }
-
-  unlockIslandAmbience();
-  audioStore.setIslandAmbienceEnabled(true);
-  syncIslandAmbiencePreferences(currentAmbiencePreferences());
 }
 
 onMounted(() => {
   // 先把系统背景音乐让出来，再放海的声音：两者不同时响。
   // 这一步只暂停，不改用户的任何偏好。
   suspendBackgroundMusic();
-  unsubscribeAmbience = subscribeIslandAmbience((playing) => {
-    isAmbiencePlaying.value = playing;
-  });
-  // 进来的第一件事只是"按偏好恢复"，不会绕过交互闸门自己出声。
+  // 进来的第一件事只是"按全局状态恢复"，不会绕过交互闸门自己出声。
   syncIslandAmbiencePreferences(currentAmbiencePreferences());
   startIslandAmbience();
 });
 
-onBeforeUnmount(() => {
-  if (unsubscribeAmbience) {
-    unsubscribeAmbience();
-    unsubscribeAmbience = null;
-  }
-
-  // 离开这一页就把海浪与海鸥彻底停掉（定时器也一并清干净）。
-  stopIslandAmbience();
-  // 再把系统背景音乐还回去：进入前在播就继续播，没在播就仍然没在播。
-  // 顺序很重要 —— 先静音这一页，再恢复别的页面的声音。
-  resumeBackgroundMusic();
-});
-
-// 设置页里改了总音量，这一页正在响的海浪要立刻跟着变，
-// 否则会出现"图标显示开着、其实被静音了"的错觉。
+// 全局声音状态一变（右上角静音按钮、设置页里的开关与音量、音频被解锁），
+// 这一页立刻跟着变：静音就立刻停，取消静音就立刻恢复。
+// syncIslandAmbiencePreferences 是幂等的，重复触发没有副作用。
 watch(
-  () => masterVolume.value,
+  () => [masterVolume.value, musicEnabled.value, sfxEnabled.value, audioReady.value],
   () => {
     syncIslandAmbiencePreferences(currentAmbiencePreferences());
   }
 );
+
+onBeforeUnmount(() => {
+  // 离开这一页就把海浪与海鸥彻底停掉（定时器也一并清干净）。
+  stopIslandAmbience();
+  // 再把系统背景音乐还回去：进入前在播、而且此刻全局仍然允许播，才继续播。
+  // 顺序很重要 —— 先静音这一页，再恢复别的页面的声音。
+  resumeBackgroundMusic();
+});
 
 // 顶部摘要：阶段 + 繁荣度各说一次，不重复下面的成长信息网格。
 const stageName = computed(() => props.island?.currentStage?.name || "");
@@ -164,20 +133,6 @@ function goHome() {
             </span>
           </span>
         </p>
-        <button
-          :class="ambienceToggleClass"
-          type="button"
-          data-role="island-ambience-toggle"
-          :data-enabled="islandAmbienceEnabled ? 'true' : 'false'"
-          :data-playing="isAmbiencePlaying ? 'true' : 'false'"
-          :aria-pressed="isAmbiencePlaying"
-          aria-label="海岛声音"
-          :title="isAmbiencePlaying ? '关掉海岛声音' : '听听海岛的声音'"
-          @click="toggleAmbience"
-        >
-          <span class="island-page__ambience-glyph" aria-hidden="true">{{ ambienceGlyph }}</span>
-          <span class="island-page__ambience-text">海岛声音</span>
-        </button>
         <button class="island-page__back" type="button" @click="goHome">返回首页</button>
       </div>
     </header>
@@ -401,52 +356,6 @@ function goHome() {
   transform: translateY(-1px);
 }
 
-/* 「海岛声音」开关：看得清、但不抢眼。
-   它和「返回首页」并排放在同一块里，两者高度一致（都是 42px），
-   所以顶部摘要不会因为多了一个按钮而变高一行。 */
-.island-page__ambience {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-height: 42px;
-  padding: 9px 14px;
-  border: 1.5px solid rgba(36, 50, 74, 0.14);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.9);
-  color: var(--color-ink-soft);
-  font: inherit;
-  font-size: 0.86rem;
-  font-weight: 800;
-  cursor: pointer;
-  transition:
-    transform 160ms ease,
-    border-color 160ms ease,
-    box-shadow 160ms ease,
-    background-color 160ms ease;
-}
-
-.island-page__ambience:hover,
-.island-page__ambience:focus-visible {
-  border-color: rgba(124, 216, 184, 0.5);
-  background: rgba(247, 252, 249, 0.98);
-  box-shadow: 0 16px 24px -24px rgba(36, 50, 74, 0.42);
-  outline: none;
-  transform: translateY(-1px);
-}
-
-/* 打开时给一点很浅的暖色，暗示"现在有海浪声"；关闭态保持中性灰。 */
-.island-page__ambience--on {
-  border-color: rgba(72, 154, 148, 0.34);
-  background: rgba(238, 250, 246, 0.92);
-  color: #2f7a6c;
-}
-
-.island-page__ambience-glyph {
-  font-size: 1.05rem;
-  line-height: 1;
-}
-
 .island-page__summary {
   margin: 0;
   color: var(--color-ink-soft);
@@ -573,7 +482,8 @@ function goHome() {
     font-size: 1.6rem;
   }
 
-  /* 窄屏顶部摘要改成左对齐一列，按钮仍占满一行方便点。 */
+  /* 窄屏顶部摘要改成左对齐一列，「返回首页」仍占满一行方便点，
+     并保持 42px 的可点高度。 */
   .island-page__hero-side {
     justify-content: flex-start;
     width: 100%;
@@ -582,23 +492,15 @@ function goHome() {
   .island-page__back {
     width: 100%;
   }
-
-  /* 窄屏：开关与「返回首页」各占一行，都保持 42px 的可点高度。 */
-  .island-page__ambience {
-    width: 100%;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .island-page__back,
-  .island-page__ambience {
+  .island-page__back {
     transition: none;
   }
 
   .island-page__back:hover,
-  .island-page__back:focus-visible,
-  .island-page__ambience:hover,
-  .island-page__ambience:focus-visible {
+  .island-page__back:focus-visible {
     transform: none;
   }
 }

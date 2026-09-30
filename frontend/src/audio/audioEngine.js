@@ -16,11 +16,15 @@ const audioState = {
   backgroundAudio: null,
   backgroundAudioPrimed: false,
   // 页面级「临时借用」：知识岛页面进入时会把系统背景音乐让出来。
-  // 下面两个字段只描述"借"这件事本身，不碰用户任何偏好：
-  //   suppressed   —— 借出期间为 true，syncBackgroundAudio() 会一直保持暂停；
-  //   wasPlaying   —— 借出之前背景音乐到底在不在播，离开时按它原样恢复。
+  // 下面三个字段只描述"借"这件事本身，不碰用户任何偏好：
+  //   suppressed     —— 借出期间为 true，syncBackgroundAudio() 会一直保持暂停；
+  //   wasPlaying     —— 借出之前背景音乐到底在不在播，离开时按它原样恢复；
+  //   wasUnlocked    —— 借出之前音频引擎解没解锁。用来区分两种"进入前没在播"：
+  //                      本来就静音 / 从没交互过（离开时不要擅自打开），
+  //                      与"用户是在岛上才把声音打开的"（那就该还回去）。
   backgroundSuppressed: false,
   backgroundWasPlaying: false,
+  backgroundWasUnlocked: false,
   activeCueAudios: new Set(),
   settings: { ...DEFAULT_AUDIO_PREFERENCES },
   unlocked: false
@@ -441,10 +445,18 @@ export function isAudioEngineUnlocked() {
 // 会显得繁杂，所以进入知识岛时把 BGM 让出来，离开时原样还回去。
 //
 // 这里刻意只做「暂停 / 恢复」这一个动作，绝不碰用户的偏好：
-//   - 不改 musicEnabled、不改 musicVolume、不写任何持久状态；
-//   - 进入前 BGM 本来就没在播（还没解锁、被静音、用户自己关过），
-//     离开时就绝不会被擅自打开 —— 这由 backgroundWasPlaying 记住；
-//   - 恢复时走正常的 syncBackgroundAudio()，所以全局静音仍然是最高优先级。
+//   - 不改 musicEnabled、不改 musicVolume、不写任何持久状态。
+//
+// 离开时到底会不会真的响起来，要四个条件同时成立：
+//   1) 用户确实想要背景音乐：要么进入知识岛前 BGM 就在播，要么用户是在这一页上
+//      才把声音打开的（点右上角取消静音 → 引擎解锁）；
+//   2) musicEnabled 仍为 true；
+//   3) 没有全局静音（masterVolume > 0）；
+//   4) 音乐音量够听。
+// 后三条由下面那次 syncBackgroundAudio() 自己判断，它本来就同时管着
+// "用户把音乐关掉"和"用户拉了静音"这两种情况。
+// 所以用户在知识岛期间把音乐关掉或静音，离开时绝不会被擅自重新打开。
+//
 // 反复进出不会叠加：suspend 是幂等的 —— 重复调用不会覆盖「进入前在不在播」
 // （那会让第二次进入把 true 记成 false，结果离开时 BGM 再也回不来），
 // resume 之后状态归零，所以下一次进入会重新记一次当时的状态。
@@ -457,6 +469,7 @@ export function suspendBackgroundMusic() {
     // 只看已经存在的那个元素，不去新建：
     // 新建会带上 preload="auto"，等于凭空多拉一次背景音乐的请求。
     audioState.backgroundWasPlaying = Boolean(backgroundAudio) && !backgroundAudio.paused;
+    audioState.backgroundWasUnlocked = audioState.unlocked;
   }
 
   audioState.backgroundSuppressed = true;
@@ -469,12 +482,19 @@ export function suspendBackgroundMusic() {
 }
 
 export function resumeBackgroundMusic() {
-  const shouldResume = audioState.backgroundWasPlaying;
+  // 「用户是在这一页上才把声音打开的」：进岛时引擎还没解锁，离开时解锁了。
+  // 那种情况下 BGM 之所以没在播，唯一原因就是被我们借出期间按住了 ——
+  // 所以离开时必须还回去，否则用户在岛上打开声音、离开后却再也听不到背景音乐。
+  const enabledDuringVisit = !audioState.backgroundWasUnlocked && audioState.unlocked;
+  const shouldResume = audioState.backgroundWasPlaying || enabledDuringVisit;
 
   audioState.backgroundSuppressed = false;
   audioState.backgroundWasPlaying = false;
+  audioState.backgroundWasUnlocked = false;
 
-  // 进入前没在播 → 现在也不擅自打开。
+  // 条件 1 不成立 → 现在也不擅自打开。
+  // 条件 2~4 由 syncBackgroundAudio() 判断：它会在 musicEnabled 为假、
+  // 总音量为 0、音乐音量为 0 或引擎尚未解锁时保持暂停。
   if (shouldResume) {
     syncBackgroundAudio();
   }

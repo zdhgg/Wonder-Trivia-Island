@@ -1,14 +1,31 @@
+// 全站只有右上角那一颗静音按钮控制声音，所以这里不再有"知识岛专用开关"。
+// 知识岛的环境声直接跟随下面这四项全局偏好。
+//
+// 关于旧字段：早期版本这里有 islandAmbienceEnabled（知识岛标题栏那颗
+// 「海岛声音」按钮的记忆位）。那颗按钮已经删掉了，所以这个字段也一并去掉。
+// 不需要任何迁移代码 —— normalizePreferences() 只挑认识的键，
+// 旧 localStorage 里残留的那个键会被安静地忽略。
 export const DEFAULT_AUDIO_PREFERENCES = Object.freeze({
   masterVolume: 0.72,
   musicVolume: 0.42,
   sfxVolume: 0.9,
   musicEnabled: true,
-  sfxEnabled: true,
-  // 知识岛页面的「海岛声音」单独记一个开关（海浪 + 偶尔一声海鸥）。
-  // 默认 false：这一页不应该在孩子还没点过任何东西时自己发出声音，
-  // 它是"想听才听"的背景，不是必须存在的功能。
-  islandAmbienceEnabled: false
+  sfxEnabled: true
 });
+
+// 「现在全站允许出声吗」的唯一判定。
+// 它必须和 App.vue 里 isMuted 的取反完全一致，否则右上角那颗按钮
+// 就不是全站唯一的声音入口，孩子会撞上"我明明静音了岛上还在响"。
+export function isGlobalAudioAudible(preferences = {}) {
+  const masterVolume = Number(preferences.masterVolume);
+
+  if (!Number.isFinite(masterVolume) || masterVolume <= 0) {
+    return false;
+  }
+
+  // 音乐与音效两个通道都关掉 = 全站静音（与 isMuted 的第二个条件一致）。
+  return preferences.musicEnabled !== false || preferences.sfxEnabled !== false;
+}
 
 // 知识岛「专属环境声」两条素材各自的输出音量系数。
 // 它乘在 masterVolume 之上，所以设置里的总音量与「全部静音」仍然对它们生效
