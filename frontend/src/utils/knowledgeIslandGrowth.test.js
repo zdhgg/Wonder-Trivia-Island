@@ -15,7 +15,8 @@ import {
 } from "./knowledgeIslandGrowth.js";
 
 // 本轮阈值固定，测试里也写死这一组，改动阈值必须同时改这里（防止“顺手调参”）。
-const FIXED_THRESHOLDS = Object.freeze([0, 3, 7, 15, 30]);
+// 22 这一档（观星高台）是为补上 15 → 30 之间过长的中段而新加的。
+const FIXED_THRESHOLDS = Object.freeze([0, 3, 7, 15, 22, 30]);
 
 function stageAt(threshold) {
   return KNOWLEDGE_ISLAND_STAGES.find((stage) => stage.threshold === threshold);
@@ -191,18 +192,39 @@ describe("knowledgeIslandGrowth · 阶段边界", () => {
     const growth = buildKnowledgeIslandGrowth(15);
 
     expect(growth.currentStage.id).toBe(stageAt(15).id);
-    expect(growth.nextStage.id).toBe(stageAt(30).id);
-    expect(growth.progressTarget).toBe(15);
+    expect(growth.nextStage.id).toBe(stageAt(22).id);
+    expect(growth.progressTarget).toBe(7);
     expect(growth.progressPercent).toBe(0);
   });
 
-  it("29 枚是第四阶段最后一步", () => {
-    const growth = buildKnowledgeIslandGrowth(29);
+  it("21 枚是第四阶段最后一步", () => {
+    const growth = buildKnowledgeIslandGrowth(21);
 
     expect(growth.currentStage.id).toBe(stageAt(15).id);
-    expect(growth.progressValue).toBe(14);
-    expect(growth.progressTarget).toBe(15);
-    expect(growth.progressPercent).toBe(93);
+    expect(growth.progressValue).toBe(6);
+    expect(growth.progressTarget).toBe(7);
+    expect(growth.progressPercent).toBe(86);
+    expect(growth.remainingToNext).toBe(1);
+  });
+
+  it("恰好 22 枚进入第五阶段（观星高台）", () => {
+    const growth = buildKnowledgeIslandGrowth(22);
+
+    expect(growth.currentStage.id).toBe(stageAt(22).id);
+    expect(growth.currentStage.name).toBe("观星高台");
+    expect(growth.nextStage.id).toBe(stageAt(30).id);
+    expect(growth.progressTarget).toBe(8);
+    expect(growth.progressPercent).toBe(0);
+    expect(growth.remainingToNext).toBe(8);
+  });
+
+  it("29 枚是第五阶段最后一步", () => {
+    const growth = buildKnowledgeIslandGrowth(29);
+
+    expect(growth.currentStage.id).toBe(stageAt(22).id);
+    expect(growth.progressValue).toBe(7);
+    expect(growth.progressTarget).toBe(8);
+    expect(growth.progressPercent).toBe(88);
     expect(growth.remainingToNext).toBe(1);
   });
 });
@@ -402,11 +424,14 @@ describe("knowledgeIslandGrowth · 阶段顺序的唯一来源", () => {
   });
 
   it("岛上元素图标集中在纯函数层，收藏册与庆祝层共用同一份", () => {
+    expect(getKnowledgeIslandFeatureGlyph("海星")).toBe("🌟");
+    expect(getKnowledgeIslandFeatureGlyph("漂流木")).toBe("🪵");
     expect(getKnowledgeIslandFeatureGlyph("嫩芽")).toBe("🌱");
     expect(getKnowledgeIslandFeatureGlyph("小草丛")).toBe("🌿");
     expect(getKnowledgeIslandFeatureGlyph("椰子树")).toBe("🌴");
     expect(getKnowledgeIslandFeatureGlyph("小帐篷")).toBe("⛺");
     expect(getKnowledgeIslandFeatureGlyph("泊岸小船")).toBe("⛵");
+    expect(getKnowledgeIslandFeatureGlyph("观星台")).toBe("🔭");
     expect(getKnowledgeIslandFeatureGlyph("灯塔")).toBe("🗼");
     expect(getKnowledgeIslandFeatureGlyph("灯光")).toBe("💡");
     expect(getKnowledgeIslandFeatureGlyph("不存在的东西")).toBe("");
@@ -519,6 +544,9 @@ describe("knowledgeIslandGrowth · 阶段变化 transition", () => {
       "小码头",
       "泊岸小船"
     ]);
+    expect(buildKnowledgeIslandStageTransition(21, 22).newFeatures.map((feature) => feature.name)).toEqual([
+      "观星台"
+    ]);
     expect(buildKnowledgeIslandStageTransition(29, 30).newFeatures.map((feature) => feature.name)).toEqual([
       "灯塔",
       "灯光"
@@ -529,6 +557,7 @@ describe("knowledgeIslandGrowth · 阶段变化 transition", () => {
       buildKnowledgeIslandStageTransition(2, 3),
       buildKnowledgeIslandStageTransition(6, 7),
       buildKnowledgeIslandStageTransition(14, 15),
+      buildKnowledgeIslandStageTransition(21, 22),
       buildKnowledgeIslandStageTransition(29, 30)
     ]) {
       expect(transition.hasNewFeatures).toBe(true);
@@ -760,14 +789,14 @@ describe("knowledgeIslandGrowth · 星星绝不越级解锁后续建筑", () => 
     expect(noStars.prosperityKey).toBe("basic");
 
     // 关键：0 枚印章时，后续阶段的核心植被 / 建筑一个都不在 features 里。
-    for (const lockedFeature of ["嫩芽", "小草丛", "椰子树", "小帐篷", "小码头", "泊岸小船", "灯塔", "灯光"]) {
+    for (const lockedFeature of ["嫩芽", "小草丛", "椰子树", "小帐篷", "小码头", "泊岸小船", "观星台", "灯塔", "灯光"]) {
       expect(fullStars.currentStage.features).not.toContain(lockedFeature);
     }
   });
 
   it("任意印章数下，星星都不改变阶段、features、进度或下一阶段", () => {
-    // 覆盖 0 / 3 / 7 / 15 / 30 五个阶段边界以及中间值。
-    for (const stampCount of [0, 1, 2, 3, 4, 6, 7, 14, 15, 29, 30, 31, 100]) {
+    // 覆盖 0 / 3 / 7 / 15 / 22 / 30 六个阶段边界以及中间值。
+    for (const stampCount of [0, 1, 2, 3, 4, 6, 7, 14, 15, 21, 22, 29, 30, 31, 100]) {
       const basic = buildKnowledgeIslandGrowth(stampCount, { starCount: 0 });
       const lush = buildKnowledgeIslandGrowth(stampCount, { starCount: 30 });
       const flourishing = buildKnowledgeIslandGrowth(stampCount, { starCount: 63 });
@@ -792,13 +821,14 @@ describe("knowledgeIslandGrowth · 星星绝不越级解锁后续建筑", () => 
     }
   });
 
-  it("0 / 3 / 7 / 15 / 30 枚印章的阶段判定与本轮之前完全一致", () => {
+  it("0 / 3 / 7 / 15 / 22 / 30 枚印章的阶段判定与本轮之前完全一致", () => {
     // 写死期望值：防止有人顺手改了阶段阈值。
     const expectedStageIds = [
       "first-sight",
       "sprout-coast",
       "palm-camp",
       "explorer-dock",
+      "starwatch-hill",
       "knowledge-lighthouse"
     ];
 
@@ -829,13 +859,15 @@ describe("knowledgeIslandGrowth · 星星绝不越级解锁后续建筑", () => 
     }
   });
 
-  it("后面阶段独有的元素在 0 / 3 / 7 / 15 / 30 边界上都不会提前出现", () => {
+  it("后面阶段独有的元素在 0 / 3 / 7 / 15 / 22 / 30 边界上都不会提前出现", () => {
     // 逐阶段写死“这一步才有的元素”，再确认它在之前的阶段（含最高繁荣度）里永远不存在。
+    // 海星 / 漂流木是初见小岛的起点元素，从 0 枚就有，不属于任何“后面阶段独有”。
     const stageOnlyFeatures = Object.freeze({
       "first-sight": [],
       "sprout-coast": ["嫩芽", "小草丛"],
       "palm-camp": ["椰子树", "小帐篷"],
       "explorer-dock": ["小码头", "泊岸小船"],
+      "starwatch-hill": ["观星台"],
       "knowledge-lighthouse": ["灯塔", "灯光"]
     });
 
@@ -960,7 +992,7 @@ describe("knowledgeIslandGrowth · 首页与收藏册的繁荣度同口径", () 
       expect(island.currentStage.name).toBe("初见小岛");
       expect(island.prosperityKey).toBe("flourishing");
 
-      for (const lockedFeature of ["嫩芽", "小草丛", "椰子树", "小帐篷", "小码头", "泊岸小船", "灯塔", "灯光"]) {
+      for (const lockedFeature of ["嫩芽", "小草丛", "椰子树", "小帐篷", "小码头", "泊岸小船", "观星台", "灯塔", "灯光"]) {
         expect(island.currentStage.features).not.toContain(lockedFeature);
       }
     }

@@ -42,6 +42,8 @@ import {
   buildZoneStyle,
   getKnowledgeIslandTerrain
 } from "../utils/knowledgeIslandTerrain.js";
+import { playAudioCue } from "../audio/audioEngine.js";
+import { playIslandGullCryOnce } from "../audio/islandAmbience.js";
 
 const props = defineProps({
   island: {
@@ -54,8 +56,22 @@ const props = defineProps({
   size: {
     type: String,
     default: "compact"
+  },
+  // 漂流瓶：由页面层的 useIslandBottle 负责「今天该不该出现、字条写什么」，
+  // 组件只负责把它画出来、点开来 —— 自己不读 localStorage，不决定日期。
+  bottle: {
+    type: Boolean,
+    default: false
+  },
+  bottleLine: {
+    type: String,
+    default: ""
   }
 });
+
+// 点开漂流瓶只是告诉页面层「这一只被拆开了」，
+// 是否记住今天已经拆过，由页面层自己决定（组件里没有持久状态）。
+const emit = defineEmits(["bottle-open"]);
 
 const ISLAND_SIZES = Object.freeze(["compact", "hero"]);
 
@@ -136,6 +152,7 @@ let resetTimer = 0;
 let hintTimer = 0;
 let rippleSeq = 0;
 let resizeObserver = null;
+let measureInterval = 0;
 // 涟漪的收尾定时器也登记进来：组件被关掉时一并清掉，
 // 避免回调回头去改一个已经没人看的 ref。
 const rippleTimers = new Set();
@@ -146,9 +163,16 @@ const rippleTimers = new Set();
 //   chip —— 只是一枚看得见的小牌子，钉在锚点的一个位置上（下一阶段预告）；
 //   band —— 一整条固定的画面区域（海面）。
 const HOT_SPOT_DEFS = Object.freeze([
-  { id: "shell", anchor: ".knowledge-island__shell", kind: "box" },
-  { id: "rock", anchor: ".knowledge-island__rock", kind: "box" },
+  { id: "shell", anchor: ".knowledge-island__shell--main", kind: "box" },
+  { id: "rock", anchor: ".knowledge-island__rock--main", kind: "box" },
   { id: "gull", anchor: ".knowledge-island__gull--a", kind: "box" },
+  // 太阳与云也是「点一下有回应」的东西。云在缓慢漂移，
+  // 所以热点位置除了尺寸变化时量一次，还会每几秒跟着云再量一次（见下方定时器重测）。
+  { id: "sun", anchor: ".knowledge-island__sun", kind: "box" },
+  { id: "cloud", anchor: ".knowledge-island__cloud--left", kind: "box" },
+  // 漂流瓶：出不出现在画面上由页面层决定（bottle prop），
+  // 没有瓶子时锚点不存在，这个热点自动消失。
+  { id: "bottle", anchor: ".knowledge-island__bottle", kind: "box" },
   { id: "next", anchor: '[data-role="knowledge-island-next-terrain"]', kind: "chip" },
   { id: "sea", anchor: null, kind: "band" }
 ]);
@@ -158,9 +182,39 @@ const HOT_SPOT_LABELS = Object.freeze({
   shell: { label: "看看西岸的贝壳", hint: "发现了一枚贝壳" },
   rock: { label: "看看西岸的石头", hint: "石头被浪花拍了一下" },
   gull: { label: "看看天上飞过的海鸥", hint: "海鸥从岛上飞过" },
+  sun: { label: "看看天上的太阳", hint: "太阳暖洋洋的，海面亮晶晶" },
+  cloud: { label: "看看天上的云朵", hint: "云朵慢慢飘，像一团棉花糖" },
+  bottle: { label: "看看海里漂来的瓶子", hint: "" },
   next: { label: "看看岛外面的虚线轮廓", hint: "" },
   sea: { label: "点一点海面", hint: "海面泛起一圈小涟漪" }
 });
+
+// 点热点的「声画同步」：每个热点配一声很短的合成音（定义在 audioConfig 的 AUDIO_CUES），
+// 海鸥点一下则真的叫一声（复用环境声里那一份海鸥素材，仍然任意时刻最多一声）。
+// 声音全部走 playAudioCue / playIslandGullCryOnce 的全局闸门：
+// 没解锁过音频、全局静音、音效关闭时一律安静，组件不需要自己判断。
+const HOT_SPOT_SOUNDS = Object.freeze({
+  shell: "ding",
+  rock: "thud",
+  sea: "plop",
+  sun: "chime",
+  cloud: "puff",
+  bottle: "message",
+  next: "toggle"
+});
+
+function playHotSpotSound(id) {
+  if (id === "gull") {
+    playIslandGullCryOnce();
+    return;
+  }
+
+  const cueName = HOT_SPOT_SOUNDS[id];
+
+  if (cueName) {
+    playAudioCue(cueName);
+  }
+}
 
 // 「还差多少印章，长成什么样」这句话完全由 knowledgeIslandGrowth 已经算好的字段拼出来：
 // remainingToNext 是它算的差值，nextStage.name 是它认定的下一阶段，组件不重新判断阈值。
@@ -188,6 +242,11 @@ function hotSpotHint(id) {
     return nextStageHintText.value;
   }
 
+  if (id === "bottle") {
+    // 字条内容来自页面层（每天一句），没有内容时给一句兜底。
+    return String(props.bottleLine || "").trim() || "瓶子里有一张写着加油的小字条";
+  }
+
   return HOT_SPOT_LABELS[id]?.hint || "";
 }
 
@@ -208,9 +267,11 @@ function syncHotSpots() {
     return;
   }
 
+  // 热点按钮的 CSS 是 translate(-50%, -50%)：left/top 必须写「锚点中心」的百分比。
+  // 写左上角的话，每块热区都会整体偏出自身宽高的一半（云朵那块宽，会直接漂出画面）。
   const toPercentBox = (rect) => ({
-    left: ((rect.left - frame.left) / frame.width) * 100,
-    top: ((rect.top - frame.top) / frame.height) * 100,
+    left: ((rect.left + rect.width / 2 - frame.left) / frame.width) * 100,
+    top: ((rect.top + rect.height / 2 - frame.top) / frame.height) * 100,
     width: (rect.width / frame.width) * 100,
     height: (rect.height / frame.height) * 100
   });
@@ -281,8 +342,18 @@ function clearTimers() {
       window.clearTimeout(hintTimer);
       hintTimer = 0;
     }
+    if (sunTapTimer) {
+      window.clearTimeout(sunTapTimer);
+      sunTapTimer = 0;
+    }
+    if (duskTimer) {
+      window.clearTimeout(duskTimer);
+      duskTimer = 0;
+    }
   }
 
+  sunTapCount = 0;
+  duskActive.value = false;
   rippleTimers.forEach((timer) => window.clearTimeout(timer));
   rippleTimers.clear();
   // 定时器被清掉的同时要把涟漪本身也收走：
@@ -355,9 +426,19 @@ function triggerHotSpot(id, event) {
   // 一次只回应一个：连点不会叠成一堆动画，也不会一直吵。
   activeHotSpotId.value = id;
   showHint(hotSpotHint(id));
+  playHotSpotSound(id);
 
   if (id === "sea") {
     pushRipple(ripplePointFromEvent(event));
+  }
+
+  if (id === "sun") {
+    trackSunTap();
+  }
+
+  if (id === "bottle") {
+    // 瓶子拆开就消失：页面层会记下「今天已经拆过」，prop 变 false 后瓶子与热点一起收走。
+    emit("bottle-open");
   }
 
   if (typeof window === "undefined") {
@@ -374,9 +455,146 @@ function triggerHotSpot(id, event) {
   }, 1100);
 }
 
+// ---------------------------------------------------------------------------
+// 黄昏彩蛋：连点太阳 5 下，小岛进入 10 秒黄昏模式。
+// 纯表现层：不写任何持久状态、不影响印章 / 星星 / 阶段，
+// 只是「发现秘密的孩子会被奖励一场夕阳」。
+// 计数窗口很短（3 秒不点就重新数），所以不会不小心触发。
+// ---------------------------------------------------------------------------
+const duskActive = ref(false);
+let sunTapCount = 0;
+let sunTapTimer = 0;
+let duskTimer = 0;
+
+function trackSunTap() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  sunTapCount += 1;
+
+  if (sunTapTimer) {
+    window.clearTimeout(sunTapTimer);
+  }
+
+  sunTapTimer = window.setTimeout(() => {
+    sunTapCount = 0;
+    sunTapTimer = 0;
+  }, 3000);
+
+  if (sunTapCount < 5 || duskActive.value) {
+    return;
+  }
+
+  sunTapCount = 0;
+  duskActive.value = true;
+  showHint("夕阳把海面染成了金色，真美呀～");
+
+  duskTimer = window.setTimeout(() => {
+    duskActive.value = false;
+    duskTimer = 0;
+  }, 10000);
+}
+
+// ---------------------------------------------------------------------------
+// 视差微动：鼠标在画面上移动时，整幅画（含热点层）轻轻跟着挪一点，
+// 远景（海平线上的小岛 / 帆影 / 海面）挪得比近景更少，于是有了纵深。
+// 三条硬约束：
+//   1) 世界层与热点层施加完全相同的位移 —— 热点永远贴着自己的元素，不会错位；
+//   2) 只写 CSS 变量，位移本身是 transform，不会引起重排；
+//   3) 减少动态偏好下完全不启用（变量保持 0，画面纹丝不动）。
+// ---------------------------------------------------------------------------
+const PARALLAX_RANGE_PX = 5;
+let parallaxFrame = 0;
+let parallaxEnabled = false;
+
+function applyParallax(clientX, clientY) {
+  const figure = figureRef.value;
+
+  if (!figure) {
+    return;
+  }
+
+  const rect = figure.getBoundingClientRect();
+
+  if (rect.width <= 0 || rect.height <= 0) {
+    return;
+  }
+
+  const ratioX = Math.max(-1, Math.min(1, ((clientX - rect.left) / rect.width) * 2 - 1));
+  const ratioY = Math.max(-1, Math.min(1, ((clientY - rect.top) / rect.height) * 2 - 1));
+
+  figure.style.setProperty("--ki-px", `${(-ratioX * PARALLAX_RANGE_PX).toFixed(2)}px`);
+  figure.style.setProperty("--ki-py", `${(-ratioY * PARALLAX_RANGE_PX * 0.6).toFixed(2)}px`);
+}
+
+function resetParallax() {
+  const figure = figureRef.value;
+
+  if (!figure) {
+    return;
+  }
+
+  figure.style.setProperty("--ki-px", "0px");
+  figure.style.setProperty("--ki-py", "0px");
+}
+
+function handleParallaxMove(event) {
+  if (!parallaxEnabled || typeof window === "undefined" || !window.requestAnimationFrame) {
+    return;
+  }
+
+  const { clientX, clientY } = event;
+
+  if (parallaxFrame) {
+    return;
+  }
+
+  parallaxFrame = window.requestAnimationFrame(() => {
+    parallaxFrame = 0;
+    applyParallax(clientX, clientY);
+  });
+}
+
+function setupParallax() {
+  if (typeof window === "undefined" || !figureRef.value) {
+    return;
+  }
+
+  // 减少动态偏好：这一层整个不启用，画面保持静止。
+  parallaxEnabled = !window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+
+  if (!parallaxEnabled) {
+    return;
+  }
+
+  figureRef.value.addEventListener("mousemove", handleParallaxMove);
+  figureRef.value.addEventListener("mouseleave", resetParallax);
+}
+
+function teardownParallax() {
+  if (typeof window !== "undefined" && parallaxFrame) {
+    window.cancelAnimationFrame(parallaxFrame);
+    parallaxFrame = 0;
+  }
+
+  if (figureRef.value) {
+    figureRef.value.removeEventListener("mousemove", handleParallaxMove);
+    figureRef.value.removeEventListener("mouseleave", resetParallax);
+  }
+}
+
 onMounted(() => {
   scheduleHotSpotSync();
   nextTick(scheduleHotSpotSync);
+  setupParallax();
+
+  // 云在天上慢慢漂移，它的热点要跟着云走：
+  // 每几秒重测一次全部锚点（一次只量几个盒子，代价可以忽略），
+  // 这样「点云朵」这件事在任何时刻都落在云真正的位置上。
+  if (typeof window !== "undefined") {
+    measureInterval = window.setInterval(scheduleHotSpotSync, 2500);
+  }
 
   if (typeof ResizeObserver === "undefined" || !figureRef.value) {
     return;
@@ -389,10 +607,18 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   clearTimers();
+  teardownParallax();
 
-  if (typeof window !== "undefined" && syncFrame) {
-    window.cancelAnimationFrame(syncFrame);
-    syncFrame = 0;
+  if (typeof window !== "undefined") {
+    if (syncFrame) {
+      window.cancelAnimationFrame(syncFrame);
+      syncFrame = 0;
+    }
+
+    if (measureInterval) {
+      window.clearInterval(measureInterval);
+      measureInterval = 0;
+    }
   }
 
   if (resizeObserver) {
@@ -401,9 +627,9 @@ onBeforeUnmount(() => {
   }
 });
 
-// 阶段 / 繁荣度 / 尺寸一变，画面里的元素就换了一批，热点必须跟着重新量。
+// 阶段 / 繁荣度 / 尺寸 / 漂流瓶一变，画面里的元素就换了一批，热点必须跟着重新量。
 watch(
-  () => [props.island?.currentStage?.id, prosperityKey(), sizeKey()],
+  () => [props.island?.currentStage?.id, prosperityKey(), sizeKey(), props.bottle],
   () => {
     clearTimers();
     activeHotSpotId.value = "";
@@ -424,7 +650,10 @@ watch(
       `knowledge-island--${island.currentStage.id}`,
       `knowledge-island--prosperity-${prosperityKey()}`,
       `knowledge-island--${sizeKey()}`,
-      { [`knowledge-island--active-${activeHotSpotId}`]: Boolean(activeHotSpotId) }
+      {
+        [`knowledge-island--active-${activeHotSpotId}`]: Boolean(activeHotSpotId),
+        'knowledge-island--dusk': duskActive
+      }
     ]"
   >
     <div
@@ -471,8 +700,24 @@ watch(
 
         <!-- 海水分三层：远处的浅蓝、近处的深蓝和贴着岸边的浪线。
              海是画布级背景，不跟着岛走（岛在水里，海不会跟着岛搬家）。 -->
+        <!-- 海平线上的远景：一座朦胧的邻岛 + 一片远远的帆影。
+             它们压在海面层的下沿（z-index 比海低），底部被海浪自然遮住一截，
+             一眼就能把「近处的海」和「远处的天」分出层次。 -->
+        <span class="knowledge-island__horizon-island" aria-hidden="true"></span>
+        <span class="knowledge-island__horizon-sail" aria-hidden="true"></span>
         <span class="knowledge-island__sea" aria-hidden="true"></span>
         <span class="knowledge-island__sea-depth" aria-hidden="true"></span>
+        <!-- 太阳垂下来的金色反光带：从太阳正下方一直铺到画面底部，
+             只有几道缓慢明暗的碎光，海面立刻从「平涂」变成「插画」。 -->
+        <span class="knowledge-island__sun-glitter" aria-hidden="true"></span>
+        <!-- 前景小物：半埋的浮标与两丛近岸海草，给画面下方 1/4 的开阔海面
+             添一点「近处也有东西」的层次。纯装饰，不参与热点。 -->
+        <span class="knowledge-island__seagrass knowledge-island__seagrass--a" aria-hidden="true"></span>
+        <span class="knowledge-island__seagrass knowledge-island__seagrass--b" aria-hidden="true"></span>
+        <span class="knowledge-island__buoy" aria-hidden="true"></span>
+        <!-- 漂流瓶：每天第一只看得到。出不出现由页面层的 useIslandBottle 决定，
+             点开后页面层把它收走；组件只负责画与回应。 -->
+        <span v-if="bottle" class="knowledge-island__bottle" aria-hidden="true"></span>
         <span class="knowledge-island__surf" aria-hidden="true">
           <span class="knowledge-island__surf-line knowledge-island__surf-line--a"></span>
           <span class="knowledge-island__surf-line knowledge-island__surf-line--b"></span>
@@ -559,6 +804,10 @@ watch(
             </span>
             <span v-if="isProsperityAtLeast(1)" class="knowledge-island__rock knowledge-island__rock--lush" aria-hidden="true"></span>
             <span v-if="isProsperityAtLeast(2)" class="knowledge-island__rock knowledge-island__rock--flourishing" aria-hidden="true"></span>
+            <!-- 初见小岛的专属小物：海星与漂流木。
+                 它们挂在 features 上（0 枚就有），所以空岛也空得有细节。 -->
+            <span v-if="hasIslandFeature('海星')" class="knowledge-island__starfish" aria-hidden="true"></span>
+            <span v-if="hasIslandFeature('漂流木')" class="knowledge-island__driftwood" aria-hidden="true"></span>
           </div>
 
           <!-- ============ 中央绿地：嫩芽 / 草丛 / 花 ============
@@ -664,17 +913,26 @@ watch(
             </span>
           </div>
 
-          <!-- ============ 高地区：灯塔 ============
-               灯塔连同它的光束都在这一个街区里；光束是灯塔的子元素，
-               所以无论岛屿怎么变，光都从灯塔自己的窗口射出去，不会飘到别处。 -->
+          <!-- ============ 高地区：观星台 / 灯塔 ============
+               观星台（观星高台阶段）与灯塔（知识灯塔阶段）都站在高地上：
+               高地地形从观星高台开始隆起，观星台先站上来，灯塔后来与它做邻居。
+               光束是灯塔的子元素，所以无论岛屿怎么变，光都从灯塔自己的窗口射出去。 -->
           <div
-            v-if="hasIslandFeature('灯塔')"
+            v-if="hasIslandFeature('观星台') || hasIslandFeature('灯塔')"
             class="knowledge-island__zone knowledge-island__zone--highland"
             data-role="knowledge-island-zone-highland"
             :style="zoneStyle('highland')"
             aria-hidden="true"
           >
-            <span class="knowledge-island__lighthouse" aria-hidden="true">
+            <!-- 观星台：一座小木台 + 一具朝天的小望远镜。 -->
+            <span v-if="hasIslandFeature('观星台')" class="knowledge-island__observatory" aria-hidden="true">
+              <span class="knowledge-island__observatory-deck"></span>
+              <span class="knowledge-island__observatory-tripod knowledge-island__observatory-tripod--a"></span>
+              <span class="knowledge-island__observatory-tripod knowledge-island__observatory-tripod--b"></span>
+              <span class="knowledge-island__observatory-tripod knowledge-island__observatory-tripod--c"></span>
+              <span class="knowledge-island__observatory-tube"></span>
+            </span>
+            <span v-if="hasIslandFeature('灯塔')" class="knowledge-island__lighthouse" aria-hidden="true">
               <span class="knowledge-island__lighthouse-roof"></span>
               <span class="knowledge-island__lighthouse-tower"></span>
               <span class="knowledge-island__lighthouse-window knowledge-island__lighthouse-window--a"></span>
@@ -689,6 +947,10 @@ watch(
           </div>
         </div>
       </div>
+
+      <!-- 黄昏彩蛋的染色纱：连点太阳 5 下出现后盖在画面上 10 秒，
+           把整幅画染成夕阳的暖橙。它不吃点击（热点照常可用）。 -->
+      <span v-if="duskActive" class="knowledge-island__dusk-veil" aria-hidden="true"></span>
 
       <!-- ============ 轻互动层 ============
            一层透明按钮，贴在画面上、盖住对应元素。
@@ -1337,6 +1599,295 @@ watch(
 }
 
 /* ===========================================================================
+   纵深与前景（纯装饰层）
+   ---------------------------------------------------------------------------
+   这一轮给「平涂绘本」加三层纵深：
+     远景 —— 海平线上的邻岛剪影与帆影（压在海面层下沿，底部被海浪自然遮住）；
+     中景 —— 太阳垂下来的金色反光带（贴在海面上，缓慢明暗）；
+     近景 —— 画面下沿的浮标与海草（z-index 高于海面与浪线）。
+   它们全部是纯装饰：不参与任何阶段 / 繁荣度 / 热点判定。
+   视差：世界层与热点层吃同一个位移（--ki-px / --ki-py），
+   远景元素再吃一个小幅度的反向位移，于是远的东西动得少、近的东西动得多。
+   =========================================================================== */
+.knowledge-island__world,
+.knowledge-island__hotspots {
+  transform: translate(var(--ki-px, 0px), var(--ki-py, 0px));
+  transition: transform 220ms ease-out;
+}
+
+.knowledge-island__sea {
+  transform: translate(calc(var(--ki-px, 0px) * -0.35), calc(var(--ki-py, 0px) * -0.35));
+}
+
+.knowledge-island__sea-depth {
+  transform: translate(calc(var(--ki-px, 0px) * -0.25), calc(var(--ki-py, 0px) * -0.25));
+}
+
+/* 海平线上的邻岛：一道朦脓的青绿色剪影，底部伸进海里被浪遮掉一截。 */
+.knowledge-island__horizon-island {
+  position: absolute;
+  left: 8%;
+  bottom: 57.5%;
+  width: 24%;
+  height: 7%;
+  border-radius: 50% 50% 0 0 / 100% 100% 0 0;
+  background: linear-gradient(180deg, rgba(122, 178, 186, 0.55) 0%, rgba(96, 158, 172, 0.38) 100%);
+  z-index: 1;
+  transform: translate(calc(var(--ki-px, 0px) * -0.5), calc(var(--ki-py, 0px) * -0.5));
+}
+
+/* 远处的帆影：很小很慢，一轮 88 秒才从一边挪到另一边。 */
+.knowledge-island__horizon-sail {
+  position: absolute;
+  left: 58%;
+  bottom: 55%;
+  width: calc(var(--ki-u) * 16);
+  height: calc(var(--ki-u) * 12);
+  z-index: 1;
+  opacity: 0.66;
+  animation: knowledge-island-horizon-sail-drift 88s ease-in-out infinite alternate;
+}
+
+.knowledge-island__horizon-sail::before {
+  content: "";
+  position: absolute;
+  left: 15%;
+  bottom: 0;
+  width: 70%;
+  height: 18%;
+  border-radius: 0 0 calc(var(--ki-u) * 6) calc(var(--ki-u) * 6);
+  background: rgba(84, 124, 148, 0.8);
+}
+
+.knowledge-island__horizon-sail::after {
+  content: "";
+  position: absolute;
+  left: 30%;
+  bottom: 16%;
+  width: 46%;
+  height: 80%;
+  background: rgba(255, 252, 240, 0.88);
+  clip-path: polygon(0 0, 100% 78%, 0 100%);
+}
+
+@keyframes knowledge-island-horizon-sail-drift {
+  from {
+    transform: translateX(calc(var(--ki-u) * -14));
+  }
+
+  to {
+    transform: translateX(calc(var(--ki-u) * 14));
+  }
+}
+
+/* 太阳垂下来的反光带：几道缓慢明暗的碎光，从太阳正下方铺到画面下半。
+   刻意窄而淡、左右用 mask 羽化 —— 它只是「海面上有一道光」，
+   不能宽成一块抢戏的亮斑。 */
+.knowledge-island__sun-glitter {
+  position: absolute;
+  left: 87%;
+  top: 42%;
+  width: 8%;
+  height: 46%;
+  z-index: 3;
+  background: repeating-linear-gradient(
+    180deg,
+    rgba(255, 241, 176, 0.6) 0 calc(var(--ki-u) * 2.5),
+    transparent calc(var(--ki-u) * 2.5) calc(var(--ki-u) * 10)
+  );
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, black 32%, black 68%, transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0%, black 32%, black 68%, transparent 100%);
+  opacity: 0.34;
+  animation: knowledge-island-glitter-shimmer 4.8s ease-in-out infinite alternate;
+  transform: translate(calc(var(--ki-px, 0px) * -0.4), calc(var(--ki-py, 0px) * -0.4));
+}
+
+@keyframes knowledge-island-glitter-shimmer {
+  from {
+    opacity: 0.2;
+  }
+
+  to {
+    opacity: 0.44;
+  }
+}
+
+/* 近岸海草：半透明、泡在水里的感觉，轻轻地摆。 */
+.knowledge-island__seagrass {
+  position: absolute;
+  bottom: -2%;
+  width: calc(var(--ki-u) * 6);
+  height: calc(var(--ki-u) * 20);
+  border-radius: 100% 0 100% 0;
+  background: linear-gradient(180deg, rgba(96, 176, 148, 0.72) 0%, rgba(52, 132, 118, 0.66) 100%);
+  opacity: 0.55;
+  z-index: 5;
+  transform-origin: bottom center;
+  animation: knowledge-island-seagrass-sway 7.5s ease-in-out infinite alternate;
+}
+
+.knowledge-island__seagrass::before,
+.knowledge-island__seagrass::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+  border-radius: inherit;
+  background: inherit;
+  transform-origin: bottom center;
+}
+
+.knowledge-island__seagrass::before {
+  left: -70%;
+  height: 78%;
+  transform: rotate(-16deg);
+}
+
+.knowledge-island__seagrass::after {
+  left: 70%;
+  height: 64%;
+  transform: rotate(14deg);
+}
+
+.knowledge-island__seagrass--a {
+  left: 9%;
+}
+
+.knowledge-island__seagrass--b {
+  left: 15.5%;
+  height: calc(var(--ki-u) * 14);
+  opacity: 0.42;
+  animation-delay: -3.2s;
+  animation-direction: alternate-reverse;
+}
+
+@keyframes knowledge-island-seagrass-sway {
+  from {
+    transform: rotate(calc(-4deg * var(--ki-ambient-amp)));
+  }
+
+  to {
+    transform: rotate(calc(4deg * var(--ki-ambient-amp)));
+  }
+}
+
+/* 半埋的浮标：红白条纹的小锥标，随浪轻轻点头。
+   位置避开太阳反光带（反光带在画面 87%~95% 之间），放在更靠中间的水面。 */
+.knowledge-island__buoy {
+  position: absolute;
+  right: 20%;
+  bottom: 7%;
+  width: calc(var(--ki-u) * 11);
+  height: calc(var(--ki-u) * 15);
+  z-index: 5;
+  transform-origin: 50% 92%;
+  animation: knowledge-island-buoy-bob 5.6s ease-in-out infinite alternate;
+}
+
+.knowledge-island__buoy::before {
+  content: "";
+  position: absolute;
+  left: 12%;
+  bottom: 0;
+  width: 76%;
+  height: 76%;
+  border-radius: 46% 46% 40% 40% / 58% 58% 30% 30%;
+  background: repeating-linear-gradient(180deg, #ef6e65 0 34%, #fff4e0 34% 62%);
+  box-shadow: inset calc(var(--ki-u) * -1.5) calc(var(--ki-u) * -1) 0 rgba(150, 70, 60, 0.35);
+}
+
+.knowledge-island__buoy::after {
+  content: "";
+  position: absolute;
+  left: 44%;
+  top: 0;
+  width: 12%;
+  height: 28%;
+  border-radius: calc(var(--ki-u) * 999);
+  background: #8a5a40;
+}
+
+@keyframes knowledge-island-buoy-bob {
+  from {
+    transform: translateY(calc(var(--ki-u) * 1.4)) rotate(calc(-3.4deg * var(--ki-ambient-amp)));
+  }
+
+  to {
+    transform: translateY(calc(var(--ki-u) * -1.4)) rotate(calc(3.4deg * var(--ki-ambient-amp)));
+  }
+}
+
+/* 漂流瓶：斜躺在水面上慢慢晃，身上带一圈呼吸的微光 —— 提示孩子「这里有东西可以点」。
+   身形刻意修长：圆滚滚的一团会被看成一只绿海龟。 */
+.knowledge-island__bottle {
+  position: absolute;
+  left: 30%;
+  bottom: 12%;
+  width: calc(var(--ki-u) * 22);
+  height: calc(var(--ki-u) * 7.5);
+  border-radius: 46% 54% 50% 50% / 58% 60% 40% 42%;
+  background: linear-gradient(160deg, rgba(168, 226, 214, 0.92) 0%, rgba(96, 178, 168, 0.88) 100%);
+  box-shadow:
+    inset 0 calc(var(--ki-u) * 1.2) 0 rgba(255, 255, 255, 0.65),
+    0 0 calc(var(--ki-u) * 6) rgba(255, 240, 170, 0.55);
+  z-index: 5;
+  transform: rotate(16deg);
+  transform-origin: center;
+  animation:
+    knowledge-island-bottle-drift 6.8s ease-in-out infinite alternate,
+    knowledge-island-bottle-glow 2.6s ease-in-out infinite alternate;
+}
+
+/* 瓶里的字条：一小截卷起来的白纸。 */
+.knowledge-island__bottle::before {
+  content: "";
+  position: absolute;
+  left: 28%;
+  top: 22%;
+  width: 30%;
+  height: 50%;
+  border-radius: calc(var(--ki-u) * 1.5);
+  background: rgba(255, 252, 240, 0.92);
+  transform: rotate(-6deg);
+}
+
+/* 瓶口与软木塞。 */
+.knowledge-island__bottle::after {
+  content: "";
+  position: absolute;
+  right: -9%;
+  top: 24%;
+  width: 15%;
+  height: 46%;
+  border-radius: 30%;
+  background: linear-gradient(180deg, #c9a06a 0%, #8a6138 100%);
+}
+
+@keyframes knowledge-island-bottle-drift {
+  from {
+    transform: rotate(13deg) translateY(calc(var(--ki-u) * 1.6));
+  }
+
+  to {
+    transform: rotate(19deg) translateY(calc(var(--ki-u) * -1.6));
+  }
+}
+
+@keyframes knowledge-island-bottle-glow {
+  from {
+    box-shadow:
+      inset 0 calc(var(--ki-u) * 1.2) 0 rgba(255, 255, 255, 0.65),
+      0 0 calc(var(--ki-u) * 3) rgba(255, 240, 170, 0.35);
+  }
+
+  to {
+    box-shadow:
+      inset 0 calc(var(--ki-u) * 1.2) 0 rgba(255, 255, 255, 0.65),
+      0 0 calc(var(--ki-u) * 9) rgba(255, 240, 170, 0.85);
+  }
+}
+
+/* ===========================================================================
    下一阶段预告
    ---------------------------------------------------------------------------
    只画下一阶段那一条更宽的岸线：一点微光 + 一条淡虚线。
@@ -1418,6 +1969,20 @@ watch(
   background: linear-gradient(170deg, #ffe7b6 0%, #ffd28a 100%);
   box-shadow: inset 0 calc(var(--ki-u) * 3) 0 rgba(255, 255, 255, 0.68), 0 calc(var(--ki-u) * 10) calc(var(--ki-u) * 18) calc(var(--ki-u) * -16) rgba(49, 77, 73, 0.68);
   z-index: 2;
+}
+
+/* 沙面质感：几颗深一点的沙斑 + 下沿一圈被浪打湿的湿沙色带。
+   画在 ::before 上（clip-path 对伪元素同样生效），所以任何阶段都不会超出岸线。 */
+.knowledge-island__ground::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background:
+    radial-gradient(circle at 30% 38%, rgba(214, 164, 96, 0.26) 0 4%, transparent 5%),
+    radial-gradient(circle at 62% 56%, rgba(214, 164, 96, 0.22) 0 3%, transparent 4%),
+    radial-gradient(circle at 47% 28%, rgba(255, 244, 214, 0.38) 0 3%, transparent 4%),
+    linear-gradient(180deg, transparent 64%, rgba(222, 184, 128, 0.5) 86%, rgba(206, 168, 116, 0.62) 100%);
 }
 
 /* 草地内的纹理：一小片深一点的草色，避免大片纯绿显得平。
@@ -1660,6 +2225,56 @@ watch(
   filter: drop-shadow(0 calc(var(--ki-u) * 2) calc(var(--ki-u) * 3) calc(var(--ki-u) * -2) rgba(38, 76, 86, 0.65));
   transform: rotate(-14deg);
   opacity: 0.95;
+}
+
+/* ---------- 初见小岛专属小物：海星 / 漂流木 ----------
+   0 枚就有的两件小东西：让「空岛」空得有细节，而不是空得单薄。
+   它们是纯静物（不动），被点回应的是贝壳 / 石头，不是它们。 */
+.knowledge-island__starfish {
+  left: 44%;
+  bottom: 8%;
+  width: calc(var(--ki-u) * 11 * var(--ki-unit, 1));
+  height: calc(var(--ki-u) * 11 * var(--ki-unit, 1));
+  margin-left: calc(calc(var(--ki-u) * -5.5) * var(--ki-unit, 1));
+  background: linear-gradient(160deg, #f7b267 0%, #ef8354 100%);
+  clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+  transform: rotate(18deg);
+  filter: drop-shadow(0 calc(var(--ki-u) * 1) calc(var(--ki-u) * 1.5) rgba(150, 86, 52, 0.42));
+}
+
+/* 海星表面的小颗粒感。 */
+.knowledge-island__starfish::after {
+  content: "";
+  position: absolute;
+  inset: 22%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 226, 178, 0.85) 0 18%, transparent 22%);
+  background-size: calc(var(--ki-u) * 3.4) calc(var(--ki-u) * 3.4);
+}
+
+.knowledge-island__driftwood {
+  left: 62%;
+  bottom: 42%;
+  width: calc(var(--ki-u) * 18 * var(--ki-unit, 1));
+  height: calc(var(--ki-u) * 5 * var(--ki-unit, 1));
+  border: calc(var(--ki-u) * 0.7) solid rgba(122, 84, 48, 0.42);
+  border-radius: calc(var(--ki-u) * 999);
+  background: repeating-linear-gradient(90deg, #b3855a 0 calc(var(--ki-u) * 4), #a1734b calc(var(--ki-u) * 4) calc(var(--ki-u) * 5.4));
+  box-shadow: 0 calc(var(--ki-u) * 1.5) calc(var(--ki-u) * 3) calc(var(--ki-u) * -2) rgba(120, 80, 50, 0.5);
+  transform: rotate(-22deg);
+}
+
+/* 漂流木上的一截小枝杈。 */
+.knowledge-island__driftwood::after {
+  content: "";
+  position: absolute;
+  left: 22%;
+  top: calc(var(--ki-u) * -2.6);
+  width: calc(var(--ki-u) * 4);
+  height: calc(var(--ki-u) * 3.4);
+  border-radius: 40% 60% 0 0;
+  background: #a1734b;
+  transform: rotate(-14deg);
 }
 
 /* ---------- 中央绿地：嫩芽 / 草丛 / 花 ---------- */
@@ -2301,6 +2916,93 @@ watch(
   background: #6f5a4c;
 }
 
+/* ---------- 高地区：观星台（观星高台阶段） ----------
+   一座小木台 + 一具朝天的小望远镜：三脚架三条腿、黄铜色的镜筒。
+   它和灯塔同住高地街区：观星台靠左、灯塔居中，互不遮挡。 */
+.knowledge-island__observatory {
+  left: -6%;
+  bottom: 0;
+  width: calc(var(--ki-u) * 20 * var(--ki-unit, 1));
+  height: calc(var(--ki-u) * 18 * var(--ki-unit, 1));
+  /* 灯塔阶段它与灯塔做邻居：小台子矮，站在灯塔左前方，
+     所以层级要比灯塔高，不然整座望远镜会被塔身吃掉。 */
+  z-index: 8;
+}
+
+.knowledge-island__observatory-deck {
+  position: absolute;
+  left: 8%;
+  bottom: 0;
+  width: 84%;
+  height: 26%;
+  border: calc(var(--ki-u) * 0.7) solid rgba(122, 78, 40, 0.4);
+  border-radius: 50%;
+  background: linear-gradient(180deg, #e0b273 0%, #b9814c 100%);
+  box-shadow: inset 0 calc(var(--ki-u) * 1) 0 rgba(255, 240, 205, 0.55);
+}
+
+.knowledge-island__observatory-tripod {
+  position: absolute;
+  left: 46%;
+  bottom: 18%;
+  width: calc(var(--ki-u) * 1.6);
+  height: 46%;
+  border-radius: calc(var(--ki-u) * 999);
+  background: #8f5a32;
+  transform-origin: top center;
+}
+
+.knowledge-island__observatory-tripod--a {
+  transform: rotate(-18deg);
+}
+
+.knowledge-island__observatory-tripod--b {
+  transform: rotate(18deg);
+}
+
+.knowledge-island__observatory-tripod--c {
+  height: 40%;
+  transform: rotate(0deg);
+}
+
+/* 镜筒：仰角指向天空，前粗后细的黄铜小望远镜。 */
+.knowledge-island__observatory-tube {
+  position: absolute;
+  left: 22%;
+  bottom: 52%;
+  width: 62%;
+  height: 22%;
+  border-radius: calc(var(--ki-u) * 2);
+  background: linear-gradient(180deg, #e8c06a 0%, #b98a3e 55%, #8a6128 100%);
+  box-shadow: inset 0 calc(var(--ki-u) * 0.8) 0 rgba(255, 240, 200, 0.6);
+  transform: rotate(-38deg);
+  transform-origin: 82% 50%;
+}
+
+/* 镜筒前端那圈更粗的物镜框。 */
+.knowledge-island__observatory-tube::before {
+  content: "";
+  position: absolute;
+  left: -8%;
+  top: -18%;
+  width: 20%;
+  height: 136%;
+  border-radius: calc(var(--ki-u) * 2);
+  background: linear-gradient(180deg, #f0cd7c 0%, #a1762f 100%);
+}
+
+/* 后端的目镜小帽。 */
+.knowledge-island__observatory-tube::after {
+  content: "";
+  position: absolute;
+  right: -7%;
+  top: 18%;
+  width: 12%;
+  height: 64%;
+  border-radius: calc(var(--ki-u) * 1.5);
+  background: #6f4a2a;
+}
+
 /* ---------- 高地区：灯塔 + 灯塔自己的光束 ---------- */
 .knowledge-island__lighthouse {
   left: 50%;
@@ -2718,9 +3420,12 @@ watch(
 
 .knowledge-island__hotspot--shell,
 .knowledge-island__hotspot--rock,
-.knowledge-island__hotspot--gull {
+.knowledge-island__hotspot--gull,
+.knowledge-island__hotspot--sun,
+.knowledge-island__hotspot--cloud,
+.knowledge-island__hotspot--bottle {
   z-index: 3;
-  /* 触屏友好：把小小的贝壳 / 石头 / 海鸥撑成一块好点的小方块，
+  /* 触屏友好：把小小的贝壳 / 石头 / 海鸥 / 太阳 / 云朵 / 漂流瓶撑成一块好点的小方块，
      但仍然以元素本身为中心，所以不会伸到旁边的元素上去。
      热区可以比图形大 —— 贝壳在 390 上只有十几像素，可点范围必须是 44px 才够手指点。
      分开放不下的问题靠「圆石靠左、贝壳靠右」这件视觉布局来解决，
@@ -2732,13 +3437,19 @@ watch(
 /* 悬停 / 按下只给一点点回弹，提示"这里可以点"，不做持续动画。 */
 .knowledge-island__hotspot--shell:hover,
 .knowledge-island__hotspot--rock:hover,
-.knowledge-island__hotspot--gull:hover {
+.knowledge-island__hotspot--gull:hover,
+.knowledge-island__hotspot--sun:hover,
+.knowledge-island__hotspot--cloud:hover,
+.knowledge-island__hotspot--bottle:hover {
   transform: translate(-50%, -50%) scale(1.06);
 }
 
 .knowledge-island__hotspot--shell:active,
 .knowledge-island__hotspot--rock:active,
-.knowledge-island__hotspot--gull:active {
+.knowledge-island__hotspot--gull:active,
+.knowledge-island__hotspot--sun:active,
+.knowledge-island__hotspot--cloud:active,
+.knowledge-island__hotspot--bottle:active {
   transform: translate(-50%, -50%) scale(0.96);
 }
 
@@ -2802,6 +3513,63 @@ watch(
 
 .knowledge-island__next-terrain--tapped .knowledge-island__next-fill {
   fill: rgba(255, 255, 255, 0.3);
+}
+
+/* ===========================================================================
+   黄昏彩蛋
+   ---------------------------------------------------------------------------
+   连点太阳 5 下 → 10 秒黄昏模式。染色纱盖在整幅画上（z 15，低于热点层 20），
+   太阳变成暖橙、天上的小白点变成会眨眼的星星；
+   已经拥有灯塔的岛，灯光与光束会在暮色里提前亮起来。
+   纯表现：不记任何状态，刷新即恢复。
+   =========================================================================== */
+.knowledge-island__dusk-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 15;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255, 158, 92, 0.34) 0%, rgba(238, 110, 110, 0.26) 45%, rgba(104, 74, 150, 0.3) 100%);
+  pointer-events: none;
+  animation: knowledge-island-dusk-fade 900ms ease;
+}
+
+@keyframes knowledge-island-dusk-fade {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.knowledge-island--dusk .knowledge-island__sun {
+  background: #ffab63;
+  box-shadow:
+    0 0 0 calc(var(--ki-u) * 5) rgba(255, 172, 110, 0.35),
+    0 calc(var(--ki-u) * 8) calc(var(--ki-u) * 15) calc(var(--ki-u) * -8) rgba(214, 102, 37, 0.65);
+}
+
+.knowledge-island--dusk .knowledge-island__sky-dot {
+  animation: knowledge-island-star-twinkle 1.8s ease-in-out infinite alternate;
+}
+
+@keyframes knowledge-island-star-twinkle {
+  from {
+    opacity: 0.4;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.knowledge-island--dusk .knowledge-island__beam {
+  opacity: 0.92;
+}
+
+.knowledge-island--dusk .knowledge-island__lighthouse-light {
+  box-shadow: 0 0 calc(var(--ki-u) * 6) rgba(255, 226, 140, 0.95);
 }
 
 /* 回话气泡：贴在画面下沿，不遮岛上的东西。 */
@@ -2945,8 +3713,34 @@ watch(
   .knowledge-island__grass,
   .knowledge-island__grass-blade,
   .knowledge-island__palm-crown,
-  .knowledge-island__boat {
+  .knowledge-island__boat,
+  .knowledge-island__horizon-sail,
+  .knowledge-island__sun-glitter,
+  .knowledge-island__seagrass,
+  .knowledge-island__buoy,
+  .knowledge-island__bottle,
+  .knowledge-island__dusk-veil,
+  .knowledge-island--dusk .knowledge-island__sky-dot {
     animation: none;
+  }
+
+  /* 减少动态偏好下视差也不启用：位移变量保持 0，两层都不动。 */
+  .knowledge-island__world,
+  .knowledge-island__hotspots {
+    transform: none;
+    transition: none;
+  }
+
+  .knowledge-island__sea,
+  .knowledge-island__sea-depth,
+  .knowledge-island__horizon-island,
+  .knowledge-island__sun-glitter {
+    transform: none;
+  }
+
+  /* 反光带与漂流瓶的微光关掉动画后给一个稳定的静态强度。 */
+  .knowledge-island__sun-glitter {
+    opacity: 0.42;
   }
 
   /* 太阳光晕关掉动画后不能淡到没有：给一个稳定的静态强度。 */
@@ -2986,16 +3780,22 @@ watch(
     transition: none;
   }
 
-  /* 只把小热点（贝壳 / 石头 / 海鸥）的悬停回弹关掉。
+  /* 只把小热点（贝壳 / 石头 / 海鸥 / 太阳 / 云朵 / 漂流瓶）的悬停回弹关掉。
      绝不能写成 .knowledge-island__hotspot:hover —— 海面热点平时是
      transform: none（它按左上角定位），一旦被通用的居中 transform 接管，
      鼠标移上去它就会整体错位，点击落到别处去，海面就点不响了。 */
   .knowledge-island__hotspot--shell:hover,
   .knowledge-island__hotspot--rock:hover,
   .knowledge-island__hotspot--gull:hover,
+  .knowledge-island__hotspot--sun:hover,
+  .knowledge-island__hotspot--cloud:hover,
+  .knowledge-island__hotspot--bottle:hover,
   .knowledge-island__hotspot--shell:active,
   .knowledge-island__hotspot--rock:active,
-  .knowledge-island__hotspot--gull:active {
+  .knowledge-island__hotspot--gull:active,
+  .knowledge-island__hotspot--sun:active,
+  .knowledge-island__hotspot--cloud:active,
+  .knowledge-island__hotspot--bottle:active {
     transform: translate(-50%, -50%);
   }
 

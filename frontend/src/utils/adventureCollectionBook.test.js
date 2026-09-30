@@ -173,7 +173,8 @@ describe("adventureCollectionBook · 知识岛与独立页同源", () => {
     });
 
     expect(withStars.knowledgeIsland.currentStage.id).toBe("first-sight");
-    expect(withStars.knowledgeIsland.currentStage.features).toEqual(["沙滩", "海浪"]);
+    // 初见小岛的起点元素：海星与漂流木是 0 枚就有的专属小物。
+    expect(withStars.knowledgeIsland.currentStage.features).toEqual(["沙滩", "海浪", "海星", "漂流木"]);
     // 只有繁荣度变了。
     expect(withStars.knowledgeIsland.prosperityKey).toBe("flourishing");
     expect(withoutStars.knowledgeIsland.prosperityKey).toBe("basic");

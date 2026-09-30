@@ -33,7 +33,7 @@ const {
 // 覆盖：累计探险印章 → 知识岛阶段 → 视觉变化 → 下一阶段目标，
 // 以及首页摘要与收藏册必须永远是同一个阶段。
 //
-// 关于“怎么造出 3 / 7 / 15 / 30 枚印章”：
+// 关于“怎么造出 3 / 7 / 15 / 22 / 30 枚印章”：
 // 服务端只允许领「真实的今天」，所以不可能在测试里刷出 30 枚。
 // 这里直接往 E2E 隔离库的 growth_progress 表写一份真实形状的账本
 // （仍然是同一个字段 totalDailyChests），前端两条路径都只读这一个数字，
@@ -526,7 +526,33 @@ test.describe("知识岛成长", () => {
     const summary = await readIslandPageSummary(page);
 
     expect(summary.stampCount).toBe("15 枚");
-    await expect(summary.nextText).toContain("再攒 15 枚印章");
+    // 15 → 30 之间隔着观星高台：探险码头的下一变化不再是灯塔。
+    await expect(summary.nextText).toContain("再攒 7 枚印章");
+  });
+
+  test("D2. 22 枚：进入观星高台，高地与观星台出现，灯塔还没有", async ({ page }) => {
+    await openHomeWithStampCount(page, 22);
+
+    const expectation = await readIslandExpectation(page, 22);
+    const dialog = await openCollectionBookFromHome(page);
+    const island = islandSection(dialog);
+
+    await expect(island).toContainText(sectionCountText(22));
+
+    const islandPage = await openKnowledgeIslandPage(page);
+    const figure = await readIslandFigure(page, islandPage);
+
+    expect(figure.stage).toBe(expectation.stageId);
+    // 观星台站在高地上；高地从这一阶段开始隆起。
+    await expect(islandPage.locator(".knowledge-island__observatory")).toHaveCount(1);
+    await expect(islandPage.locator(".knowledge-island__highland")).toHaveCount(1);
+    // 灯塔是下一阶段的事。
+    await expect(islandPage.locator(".knowledge-island__lighthouse")).toHaveCount(0);
+
+    const summary = await readIslandPageSummary(page);
+
+    expect(summary.stampCount).toBe("22 枚");
+    await expect(summary.nextText).toContain("再攒 8 枚印章");
   });
 
   test("E. 30 枚：最高阶段，不再显示「再攒 X 枚」，进度不出现错误值", async ({ page }) => {
@@ -835,7 +861,7 @@ async function openHomeWithStampAndStars(page, { stampCount, clearedStageCount =
 // ---------------------------------------------------------------------------
 // 地形成长（Phase 3）：这一组只测「画得像不像一座会长大的岛」。
 //
-// 分工必须在这里守住：阶段仍然只由 knowledgeIslandGrowth 决定（阈值 0/3/7/15/30 一律没动），
+// 分工必须在这里守住：阶段仍然只由 knowledgeIslandGrowth 决定（阈值 0/3/7/15/22/30 由它一家说了算），
 // knowledgeIslandTerrain 只负责回答「这一阶段的岛身有多大、岸线长什么样」，
 // 繁荣度只负责回答「这些已解锁的东西有多丰富」，两者都不许改阶段。
 //
@@ -950,7 +976,8 @@ function isInside(inner, outer, tolerance = 12) {
 }
 
 test.describe("知识岛地形随阶段长大", () => {
-  // 阈值仍然是 0 / 3 / 7 / 15 / 30，这一组把它们当"取样点"用，不是在重新定义阈值。
+  // 阈值是 0 / 3 / 7 / 15 / 22 / 30，这一组把它们当"取样点"用，不是在重新定义阈值。
+  // 观星高台（22）本身由第 D2 个用例专门覆盖，这里的面积递增用关键五个点抽样。
   const STAMP_SAMPLES = Object.freeze([0, 3, 7, 15, 30]);
   const STAGE_IDS = Object.freeze(["first-sight", "sprout-coast", "palm-camp", "explorer-dock", "knowledge-lighthouse"]);
 
@@ -1081,6 +1108,8 @@ test.describe("知识岛建筑落在自己的街区里", () => {
     expect(state.stage).toBe("knowledge-lighthouse");
     expect(state.hasHighland).toBe(true);
     expect(state.hasBeam).toBe(true);
+    // 观星台在最高阶段依然留在高地上（元素只增不减），与灯塔做邻居。
+    await expect(islandPage.locator(".knowledge-island__observatory")).toHaveCount(1);
 
     // 每一栋建筑都站在自己的街区里。
     expect(isInside(state.centers.palm, state.zones.camp), "椰树不在营地区").toBe(true);
@@ -1109,8 +1138,9 @@ test.describe("知识岛建筑落在自己的街区里", () => {
 
     expect(state.stage).toBe("explorer-dock");
     expect(state.hasBeam).toBe(false);
-    // 高地属于最高阶段的地形，15 枚时还没有。
+    // 高地从观星高台（22 枚）开始隆起，15 枚时还没有；观星台与灯塔同样都还没有。
     expect(state.hasHighland).toBe(false);
+    await expect(islandPage.locator(".knowledge-island__observatory")).toHaveCount(0);
     await expect(islandPage.locator(".knowledge-island__lighthouse")).toHaveCount(0);
     await expect(islandPage.locator(KNOWLEDGE_ISLAND_BEAM)).toHaveCount(0);
     // 但码头和小船已经在了，而且都落在港口街区。
@@ -1124,7 +1154,8 @@ test.describe("知识岛下一阶段预告", () => {
       { stampCount: 0, current: "first-sight", next: "sprout-coast" },
       { stampCount: 3, current: "sprout-coast", next: "palm-camp" },
       { stampCount: 7, current: "palm-camp", next: "explorer-dock" },
-      { stampCount: 15, current: "explorer-dock", next: "knowledge-lighthouse" }
+      { stampCount: 15, current: "explorer-dock", next: "starwatch-hill" },
+      { stampCount: 22, current: "starwatch-hill", next: "knowledge-lighthouse" }
     ];
 
     for (const pair of pairs) {
@@ -1356,11 +1387,12 @@ test.describe("知识岛阶段变化反馈", () => {
     await expect(growth).toContainText(expectation.stageName);
   });
 
-  // 四个阈值：2→3、6→7、14→15、29→30。参数化，避免复制四份几乎一样的用例。
+  // 五个阈值：2→3、6→7、14→15、21→22、29→30。参数化，避免复制五份几乎一样的用例。
   const THRESHOLD_CASES = Object.freeze([
     { from: 2, to: 3, stageId: "sprout-coast", stageName: "萌芽海岸", newFeatures: ["嫩芽", "小草丛"], nextText: "再攒 4 枚印章" },
     { from: 6, to: 7, stageId: "palm-camp", stageName: "椰林营地", newFeatures: ["椰子树", "小帐篷"], nextText: "再攒 8 枚印章" },
-    { from: 14, to: 15, stageId: "explorer-dock", stageName: "探险码头", newFeatures: ["小码头", "泊岸小船"], nextText: "再攒 15 枚印章" },
+    { from: 14, to: 15, stageId: "explorer-dock", stageName: "探险码头", newFeatures: ["小码头", "泊岸小船"], nextText: "再攒 7 枚印章" },
+    { from: 21, to: 22, stageId: "starwatch-hill", stageName: "观星高台", newFeatures: ["观星台"], nextText: "再攒 8 枚印章" },
     { from: 29, to: 30, stageId: "knowledge-lighthouse", stageName: "知识灯塔", newFeatures: ["灯塔", "灯光"], nextText: "" }
   ]);
 
@@ -2029,14 +2061,18 @@ test.describe("知识岛环境声：跟随全站那一个声音入口", () => {
     });
   }
 
+  // 读探针。系统 BGM 有两条互斥的实现路径：
+  //   - 主路径 Tone.js（WebAudio 合成，根本不创建 <audio> 元素）
+  //   - 降级路径 WAV（旧的 <audio> 循环）
+  // 所以这里把两条路径合成同一组字段，语义与迁移前完全一致：
+  //   created    = 建过几个 BGM 实例（用实例构建次数，不因实现不同而变松）
+  //   playCalls  = 真的启动过几次（用来抓"叠播"）
+  //   playing    = 此刻是否在响
+  // 这样"借出/归还/反复进出不重复创建"的断言不用改写法，也不会被放宽。
   async function readAudioProbe(page) {
-    return page.evaluate(() => {
+    return page.evaluate(async () => {
       const empty = { created: 0, playCalls: 0, playing: 0 };
       const probe = window.__islandAudioProbe;
-
-      if (!probe) {
-        return { waves: { ...empty }, gull: { ...empty }, bgm: { ...empty } };
-      }
 
       const summarize = (bucket) => ({
         created: bucket.created,
@@ -2044,7 +2080,56 @@ test.describe("知识岛环境声：跟随全站那一个声音入口", () => {
         playing: bucket.instance && !bucket.instance.paused ? 1 : 0
       });
 
-      return { waves: summarize(probe.waves), gull: summarize(probe.gull), bgm: summarize(probe.bgm) };
+      const fallback = { waves: { ...empty }, gull: { ...empty }, bgm: { ...empty } };
+
+      if (!probe) {
+        return fallback;
+      }
+
+      // 取 Tone 主路径的状态。
+      // 刻意只用 audioEngine 透传出来的计数：打包器 / dev server 会把同一个源文件
+      // import 成多个模块实例，单独 import toneBgm.js 拿到的未必是引擎在用的那一个，
+      // 那样读出来的 buildCount 会永远是 0，断言变成"假通过"。
+      // 模块取不到时安静退回只看 WAV，绝不让探针本身成为失败原因。
+      let tone = null;
+
+      try {
+        const engine = await import("/src/audio/audioEngine.js");
+
+        tone = {
+          // 实例构建次数就是单例计数器：Tone 主路径下"没叠出第二套对象"看它。
+          created: engine.getBackgroundMusicBuildCount(),
+          playCalls: engine.getBackgroundMusicStartCount(),
+          playing: engine.isBackgroundMusicPlaying() ? 1 : 0,
+          suppressed: engine.isBackgroundMusicSuppressed() ? 1 : 0,
+          // 音乐总线压到 -Infinity 才算"彻底静音"：Transport 停了但总线还开着的情况下，
+          // 已经排进时间线的音符仍可能继续响。
+          busSilent: engine.getBackgroundMusicStructure().busDecibels === -Infinity ? 1 : 0,
+          startCount: engine.getBackgroundMusicStartCount()
+        };
+      } catch {
+        tone = null;
+      }
+
+      const wav = summarize(probe.bgm);
+      const bgm = tone
+        ? {
+            created: Math.max(tone.created, wav.created),
+            playCalls: tone.playCalls + wav.playCalls,
+            playing: Math.max(tone.playing, wav.playing),
+            // 新语义要用的三个读数：
+            //   suppressed —— BGM 当前是否处于"该有却没有"的状态（普通页面恒为 1）
+            //   busSilent  —— Tone 音乐总线是否已经压到 -Infinity（静音彻底的关键证据）
+            //   startCount —— 真正起播过几次（用来证明普通页面一次都没起过）
+            //   wavCreated —— WAV 降级路径建过几个 <audio>（主路径下必须是 0，否则叠播）
+            suppressed: tone.suppressed,
+            busSilent: tone.busSilent,
+            startCount: tone.startCount,
+            wavCreated: wav.created
+          }
+        : { ...wav, suppressed: 0, busSilent: 0, startCount: 0, wavCreated: wav.created };
+
+      return { waves: summarize(probe.waves), gull: summarize(probe.gull), bgm };
     });
   }
 
@@ -2075,6 +2160,20 @@ test.describe("知识岛环境声：跟随全站那一个声音入口", () => {
 
   function musicToggle(page) {
     return page.getByRole("button", { name: new RegExp(MUSIC_TOGGLE_LABEL) }).first();
+  }
+
+  // 从首页点「我的知识岛」入口真正进岛。
+  //
+  // 这一条刻意**不**用 openKnowledgeIslandPage()：那是 page.goto() 的深链，
+  // 不是用户手势。而用户第一次打开这个应用时走的就是这条点击路径，
+  // 所以"这枚按钮能不能自己完成解锁"必须按点击来验证。
+  async function enterKnowledgeIslandByClick(page) {
+    await page.getByRole("region", { name: "我的成长" }).waitFor({ state: "visible", timeout: 15_000 });
+    // 首页「我的知识岛」摘要卡：aria-label 形如「我的知识岛（…）」。
+    await page.locator(".growth-summary button", { hasText: "我的知识岛" }).first().click();
+    await page.getByRole("region", { name: KNOWLEDGE_ISLAND_REGION }).waitFor({ state: "visible", timeout: 15_000 });
+
+    return page.getByRole("region", { name: KNOWLEDGE_ISLAND_REGION });
   }
 
   test("知识岛页面上只剩一个声音控制入口：右上角那颗全局静音按钮", async ({ page }) => {
@@ -2108,37 +2207,46 @@ test.describe("知识岛环境声：跟随全站那一个声音入口", () => {
     // 连 Audio 元素都不建 —— 浏览器不允许在用户交互前出声。
     expect(probe.waves.created).toBe(0);
     expect(probe.gull.created).toBe(0);
-    // 系统的 BGM 元素本来就在，但它从来没有被播过。
+    // 持续 BGM 一次都没有真的起播过。
     expect(probe.bgm.playCalls).toBe(0);
     expect(probe.bgm.playing).toBe(0);
+    expect(probe.bgm.startCount).toBe(0);
   });
 
-  test("非静音状态进入知识岛：BGM 暂停，环境声播放", async ({ page }) => {
+  test("非静音状态进入知识岛：持续 BGM 在这一页起播，环境声播放", async ({ page }) => {
     await installAudioProbe(page);
     await openHomeWithStampCount(page, 7);
     await unlockAudioFromSettings(page);
-    await expect.poll(async () => (await readAudioProbe(page)).bgm.playing).toBe(1);
 
-    const beforeIsland = await readAudioProbe(page);
+    // 关键变化：持续 BGM 只属于知识岛这一页。
+    // 在首页解锁音频只是解锁引擎，不会顺手起播任何持续音乐。
+    const onHome = await readAudioProbe(page);
+    expect(onHome.bgm.playing).toBe(0);
+    // 首页上 BGM 处于"被抑制"：这里本来就没有持续音乐可放。
+    expect(onHome.bgm.suppressed).toBe(1);
 
     await openKnowledgeIslandPage(page);
     await expect.poll(async () => (await readAudioProbe(page)).waves.playing).toBe(1);
+    await expect.poll(async () => (await readAudioProbe(page)).bgm.playing).toBe(1);
 
     const onIsland = await readAudioProbe(page);
 
-    // 关键断言：海浪在响，BGM 不在响 —— 这一页要的是专属环境声，不是加一层。
+    // 海浪在响（<audio> 元素），BGM 在响（Tone 合成，没有 <audio> 元素）。
     expect(onIsland.waves.created).toBe(1);
-    expect(onIsland.bgm.playing).toBe(0);
-    // 借用不该顺手新建第二个 BGM 元素。
-    expect(onIsland.bgm.created).toBe(beforeIsland.bgm.created);
+    expect(onIsland.bgm.playing).toBe(1);
+    // 主路径不建 WAV 音乐元素：两条路径互斥，绝不叠播。
+    expect(onIsland.bgm.wavCreated).toBe(0);
+    // 进入知识岛不该顺手重建第二个 runtime。
+    expect(onIsland.bgm.created).toBe(1);
   });
 
-  test("知识岛期间按右上角静音：环境声立刻停；再取消静音：立刻恢复", async ({ page }) => {
+  test("知识岛期间按右上角静音：所有声音立刻停；再取消静音：立刻恢复", async ({ page }) => {
     await installAudioProbe(page);
     await openHomeWithStampCount(page, 7);
     await unlockAudioFromSettings(page);
     await openKnowledgeIslandPage(page);
     await expect.poll(async () => (await readAudioProbe(page)).waves.playing).toBe(1);
+    await expect.poll(async () => (await readAudioProbe(page)).bgm.playing).toBe(1);
 
     // 静音：右上角那一下是真的让全站安静。
     await globalSoundButton(page).click();
@@ -2147,6 +2255,10 @@ test.describe("知识岛环境声：跟随全站那一个声音入口", () => {
 
     const muted = await readAudioProbe(page);
 
+    // BGM 也必须立刻停：Transport 停 + 音乐总线归零，不能只剩环境声安静。
+    expect(muted.bgm.playing).toBe(0);
+    expect(muted.bgm.busSilent).toBe(1);
+
     // 海鸥的排程也一起停掉了（此刻还没有定时器在跑）。
     expect(muted.gull.created).toBe(0);
 
@@ -2154,12 +2266,15 @@ test.describe("知识岛环境声：跟随全站那一个声音入口", () => {
     await globalSoundButton(page).click();
     await expect(globalSoundButton(page)).toHaveAccessibleName(/声音/);
     await expect.poll(async () => (await readAudioProbe(page)).waves.playing).toBe(1);
+    await expect.poll(async () => (await readAudioProbe(page)).bgm.playing).toBe(1);
 
     const unmuted = await readAudioProbe(page);
 
     expect(unmuted.waves.created).toBe(1);
-    // 静音期间 BGM 本来就被借走了，这里也不该多播一次。
-    expect(unmuted.bgm.playing).toBe(0);
+    // 恢复之后总线要真的可听，不能停在 -Infinity（那会造成"取消静音也没声音"）。
+    expect(unmuted.bgm.busSilent).toBe(0);
+    // 恢复不重建 runtime。
+    expect(unmuted.bgm.created).toBe(1);
   });
 
   test("点右上角取消静音就是那一次合法手势：知识岛随之开始出声", async ({ page }) => {
@@ -2169,6 +2284,7 @@ test.describe("知识岛环境声：跟随全站那一个声音入口", () => {
     // 这一份文档里从来没交互过，所以系统音频还没解锁，进知识岛也是安静的。
     await openKnowledgeIslandPage(page);
     expect((await readAudioProbe(page)).waves.playing).toBe(0);
+    expect((await readAudioProbe(page)).bgm.playing).toBe(0);
 
     // 静音 → 取消静音。取消静音那一下会走 ensureAudioReady()，
     // 正是它把这一次真实的用户手势交给音频引擎。
@@ -2179,77 +2295,152 @@ test.describe("知识岛环境声：跟随全站那一个声音入口", () => {
 
     // 引擎解锁之后知识岛立刻开始出声 —— 不是绕过 autoplay，而是等到了那次交互。
     await expect.poll(async () => (await readAudioProbe(page)).waves.playing).toBe(1);
-    // 而且系统 BGM 仍然被这一页借着：解锁不会让两条声音一起响。
-    expect((await readAudioProbe(page)).bgm.playing).toBe(0);
+    // 这一页有持续 BGM：解锁之后它同样按当前设置起播。
+    await expect.poll(async () => (await readAudioProbe(page)).bgm.playing).toBe(1);
 
-    // 离开时 BGM 必须还回来：用户是在这一页上才第一次打开声音的，
-    // 不能因为"进岛时它没在播"就让它永远再也回不来。
+    // 离开知识岛后必须彻底安静：普通页面本来就不放持续音乐。
     await page.getByRole("button", { name: "返回首页" }).click();
     await page.getByRole("region", { name: "我的成长" }).waitFor({ state: "visible", timeout: 15_000 });
-    await expect.poll(async () => (await readAudioProbe(page)).bgm.playing).toBe(1);
+    await expect.poll(async () => (await readAudioProbe(page)).bgm.playing).toBe(0);
   });
 
-  test("进入前 BGM 在播且设置没动：离开知识岛正确恢复", async ({ page }) => {
+  test("进入知识岛 BGM 起播；离开知识岛后停止且不回到首页", async ({ page }) => {
     await installAudioProbe(page);
     await openHomeWithStampCount(page, 7);
     await unlockAudioFromSettings(page);
-    await expect.poll(async () => (await readAudioProbe(page)).bgm.playing).toBe(1);
 
     await openKnowledgeIslandPage(page);
-    await expect.poll(async () => (await readAudioProbe(page)).bgm.playing).toBe(0);
+    await expect.poll(async () => (await readAudioProbe(page)).bgm.playing).toBe(1);
 
     await page.getByRole("button", { name: "返回首页" }).click();
     await page.getByRole("region", { name: "我的成长" }).waitFor({ state: "visible", timeout: 15_000 });
 
-    await expect.poll(async () => (await readAudioProbe(page)).bgm.playing).toBe(1);
+    // 离开就是停 —— 不再是"按进入前的状态还回去"，因为普通页面本就没有持续音乐。
+    await expect.poll(async () => (await readAudioProbe(page)).bgm.playing).toBe(0);
+    const onHome = await readAudioProbe(page);
+    expect(onHome.bgm.busSilent).toBe(1);
     // 知识岛那一趟里海浪已经停干净了。
-    expect((await readAudioProbe(page)).waves.playing).toBe(0);
+    expect(onHome.waves.playing).toBe(0);
   });
 
-  test("进入前 BGM 本来就没播：离开时不会被擅自打开", async ({ page }) => {
+  test("普通页面取消静音不会启动 BGM", async ({ page }) => {
+    await installAudioProbe(page);
+    await openHomeWithStampCount(page, 7);
+    await unlockAudioFromSettings(page);
+
+    // 在首页把声音关掉再打开：这一页没有持续音乐可起。
+    await globalSoundButton(page).click();
+    await expect(globalSoundButton(page)).toHaveAccessibleName(/静音/);
+    await globalSoundButton(page).click();
+    await expect(globalSoundButton(page)).toHaveAccessibleName(/声音/);
+
+    await page.waitForTimeout(1500);
+
+    expect((await readAudioProbe(page)).bgm.playing).toBe(0);
+    expect((await readAudioProbe(page)).bgm.startCount).toBe(0);
+  });
+
+  test("从没解锁过音频：知识岛里也不擅自出声", async ({ page }) => {
     await installAudioProbe(page);
     await openHomeWithStampCount(page, 7);
 
-    // 没有点过「启用音频」：用户的 BGM 此刻就是静默的，这是进入前的真实状态。
+    // 没有点过「启用音频」：引擎还没解锁，这是进岛前的真实状态。
     const beforeIsland = await readAudioProbe(page);
 
     expect(beforeIsland.bgm.playing).toBe(0);
+    expect(beforeIsland.bgm.startCount).toBe(0);
 
+    // 深链直接打开不是用户手势，所以这里依然必须安静。
+    // 这一点和下面那条"点按钮进岛会出声"是一对，两条都要成立。
     await openKnowledgeIslandPage(page);
+    await expect.poll(async () => (await readAudioProbe(page)).waves.playing).toBe(0);
+    expect((await readAudioProbe(page)).bgm.playing).toBe(0);
+
     await page.getByRole("button", { name: "返回首页" }).click();
     await page.getByRole("region", { name: "我的成长" }).waitFor({ state: "visible", timeout: 15_000 });
 
     const afterIsland = await readAudioProbe(page);
 
-    // 离开时仍然没有声音：借用不是"顺便帮用户把音乐打开"。
+    // 引擎没解锁，BGM 一次都没有真的起播过 —— 不绕过 autoplay。
     expect(afterIsland.bgm.playing).toBe(0);
-    expect(afterIsland.bgm.playCalls).toBe(beforeIsland.bgm.playCalls);
+    expect(afterIsland.bgm.startCount).toBe(0);
   });
 
-  test("知识岛期间关掉背景音乐：离页后不会恢复 BGM", async ({ page }) => {
+  test("首次使用直接点「我的知识岛」：这枚按钮自己就是那次合法手势，知识岛随即出声", async ({ page }) => {
+    await installAudioProbe(page);
+    await openHomeWithStampCount(page, 7);
+
+    // 从没点过「启用音频」，也从来没碰过右上角的静音按钮。
+    const beforeEntry = await readAudioProbe(page);
+
+    expect(beforeEntry.bgm.playing).toBe(0);
+    expect(beforeEntry.bgm.startCount).toBe(0);
+    // 此刻引擎还没解锁：知识岛的声音闸门正是由它把着的。
+    expect(beforeEntry.bgm.suppressed).toBe(1);
+
+    // 只点这一枚按钮。它是真实的 click，所以必须能把音频解锁掉 ——
+    // 否则"第一次打开应用就直奔知识岛"这条最自然的路径会整页无声。
+    await enterKnowledgeIslandByClick(page);
+
+    await expect.poll(async () => (await readAudioProbe(page)).waves.playing).toBe(1);
+    // 知识岛这一页有持续 BGM，解锁之后按当前设置起播。
+    await expect.poll(async () => (await readAudioProbe(page)).bgm.playing).toBe(1);
+
+    const inIsland = await readAudioProbe(page);
+
+    expect(inIsland.bgm.suppressed).toBe(0);
+    // 总线必须真的可听：不能是"解锁了但停在 -Infinity"那种假恢复。
+    expect(inIsland.bgm.busSilent).toBe(0);
+    // 走 Tone 主路径：不建 WAV 音乐元素，也不会叠出第二个 runtime。
+    expect(inIsland.bgm.created).toBe(1);
+    expect(inIsland.bgm.wavCreated).toBe(0);
+    // 海浪只建一个实例。
+    expect(inIsland.waves.created).toBe(1);
+
+    // 离岛：普通页面不放持续音乐，BGM 与环境声都必须停干净。
+    await page.getByRole("button", { name: "返回首页" }).click();
+    await page.getByRole("region", { name: "我的成长" }).waitFor({ state: "visible", timeout: 15_000 });
+    await expect.poll(async () => (await readAudioProbe(page)).bgm.playing).toBe(0);
+    await expect.poll(async () => (await readAudioProbe(page)).waves.playing).toBe(0);
+
+    const onHome = await readAudioProbe(page);
+
+    // 这次解锁只发生在"点进知识岛"那一下：普通页面上它一次都没起播过。
+    expect(onHome.bgm.playing).toBe(0);
+    expect(onHome.bgm.startCount).toBe(1);
+    // 离开后不重建 runtime —— 同一个实例被复用。
+    expect(onHome.bgm.created).toBe(1);
+  });
+
+  test("知识岛期间关掉背景音乐：立刻停；再进岛也不会自己打开", async ({ page }) => {
     await installAudioProbe(page);
     await openHomeWithStampCount(page, 7);
     await unlockAudioFromSettings(page);
+    await openKnowledgeIslandPage(page);
     await expect.poll(async () => (await readAudioProbe(page)).bgm.playing).toBe(1);
 
-    // 用户在设置里把背景音乐关掉 —— 这是离开知识岛之后发生的一次真实操作。
+    // 用户在设置里把背景音乐关掉 —— 这是知识岛播放期间发生的一次真实操作。
     await page.goto(SETTINGS_AUDIO_PAGE_URL);
     await musicToggle(page).click();
     await expect.poll(async () => (await readAudioProbe(page)).bgm.playing).toBe(0);
-    const playCallsAfterTurnOff = (await readAudioProbe(page)).bgm.playCalls;
+    const startCountAfterTurnOff = (await readAudioProbe(page)).bgm.startCount;
 
-    // 再进知识岛再离开：用户已经明确不要背景音乐了，绝不能被擅自打开。
+    // 再进知识岛：用户已经明确不要背景音乐了，绝不能被擅自打开。
     await openKnowledgeIslandPage(page);
+    await expect.poll(async () => (await readAudioProbe(page)).waves.playing).toBe(1);
+    expect((await readAudioProbe(page)).bgm.playing).toBe(0);
+
     await page.getByRole("button", { name: "返回首页" }).click();
     await page.getByRole("region", { name: "我的成长" }).waitFor({ state: "visible", timeout: 15_000 });
 
     const afterIsland = await readAudioProbe(page);
 
     expect(afterIsland.bgm.playing).toBe(0);
-    expect(afterIsland.bgm.playCalls).toBe(playCallsAfterTurnOff);
+    // 关掉之后再也没有真的起播过。
+    expect(afterIsland.bgm.startCount).toBe(startCountAfterTurnOff);
   });
 
-  test("快速反复进出 5 次不会叠出第二个 audio 实例", async ({ page }) => {
+  test("快速反复进出 5 次不会叠出第二个 music 实例", async ({ page }) => {
     await installAudioProbe(page);
     await openHomeWithStampCount(page, 7);
     await unlockAudioFromSettings(page);
@@ -2257,16 +2448,23 @@ test.describe("知识岛环境声：跟随全站那一个声音入口", () => {
     for (let round = 0; round < 5; round += 1) {
       await openKnowledgeIslandPage(page);
       await expect.poll(async () => (await readAudioProbe(page)).waves.playing).toBe(1);
-      // 每一轮都真的暂停过：离页时海浪必须停。
+      // 每一轮都真的起播过：BGM 只在岛上存在。
+      await expect.poll(async () => (await readAudioProbe(page)).bgm.playing).toBe(1);
+      // 每一轮都真的停过：离页时海浪与 BGM 都必须停。
       await page.getByRole("button", { name: "返回首页" }).click();
       await page.getByRole("region", { name: "我的成长" }).waitFor({ state: "visible", timeout: 15_000 });
       expect((await readAudioProbe(page)).waves.playing).toBe(0);
+      expect((await readAudioProbe(page)).bgm.playing).toBe(0);
     }
 
     const finalProbe = await readAudioProbe(page);
 
     // 五轮之后仍然只有同一批实例，从头到尾只被创建过一次。
     expect(finalProbe.waves.created).toBe(1);
+    // BGM 的 runtime 也只建过一次 —— 反复进出不会叠出第二个 Transport。
+    expect(finalProbe.bgm.created).toBe(1);
+    // 主路径下从不建 WAV 音乐元素。
+    expect(finalProbe.bgm.wavCreated).toBe(0);
     // 海鸥整轮测试期间（不到 14 秒）不该被排上过。
     expect(finalProbe.gull.created).toBe(0);
   });
@@ -2370,8 +2568,9 @@ test.describe("知识岛环境声：跟随全站那一个声音入口", () => {
 
 test.describe("知识岛轻互动不回归", () => {
   // 这一组守着「点一下有回应」这一层：环境动画全部加上去之后，
-  // 贝壳 / 石头 / 海鸥 / 下一阶段预告 / 海面这五块仍然要各自可点、各自有回应。
-  const HOT_SPOT_IDS = Object.freeze(["shell", "rock", "gull", "next", "sea"]);
+  // 贝壳 / 石头 / 海鸥 / 太阳 / 云朵 / 漂流瓶 / 下一阶段预告 / 海面
+  // 这八块仍然要各自可点、各自有回应。
+  const HOT_SPOT_IDS = Object.freeze(["shell", "rock", "gull", "sun", "cloud", "bottle", "next", "sea"]);
 
   function hotSpot(page, id) {
     return page.getByRole("region", { name: KNOWLEDGE_ISLAND_REGION }).locator(
@@ -2380,7 +2579,8 @@ test.describe("知识岛轻互动不回归", () => {
   }
 
   // 15 枚（还没满级，所以「下一阶段预告」那一块存在）+ 70 星（繁荣档，海鸥也在）。
-  // 这两个条件凑齐，五个热点才会同时在画面上。
+  // 漂流瓶每天漂来一只，新会话还没拆过今天的，所以也一定在画面上。
+  // 这些条件凑齐，八个热点才会同时在画面上。
   const FULLY_BUILT_STAMP_COUNT = 15;
   const FULLY_BUILT_STAR_COUNT = 70;
 
@@ -2392,7 +2592,7 @@ test.describe("知识岛轻互动不回归", () => {
     return openKnowledgeIslandPage(page);
   }
 
-  test("五个热点都在，而且都贴着它自己的元素", async ({ page }) => {
+  test("八个热点都在，而且都贴着它自己的元素", async ({ page }) => {
     const islandPage = await openFullyBuiltIsland(page);
 
     for (const id of HOT_SPOT_IDS) {
@@ -2402,18 +2602,37 @@ test.describe("知识岛轻互动不回归", () => {
     }
 
     // 热区是真的量在元素上的，不是随手写死的坐标：
-    // 每一块都落在画面盒内部，且有可点的面积。
+    // 每一块都落在画面盒内部、有可点的面积，
+    // 而且盖住自己的元素 —— 按钮 CSS 是 translate(-50%, -50%)，JS 量的是锚点中心，
+    // 两边语义错位的话按钮会整体偏出半个宽高，孩子点元素就点空了。
     const boxes = await page.evaluate(() => {
       const figure = document.querySelector('[data-role="knowledge-island-figure"]').getBoundingClientRect();
+      const anchorSelectors = {
+        shell: ".knowledge-island__shell--main",
+        rock: ".knowledge-island__rock--main",
+        gull: ".knowledge-island__gull--a",
+        sun: ".knowledge-island__sun",
+        cloud: ".knowledge-island__cloud--left",
+        bottle: ".knowledge-island__bottle"
+      };
 
       return [...document.querySelectorAll('[data-role^="knowledge-island-hotspot-"]')].map((element) => {
         const rect = element.getBoundingClientRect();
+        const id = element.getAttribute("data-role").replace("knowledge-island-hotspot-", "");
+        const anchor = anchorSelectors[id] ? document.querySelector(anchorSelectors[id]) : null;
+        const anchorRect = anchor ? anchor.getBoundingClientRect() : null;
 
         return {
           role: element.getAttribute("data-role"),
           width: rect.width,
           height: rect.height,
-          insideFigure: rect.left >= figure.left - 1 && rect.right <= figure.right + 1
+          insideFigure: rect.left >= figure.left - 1 && rect.right <= figure.right + 1,
+          anchorOffsetRatio: anchorRect
+            ? Math.hypot(
+                (rect.left + rect.right) / 2 - (anchorRect.left + anchorRect.right) / 2,
+                (rect.top + rect.bottom) / 2 - (anchorRect.top + anchorRect.bottom) / 2
+              ) / Math.max(rect.width, rect.height)
+            : null
         };
       });
     });
@@ -2423,15 +2642,21 @@ test.describe("知识岛轻互动不回归", () => {
     for (const box of boxes) {
       expect(box.insideFigure, `${box.role} 跑出画面了`).toBe(true);
 
-      // 预告是一枚看得见的小牌子（chip），它的高度是 0，所以只检查另外四个。
+      // 预告是一枚看得见的小牌子（chip），它的高度是 0，所以只检查其余盖着元素的热点。
       if (box.role !== "knowledge-island-hotspot-next") {
         expect(box.width, `${box.role} 宽度不足以点`).toBeGreaterThan(0);
         expect(box.height, `${box.role} 高度不足以点`).toBeGreaterThan(0);
       }
+
+      // 云在慢慢漂、热点每几秒跟着云重测一次，允许一点滞后；
+      // 但中心偏移超过按钮尺寸的四成，就是「没贴着自己的元素」。
+      if (box.anchorOffsetRatio !== null) {
+        expect(box.anchorOffsetRatio, `${box.role} 没有贴着它自己的元素`).toBeLessThan(0.4);
+      }
     }
   });
 
-  test("五个热点逐个点下去都各有回应", async ({ page }) => {
+  test("八个热点逐个点下去都各有回应", async ({ page }) => {
     const islandPage = await openFullyBuiltIsland(page);
     const hint = islandPage.locator('[data-role="knowledge-island-hint"]');
 

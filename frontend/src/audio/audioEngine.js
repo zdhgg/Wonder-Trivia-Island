@@ -1,9 +1,37 @@
 import { AUDIO_ASSETS, AUDIO_ASSET_VOLUME } from "./audioAssets";
 import { AUDIO_CUES, DEFAULT_AUDIO_PREFERENCES, ISLAND_BGM_TRACK } from "./audioConfig";
+import {
+  disposeToneBgm,
+  getToneBgmRuntimeSnapshot,
+  isToneBgmPlaying,
+  isToneBgmSupported,
+  setToneBgmVolume,
+  shouldToneBgmPlay,
+  startToneBgm,
+  stopToneBgm,
+  unlockToneBgmContext
+} from "./toneBgm";
 
 const SILENCE_LEVEL = 0.0001;
 const GAIN_RAMP_SECONDS = 0.08;
 const MUSIC_LOOP_LEAD_SECONDS = 0.03;
+
+// BGM 现在有两条路径，而且**互斥、绝不叠播**：
+//
+//   1) Tone.js 主路径（toneBgm.js）—— 默认。Transport 负责节拍与段落调度，
+//      28 小节循环，音色更亮、段落变化更自然，循环点没有文件边界所以没有接缝。
+//   2) WAV 降级路径（下面 createBackgroundAudio()）—— 只有在 Tone 不可用
+//      时才启用，比如环境里根本没有 Tone，或者 Tone 初始化失败。
+//
+// 哪一条在响由 `backgroundActiveSource` 记录。任何一次 sync 都先按记录把另一条
+// 停掉，所以不可能出现"两份 BGM 同时响"。音量语义两条完全一致：
+// 都是 masterVolume * musicVolume（见 getMusicOutputVolume()）。
+//
+// 除 BGM 以外的声音 —— 答题音效、海浪、海鸥、讲解音频 —— 一律不走 Tone，
+// 仍然走原来的 WebAudio / <audio> 路径。
+const BGM_SOURCE_NONE = "none";
+const BGM_SOURCE_TONE = "tone";
+const BGM_SOURCE_WAV = "wav";
 
 const audioState = {
   context: null,
@@ -15,16 +43,24 @@ const audioState = {
   musicLoopActive: false,
   backgroundAudio: null,
   backgroundAudioPrimed: false,
-  // 页面级「临时借用」：知识岛页面进入时会把系统背景音乐让出来。
-  // 下面三个字段只描述"借"这件事本身，不碰用户任何偏好：
-  //   suppressed     —— 借出期间为 true，syncBackgroundAudio() 会一直保持暂停；
-  //   wasPlaying     —— 借出之前背景音乐到底在不在播，离开时按它原样恢复；
-  //   wasUnlocked    —— 借出之前音频引擎解没解锁。用来区分两种"进入前没在播"：
-  //                      本来就静音 / 从没交互过（离开时不要擅自打开），
-  //                      与"用户是在岛上才把声音打开的"（那就该还回去）。
-  backgroundSuppressed: false,
-  backgroundWasPlaying: false,
-  backgroundWasUnlocked: false,
+  // WAV 降级路径真正 play() 过的次数。和 Tone 的 startCount 语义一致：
+  // 只在"从静到响"时 +1，用来断言"借出/归还没有顺手多播一次"。
+  wavStartCount: 0,
+  // 此刻到底是哪条 BGM 路径在响（"none" / "tone" / "wav"）。
+  // 这是"绝不叠播"的唯一依据：换路径之前一定先把上一条停掉。
+  backgroundActiveSource: BGM_SOURCE_NONE,
+  // Tone 路径是否可用。不可用时才允许退到 WAV 降级路径。
+  toneBgmAvailable: true,
+  // 一旦 Tone 被判定不可用（启动失败 / 强制降级），就不再自动翻回可用。
+  toneDisabled: false,
+  // 当前是不是正处在知识岛这一页。
+  // 持续 BGM 只在这一页存在：普通页面为 false，所以任何普通页面的解锁
+  // 都只会解锁引擎，不会顺手起播音乐。这是"首页不放持续音乐"的唯一开关。
+  islandBgmActive: false,
+  // 旧模型（"全站 BGM + 知识岛借走"）留下的三个字段已整体删除。
+  // 它们描述的是"离开时要按进入前的样子还回去"这种需要回忆旧状态的设计，
+  // 而现在 BGM 只属于知识岛：离开就是停，进入就是（按当前设置）起播，
+  // 唯一的页面状态是 islandBgmActive，幂等天然成立，也就没有可记错的东西。
   activeCueAudios: new Set(),
   settings: { ...DEFAULT_AUDIO_PREFERENCES },
   unlocked: false
@@ -262,38 +298,171 @@ function syncCueAssetVolumes() {
   }
 }
 
-function syncBackgroundAudio() {
+/** 把当前响着的那条 BGM 停掉，并清干净另一条可能残留的状态。 */
+function stopActiveBackgroundSource() {
+  if (audioState.backgroundActiveSource === BGM_SOURCE_TONE) {
+    stopToneBgm();
+  }
+
+  if (audioState.backgroundActiveSource === BGM_SOURCE_WAV) {
+    const backgroundAudio = audioState.backgroundAudio;
+
+    if (backgroundAudio) {
+      backgroundAudio.pause();
+    }
+  }
+
+  audioState.backgroundActiveSource = BGM_SOURCE_NONE;
+
+  // 停掉之后还必须把 Tone 总线压到 -Infinity。
+  // stopToneBgm() 自己也会做，这里再兜一层是因为：上面那个 if 只在
+  // "记录中的活跃音源确实是 tone" 时才走到；一旦状态对不上（比如中途被
+  // 强制降级过），总线就会停在原来的电平上，静音不彻底。
+  setToneBgmVolume(0, { rampSeconds: 0 });
+}
+
+/**
+ * BGM 此刻允许发声吗。
+ *
+ * 五条缺一不可，所以"进任意一个页面就自动有持续音乐"在结构上就不可能发生：
+ *   1) 当前正在知识岛这一页（islandBgmActive）；
+ *   2) 音频引擎已经被既有手势解锁；
+ *   3) musicEnabled 为 true；
+ *   4) masterVolume > 0（没被全局静音）；
+ *   5) musicVolume > 0。
+ */
+function shouldBackgroundAudioPlay() {
+  return (
+    audioState.islandBgmActive &&
+    audioState.unlocked &&
+    shouldToneBgmPlay(audioState.settings)
+  );
+}
+
+function startToneBackgroundMusic() {
+  // 已经在走 Tone 路径了，就不要每次 sync 都重新 start 一次。
+  // （真 Tone 的 Transport.start() 本身幂等，但依赖"底层碰巧没副作用"
+  //   是不对的：这里在引擎这一层就把"不需要重启"判掉。）
+  if (audioState.backgroundActiveSource === BGM_SOURCE_TONE) {
+    // 已经在响：只跟着最新的音量走（用户拖滑块就靠这里），
+    // 不重新 start，也不碰 Transport。
+    setToneBgmVolume(getMusicOutputVolume());
+    return true;
+  }
+
+  // 先把 WAV 降级路径彻底停掉：两条路径永远互斥。
+  if (audioState.backgroundAudio && !audioState.backgroundAudio.paused) {
+    audioState.backgroundAudio.pause();
+  }
+
+  // WebAudio 兜底旋律也不该和 Tone 一起响。
+  stopMusicLoop();
+
+  // 必须先告诉 runtime "用户当前应有的音量"（setToneBgmVolume 会写 runtime.targetGain），
+  // startToneBgm() 才知道该从 -Infinity 淡入到多少。顺序反了就会静默起播。
+  setToneBgmVolume(getMusicOutputVolume(), { rampSeconds: 0 });
+
+  const started = startToneBgm();
+
+  if (!started) {
+    // Tone 起不来（环境不支持 / 初始化失败）：标记不可用，本次就退到 WAV。
+    // 同时把 toneDisabled 锁上，免得下一次 sync 又去试一遍、
+    // 然后又被 primeBackgroundAudio 悄悄翻回"可用"。
+    audioState.toneBgmAvailable = false;
+    audioState.toneDisabled = true;
+    setToneBgmVolume(0, { rampSeconds: 0 });
+    return false;
+  }
+
+  audioState.backgroundActiveSource = BGM_SOURCE_TONE;
+
+  return true;
+}
+
+function startWavBackgroundMusic() {
   const backgroundAudio = createBackgroundAudio();
 
   if (!backgroundAudio) {
     syncFallbackMusicLoop();
-    return;
+    return false;
   }
 
   stopMusicLoop();
   backgroundAudio.volume = getMusicOutputVolume();
 
-  if (
-    audioState.backgroundSuppressed ||
-    !audioState.unlocked ||
-    !audioState.settings.musicEnabled ||
-    audioState.settings.masterVolume <= 0 ||
-    audioState.settings.musicVolume <= 0
-  ) {
+  if (!shouldBackgroundAudioPlay()) {
     backgroundAudio.pause();
-    return;
+    return false;
+  }
+
+  // 已经在播就不要再 play() 一次：用户拖音量滑块时 sync 会被调很多次，
+  // 每次都重播会让 BGM 一顿一顿的。
+  if (!backgroundAudio.paused) {
+    audioState.backgroundActiveSource = BGM_SOURCE_WAV;
+    return true;
   }
 
   const playPromise = backgroundAudio.play();
 
+  audioState.wavStartCount += 1;
+
   if (playPromise?.catch) {
     playPromise.catch(() => {
+      // WAV 播不起来是最后的情况：交给 WebAudio 兜底旋律。
+      audioState.backgroundActiveSource = BGM_SOURCE_NONE;
       syncFallbackMusicLoop();
     });
   }
+
+  audioState.backgroundActiveSource = BGM_SOURCE_WAV;
+
+  return true;
 }
 
+function syncBackgroundAudio() {
+  if (!shouldBackgroundAudioPlay()) {
+    // 该安静：把两条路径都停干净，知识岛借出 / 静音 / 音乐关闭都走这一条。
+    stopActiveBackgroundSource();
+    stopMusicLoop();
+
+    // 已经存在的 WAV 元素仍然要把音量更新到当前值（静音时就是 0）。
+    // 这里只改音量、不新建元素 —— 新建会带上 preload="auto"，
+    // 等于凭空多拉一次背景音乐的请求（借出前从没播过就不该有这个请求）。
+    if (audioState.backgroundAudio) {
+      audioState.backgroundAudio.volume = getMusicOutputVolume();
+    }
+
+    return;
+  }
+
+  // Tone 是主路径；只有它明确不可用时才退到 WAV 降级。
+  if (audioState.toneBgmAvailable && isToneBgmSupported()) {
+    if (startToneBackgroundMusic()) {
+      return;
+    }
+  }
+
+  audioState.toneBgmAvailable = false;
+  startWavBackgroundMusic();
+}
+
+
 async function primeBackgroundAudio() {
+  // Tone 主路径不需要"预热 WAV 元素"：Transport 随时可以起播，
+  // 真正需要预热的是 WebAudio 上下文，那条已经由 unlockAudioEngine() 负责。
+  // 所以这里只在 Tone 真的不可用、确实要走 WAV 降级时才建 <audio> 元素。
+  //
+  // 注意判断的是 isToneBgmSupported()（真实 AudioContext）而不是那个缓存标志：
+  // 首次解锁时缓存标志还没被 syncBackgroundAudio() 刷过，用它会误判。
+  // 但一旦被明确判定为不可用（启动失败、或测试/排障强制降级），
+  // 就不再被这里悄悄翻回可用 —— 否则"降级"会自己失效。
+  if (!audioState.toneDisabled && isToneBgmSupported()) {
+    audioState.toneBgmAvailable = true;
+    return false;
+  }
+
+  audioState.toneBgmAvailable = false;
+
   const backgroundAudio = createBackgroundAudio();
 
   if (!backgroundAudio || audioState.backgroundAudioPrimed) {
@@ -391,6 +560,10 @@ export function syncAudioSettings(nextSettings) {
   }
 
   syncCueAssetVolumes();
+
+  // 全部的 BGM 决策都收敛到这一处：起播、静音、恢复都在它内部完成，
+  // 所以这里不需要（也不允许）再补一条"顺便更新 Tone 音量"的旁路 ——
+  // 那种旁路正是以前"点了静音声音还在"的一类成因。
   syncBackgroundAudio();
 }
 
@@ -398,6 +571,7 @@ export async function unlockAudioEngine() {
   const context = createAudioGraph();
   let webAudioReady = false;
   let assetAudioReady = false;
+  let toneBgmReady = false;
 
   if (context) {
     if (context.state === "suspended") {
@@ -408,11 +582,19 @@ export async function unlockAudioEngine() {
     webAudioReady = context.state === "running";
   }
 
+  // Tone 有自己的 AudioContext。它必须跟着同一次用户手势一起恢复，
+  // 否则 Transport 在跑但上下文是 suspended，等于一点声音都没有。
+  //
+  // 注意这里没有"绕过解锁"的后门：这一行只会在既有的全局解锁流程被调用时执行，
+  // 也就是说 autoplay 仍然只能由既有的全局音频解锁机制触发。
+  toneBgmReady = await unlockToneBgmContext();
+
+  // WAV 降级路径的预热：只有 Tone 不可用时才需要。
   if (hasElementAudioSupport()) {
     assetAudioReady = await primeBackgroundAudio();
   }
 
-  audioState.unlocked = webAudioReady || assetAudioReady;
+  audioState.unlocked = webAudioReady || assetAudioReady || toneBgmReady;
   syncBackgroundAudio();
 
   if (!audioState.unlocked && context) {
@@ -439,78 +621,169 @@ export function isAudioEngineUnlocked() {
 }
 
 // ---------------------------------------------------------------------------
-// 系统背景音乐的「临时借用」
+// 背景音乐的作用范围：只有知识岛那一页
 // ---------------------------------------------------------------------------
-// 知识岛有自己的一整套声音（海浪 + 偶尔一声海鸥）。让系统的循环 BGM 和它一起响
-// 会显得繁杂，所以进入知识岛时把 BGM 让出来，离开时原样还回去。
 //
-// 这里刻意只做「暂停 / 恢复」这一个动作，绝不碰用户的偏好：
-//   - 不改 musicEnabled、不改 musicVolume、不写任何持久状态。
+// 这一节的模型是反过来的，请注意：
+// 迁移之前，BGM 是"全站循环 + 进知识岛时借走"；
+// 现在按用户的要求改成"**只有知识岛持续播放 BGM**，其他页面一律不放持续音乐"。
+// 所以这两个函数的含义是：
+//   suspendBackgroundMusic() —— 知识岛进入：把持续音乐的所有权交给知识岛；
+//   resumeBackgroundMusic()  —— 知识岛离开：把持续音乐彻底收走。
 //
-// 离开时到底会不会真的响起来，要四个条件同时成立：
-//   1) 用户确实想要背景音乐：要么进入知识岛前 BGM 就在播，要么用户是在这一页上
-//      才把声音打开的（点右上角取消静音 → 引擎解锁）；
-//   2) musicEnabled 仍为 true；
-//   3) 没有全局静音（masterVolume > 0）；
-//   4) 音乐音量够听。
-// 后三条由下面那次 syncBackgroundAudio() 自己判断，它本来就同时管着
-// "用户把音乐关掉"和"用户拉了静音"这两种情况。
-// 所以用户在知识岛期间把音乐关掉或静音，离开时绝不会被擅自重新打开。
+// 换来的是三条结构性保证：
+//   1) 普通页面解锁音频只解锁引擎，不会顺手起播 BGM（islandBgmActive 为 false）；
+//   2) 离开知识岛一定会停 —— 因为"停"是 resume 的无条件动作，不再依赖
+//      「进入前到底在不在播」这种需要回忆的旧状态；
+//   3) 反复进出不会叠加 —— 状态只有一个布尔量，幂等天然成立。
 //
-// 反复进出不会叠加：suspend 是幂等的 —— 重复调用不会覆盖「进入前在不在播」
-// （那会让第二次进入把 true 记成 false，结果离开时 BGM 再也回不来），
-// resume 之后状态归零，所以下一次进入会重新记一次当时的状态。
+// 仍然绝不碰用户偏好：musicEnabled / musicVolume 一个字都不改。
+// 起不起播一律由下面的 shouldBackgroundAudioPlay() 现算：
+//   知识岛在场 + 引擎已解锁 + musicEnabled + 主音量 > 0 + 音乐音量 > 0。
 export function suspendBackgroundMusic() {
-  const backgroundAudio = audioState.backgroundAudio;
+  audioState.islandBgmActive = true;
 
-  // 只在第一次借出时记状态。已经借出过的话，音频此刻是我们自己暂停的，
-  // 再读一次 !paused 只会得到 false。
-  if (!audioState.backgroundSuppressed) {
-    // 只看已经存在的那个元素，不去新建：
-    // 新建会带上 preload="auto"，等于凭空多拉一次背景音乐的请求。
-    audioState.backgroundWasPlaying = Boolean(backgroundAudio) && !backgroundAudio.paused;
-    audioState.backgroundWasUnlocked = audioState.unlocked;
-  }
+  // 幂等：重复进入只是把同一个布尔再置一次，不会新建 runtime / Transport。
+  syncBackgroundAudio();
 
-  audioState.backgroundSuppressed = true;
-
-  if (backgroundAudio && !backgroundAudio.paused) {
-    backgroundAudio.pause();
-  }
-
-  return audioState.backgroundWasPlaying;
+  return audioState.islandBgmActive;
 }
 
 export function resumeBackgroundMusic() {
-  // 「用户是在这一页上才把声音打开的」：进岛时引擎还没解锁，离开时解锁了。
-  // 那种情况下 BGM 之所以没在播，唯一原因就是被我们借出期间按住了 ——
-  // 所以离开时必须还回去，否则用户在岛上打开声音、离开后却再也听不到背景音乐。
-  const enabledDuringVisit = !audioState.backgroundWasUnlocked && audioState.unlocked;
-  const shouldResume = audioState.backgroundWasPlaying || enabledDuringVisit;
+  audioState.islandBgmActive = false;
 
-  audioState.backgroundSuppressed = false;
-  audioState.backgroundWasPlaying = false;
-  audioState.backgroundWasUnlocked = false;
+  // 无条件走一次 sync：它会把 Tone 停掉并把音乐总线压到 -Infinity，
+  // 这一步就是"离开知识岛后声音彻底消失"的保证。
+  syncBackgroundAudio();
 
-  // 条件 1 不成立 → 现在也不擅自打开。
-  // 条件 2~4 由 syncBackgroundAudio() 判断：它会在 musicEnabled 为假、
-  // 总音量为 0、音乐音量为 0 或引擎尚未解锁时保持暂停。
-  if (shouldResume) {
-    syncBackgroundAudio();
-  }
-
-  return shouldResume;
+  return false;
 }
 
 // 测试与界面用的只读探针：背景音乐此刻是不是真的在响。
-// 被知识岛借出期间返回 false。
+// 两条路径都要看：Tone 主路径在响就返回 true，WAV 降级路径在响也返回 true。
 export function isBackgroundMusicPlaying() {
+  if (isToneBgmPlaying()) {
+    return true;
+  }
+
   const backgroundAudio = audioState.backgroundAudio;
 
   return Boolean(backgroundAudio) && !backgroundAudio.paused;
 }
 
-// 背景音乐此刻是不是被知识岛借走了。
+/**
+ * 背景音乐此刻是不是处于「被抑制」状态 —— 也就是"明明该有音乐，但现在不该响"。
+ *
+ * 语义随页面范围一起改了：持续 BGM 只属于知识岛，所以
+ *   - 任何普通页面（首页、答题、设置…）恒为 true：BGM 在这些页面上根本不存在；
+ *   - 知识岛 + 引擎已解锁 + 有可听音量 → false；
+ *   - 知识岛上被静音 / 音乐关掉 / 还没解锁 → true。
+ *
+ * 名字和签名都是既有公共接口，调用方（KnowledgeIslandView / E2E）不用改。
+ */
 export function isBackgroundMusicSuppressed() {
-  return audioState.backgroundSuppressed;
+  return !shouldBackgroundAudioPlay();
+}
+
+// ---------------------------------------------------------------------------
+// 以下是排障 / 测试用的只读探针。都不改变任何播放行为。
+// ---------------------------------------------------------------------------
+
+/** 此刻是哪条 BGM 路径在响："none" / "tone" / "wav"。 */
+export function getActiveBackgroundSource() {
+  return audioState.backgroundActiveSource;
+}
+
+/** Tone 主路径是否可用。false 时才会退到 WAV 降级路径。 */
+export function isToneBackgroundMusicAvailable() {
+  return audioState.toneBgmAvailable;
+}
+
+/**
+ * BGM 一共建过几个实例。
+ *
+ * 两条路径语义一致：Tone 走 runtime 的单例构建计数，WAV 走 <audio> 元素是否已建。
+ * 「反复进出知识岛不重复创建」这条性质就是拿它断言的。
+ *
+ * 之所以在这里透传、而不是让外部直接读 toneBgm.js：打包器 / dev server 下
+ * 同一个源文件可能以不同 URL 被 import 成多个模块实例，外部单独 import
+ * toneBgm.js 拿到的未必是引擎正在用的那一个，计数会永远是 0 —— 那种"假通过"
+ * 比失败更糟。引擎自己的引用一定是真的。
+ */
+export function getBackgroundMusicBuildCount() {
+  if (audioState.backgroundActiveSource === BGM_SOURCE_WAV || !isToneBgmSupported()) {
+    return audioState.backgroundAudio ? 1 : 0;
+  }
+
+  return getToneBgmRuntimeSnapshot().buildCount;
+}
+
+/**
+ * BGM 真正从静到响、起播过几次。
+ *
+ * 和"实例数"配套：实例只建一次，但"借出→归还"每次都会真的重新起播一次，
+ * 所以"知识岛借用不该顺手多播一次"这类断言要看这个计数。
+ */
+export function getBackgroundMusicStartCount() {
+  if (audioState.backgroundActiveSource === BGM_SOURCE_WAV || !isToneBgmSupported()) {
+    return audioState.wavStartCount;
+  }
+
+  return getToneBgmRuntimeSnapshot().startCount;
+}
+
+/**
+ * Tone 主路径的结构快照：节拍、循环范围、音色层数、已排程音符数。
+ *
+ * 同样从引擎自己的引用读，理由同 getBackgroundMusicBuildCount()：
+ * 让"单一 Transport""28 小节循环""BPM 落在目标区间"这些断言作用在
+ * 真正被播放的那一套 Tone 对象上。
+ */
+export function getBackgroundMusicStructure() {
+  const snapshot = getToneBgmRuntimeSnapshot();
+
+  return {
+    ready: snapshot.ready,
+    hasTransport: snapshot.hasTransport,
+    bpm: snapshot.bpm,
+    loop: snapshot.transportLoop,
+    loopEnd: snapshot.transportLoopEnd,
+    instrumentCount: snapshot.instrumentCount,
+    scheduledNoteCount: snapshot.scheduledNoteCount,
+    // 音乐总线当前电平：静音后必须是 -Infinity。
+    // 这是"点一下静音就立刻听不见"最直接的读数，必须透传出来。
+    busDecibels: snapshot.busDecibels,
+    targetGain: snapshot.targetGain,
+    contextState: snapshot.contextState,
+    contextIsReal: snapshot.contextIsReal
+  };
+}
+
+/**
+ * 强制把 Tone 标记为不可用 —— 只给测试和排障用。
+ * 用来验证"主路径真的起不来时，WAV 降级路径能接手，而且不会叠播"。
+ */
+export function __setToneBackgroundMusicUnavailableForTests(unavailable) {
+  const shouldDisable = Boolean(unavailable);
+
+  // 参数是「是否不可用」，标志是「是否可用」——两者相反，别写反。
+  audioState.toneBgmAvailable = !shouldDisable;
+  audioState.toneDisabled = shouldDisable;
+
+  if (!shouldDisable) {
+    return;
+  }
+
+  // 已经响着的 Tone 立刻停掉，免得和随后的 WAV 叠在一起。
+  if (audioState.backgroundActiveSource === BGM_SOURCE_TONE) {
+    stopToneBgm();
+    audioState.backgroundActiveSource = BGM_SOURCE_NONE;
+  }
+}
+
+/** 释放 Tone BGM runtime。只给测试用，正常生命周期不销毁。 */
+export function __disposeToneBgmForTests() {
+  stopToneBgm();
+  disposeToneBgm();
+  audioState.backgroundActiveSource = BGM_SOURCE_NONE;
 }

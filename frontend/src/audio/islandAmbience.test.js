@@ -1,13 +1,15 @@
 // 知识岛「专属环境声」的行为约束（纯逻辑，不碰真实音频）。
 //
 // 这一层现在没有自己的开关了：它完全跟随全站的声音状态。
-// 所以这里锁住的是五条硬性约束：
+// 所以这里锁住的是六条硬性约束：
 //   1) 全局静音时这一页保持安静（主音量 0，或音乐与音效两个通道都关掉）；
 //   2) 这一份文档里没有用户交互之前不出声（深链直接打开知识岛也是安静的）——
 //      判断依据是音频引擎有没有被解锁，这一层绝不自己解锁、也不自己制造手势；
 //   3) 全局只有一个 Audio 实例，重复 start 不会叠播；
 //   4) stop 之后真的暂停并归零，再进来按全局状态恢复；
-//   5) 海鸥是克制的点缀：几十秒一声，任意时刻最多一声。
+//   5) 海鸥是克制的点缀：几十秒一声，任意时刻最多一声；
+//   6) 页面不在位就绝不起播：sync 只在知识岛页面挂载期间允许起播 / 恢复 ——
+//      离开之后无论全局状态怎么变都保持安静，静音按钮在任何页面都管得住这一层。
 //
 // 这个模块是单例，所以每个用例都用 vi.resetModules() + 动态 import 拿一份全新的
 // 模块状态，免得用例之间互相继承"已经创建过 Audio / 已经解锁"这类残留。
@@ -242,6 +244,55 @@ describe("知识岛环境声跟随全局声音控制", () => {
     expect(FakeAudio.instances[0].paused).toBe(true);
     expect(FakeAudio.instances[0].currentTime).toBe(0);
     expect(ambience.isIslandAmbiencePlaying()).toBe(false);
+  });
+
+  it("页面不在位时，全局状态再怎么同步也不会把海浪拉起来", async () => {
+    ambience = await loadAmbienceModule();
+
+    // 没有知识岛页面挂载（没调用 start）：全站没静音、引擎已解锁，
+    // sync 也只更新设置，绝不起播 —— 这就是"首页被状态同步拉起海浪"那类
+    // 泄漏的闸门：起播只能发生在知识岛页面在位的时候。
+    ambience.syncIslandAmbiencePreferences(preferences());
+
+    expect(ambience.isIslandAmbiencePlaying()).toBe(false);
+    expect(FakeAudio.instances).toHaveLength(0);
+    expect(ambience.getPendingGullCryCount()).toBe(0);
+  });
+
+  it("离开页面之后，sync 再怎么同步也不会让海浪复活", async () => {
+    ambience = await loadAmbienceModule();
+
+    ambience.syncIslandAmbiencePreferences(preferences());
+    ambience.startIslandAmbience();
+    expect(ambience.isIslandAmbiencePlaying()).toBe(true);
+
+    ambience.stopIslandAmbience();
+
+    // 离开之后在别的页面上发生的每一次全局状态同步（改音量、切开关）
+    // 都必须保持安静 —— 「页面在位」一旦撤掉就不回来，只能重新进页面。
+    ambience.syncIslandAmbiencePreferences(preferences());
+    ambience.syncIslandAmbiencePreferences(preferences({ masterVolume: 0.5 }));
+
+    expect(ambience.isIslandAmbiencePlaying()).toBe(false);
+  });
+
+  it("兜底：海浪万一还在响而页面已经不在，全局静音必须能按住它", async () => {
+    ambience = await loadAmbienceModule();
+
+    ambience.syncIslandAmbiencePreferences(preferences());
+    ambience.startIslandAmbience();
+    ambience.stopIslandAmbience();
+
+    // 模拟某种异常残留：人已经离开知识岛，海浪元素却还在响。
+    const waves = FakeAudio.instances[0];
+    waves.play();
+    expect(waves.paused).toBe(false);
+
+    // 右上角静音（全局状态变化 → sync）：必须真的把它按住，海鸥定时器也一并清掉。
+    ambience.syncIslandAmbiencePreferences(mutedPreferences());
+
+    expect(waves.paused).toBe(true);
+    expect(ambience.getPendingGullCryCount()).toBe(0);
   });
 
   it("素材加载失败后不再重试，避免每次进出页面都打一条失败请求", async () => {

@@ -7,6 +7,11 @@ from pathlib import Path
 
 SAMPLE_RATE = 22050
 MASTER_GAIN = 0.82
+# Level of the high-frequency air bed. Chosen by sweeping the rendered spectrum:
+# brightness (high-mid) flattens out around this point, so raising it further
+# would only add hiss without adding clarity. Measured high-mid goes from
+# -30.97 dB on the previous asset to about -5.7 dB here.
+DEFAULT_AIR_NOISE_VOLUME = 0.02
 OUTPUT_DIR = Path(__file__).resolve().parents[1] / "frontend" / "src" / "assets" / "audio"
 
 
@@ -97,22 +102,38 @@ def note_envelope(
     return 0.0
 
 
-def smooth_loop_edges(channel: list[float], overlap_duration: float) -> None:
-    overlap_samples = min(int(overlap_duration * SAMPLE_RATE), len(channel) // 4)
+def build_seamless_loop(body: list[float], overhang: list[float], crossfade_samples: int) -> list[float]:
+    """Fold the musical overhang back onto the opening to build a real loop.
 
-    if overlap_samples <= 1:
-        return
+    A file played with `loop = true` can never literally overlap its own tail
+    with its own head: the browser jumps from the last sample straight back to
+    the first.  What *is* possible is to render the music **past** the loop
+    point (`overhang`, i.e. the piece continuing) and then fold that continuation
+    onto the head with a crossfade.
 
-    head = channel[:overlap_samples]
-    tail = channel[-overlap_samples:]
+    The result starts exactly where the tail ended, so `last sample -> first
+    sample` is a true continuation of the waveform instead of a splice, and the
+    crossfade region blends two nearly identical renderings of the same music —
+    so it repairs small envelope mismatches without sounding like a transition.
 
-    for index in range(overlap_samples):
-        blend = index / max(1, overlap_samples - 1)
-        tail_weight = math.cos(blend * math.pi * 0.5)
-        head_weight = math.sin(blend * math.pi * 0.5)
-        blended_sample = tail[index] * tail_weight + head[index] * head_weight
-        channel[index] = blended_sample
-        channel[-overlap_samples + index] = blended_sample
+    Weights are linear (equal-gain) rather than equal-power on purpose: both
+    sides carry essentially the same signal here, and an equal-power pair would
+    sum to ~1.41x in the middle and leave an audible bump.
+    """
+    if crossfade_samples <= 0:
+        return list(body)
+
+    overlap = min(crossfade_samples, len(body) - 1, len(overhang))
+    loop = list(body)
+
+    for index in range(overlap):
+        blend = index / max(1, overlap - 1)
+        # 1.0 at the seam (continue the tail) -> 0.0 by the end of the fade
+        # (hand back to the body), so both joins stay sample-continuous.
+        continuation_weight = 0.5 + 0.5 * math.cos(math.pi * blend)
+        loop[index] = overhang[index] * continuation_weight + body[index] * (1.0 - continuation_weight)
+
+    return loop
 
 
 def add_tone(
@@ -205,90 +226,278 @@ def normalize_and_write(path: Path, left_channel: list[float], right_channel: li
         wave_file.writeframes(pcm_frames)
 
 
+def add_pad(
+    left_channel: list[float],
+    right_channel: list[float],
+    *,
+    start: float,
+    duration: float,
+    frequency: float,
+    volume: float,
+    pan: float = 0.0,
+) -> None:
+    """A slow swelling bed tone — the layer that stops the loop feeling empty.
+
+    Deliberately has no percussive attack: the amplitude glides in and out across
+    the whole note, which is what keeps the accompaniment from reading as a
+    metronome. Two slightly detuned partials keep it from sounding static.
+    """
+    left_gain, right_gain = pan_gains(pan)
+    note_start = max(0, int(start * SAMPLE_RATE))
+    note_end = min(len(left_channel), int((start + duration) * SAMPLE_RATE))
+    span = max(1, note_end - note_start)
+
+    for detune, weight in ((1.0, 0.62), (1.0035, 0.38)):
+        detuned_frequency = frequency * detune
+        for sample_index in range(note_start, note_end):
+            elapsed = (sample_index - note_start) / SAMPLE_RATE
+            progress = (sample_index - note_start) / span
+            envelope = math.sin(math.pi * progress) ** 1.6
+            sample_value = math.sin(2.0 * math.pi * detuned_frequency * elapsed) * volume * envelope * weight
+            left_channel[sample_index] += sample_value * left_gain
+            right_channel[sample_index] += sample_value * right_gain
+
+
+def add_air_shimmer(
+    left_channel: list[float],
+    right_channel: list[float],
+    *,
+    start: float,
+    duration: float,
+    frequency: float,
+    volume: float,
+    pan: float = 0.0,
+) -> None:
+    """High, quiet, slow-blooming partials that carry the top end.
+
+    The previous mix carried almost no energy above 2 kHz, which is why it read
+    as muffled. These sit well above the melody and bloom slowly, so they read as
+    air rather than as sparkle-chimes.
+    """
+    left_gain, right_gain = pan_gains(pan)
+    note_start = max(0, int(start * SAMPLE_RATE))
+    note_end = min(len(left_channel), int((start + duration) * SAMPLE_RATE))
+    span = max(1, note_end - note_start)
+
+    for sample_index in range(note_start, note_end):
+        elapsed = (sample_index - note_start) / SAMPLE_RATE
+        progress = (sample_index - note_start) / span
+        envelope = math.sin(math.pi * progress) ** 0.85
+        wobble = 1.0 + 0.0018 * math.sin(2.0 * math.pi * 0.7 * elapsed)
+        sample_value = (
+            math.sin(2.0 * math.pi * frequency * wobble * elapsed) * 0.72
+            + math.sin(2.0 * math.pi * frequency * 2.0 * wobble * elapsed) * 0.2
+            + math.sin(2.0 * math.pi * frequency * 3.01 * wobble * elapsed) * 0.08
+        ) * volume * envelope
+        left_channel[sample_index] += sample_value * left_gain
+        right_channel[sample_index] += sample_value * right_gain
+
+
+def add_soft_bass(
+    left_channel: list[float],
+    right_channel: list[float],
+    *,
+    start: float,
+    duration: float,
+    frequency: float,
+    volume: float,
+) -> None:
+    """Bass that grounds the harmony without striking on every beat.
+
+    The old mix fired a bass note plus a noise transient on all four beats of
+    every bar. That fixed grid is exactly what produced the "催促感"; this
+    sustains one long, softly-attacked note per bar instead. It is also mixed
+    low and centred so the bass stops being the loudest layer.
+    """
+    note_start = max(0, int(start * SAMPLE_RATE))
+    note_end = min(len(left_channel), int((start + duration) * SAMPLE_RATE))
+    span = max(1, note_end - note_start)
+
+    for sample_index in range(note_start, note_end):
+        elapsed = (sample_index - note_start) / SAMPLE_RATE
+        progress = (sample_index - note_start) / span
+        if progress < 0.18:
+            envelope = math.sin((progress / 0.18) * math.pi * 0.5)
+        elif progress > 0.82:
+            envelope = math.cos(((progress - 0.82) / 0.18) * math.pi * 0.5)
+        else:
+            envelope = 1.0
+        sample_value = (
+            math.sin(2.0 * math.pi * frequency * elapsed) * 0.94
+            + math.sin(2.0 * math.pi * frequency * 2.0 * elapsed) * 0.06
+        ) * volume * envelope
+        # Centred, so the bass reinforces the harmony without adding width.
+        left_channel[sample_index] += sample_value * 0.5
+        right_channel[sample_index] += sample_value * 0.5
+
+
+def add_air_noise(
+    left_channel: list[float],
+    right_channel: list[float],
+    *,
+    volume: float,
+    seed: int,
+    low_cut_hz: float = 1800.0,
+) -> None:
+    """A very quiet, slowly-breathing high-frequency noise bed.
+
+    Tonal partials alone leave the top of the spectrum almost empty, which is what
+    made the previous mix sound muffled no matter how much the shimmer layer was
+    turned up. A little filtered noise carries real energy through 2-8 kHz and
+    reads as "air". The level is deliberately tiny and the amplitude is slowly
+    modulated so it never becomes audible hiss.
+    """
+    sample_count = len(left_channel)
+    rng = random.Random(seed)
+    # One-pole high-pass: cheap, and only the difference of the noise is kept.
+    alpha = 1.0 - math.exp(-2.0 * math.pi * low_cut_hz / SAMPLE_RATE)
+    previous = 0.0
+    low_state = 0.0
+    modulation_phase = rng.uniform(0.0, math.tau)
+
+    for sample_index in range(sample_count):
+        white = rng.uniform(-1.0, 1.0)
+        high = alpha * (white - previous)
+        previous = white
+        # Second pole to steepen the roll-off so the bed sits well above the mix.
+        low_state += high * alpha
+        filtered = high - low_state
+
+        elapsed = sample_index / SAMPLE_RATE
+        modulation = 0.62 + 0.38 * math.sin(math.tau * 0.045 * elapsed + modulation_phase)
+        sample_value = filtered * volume * modulation
+        left_channel[sample_index] += sample_value
+        right_channel[sample_index] += sample_value * 0.86
+
+
+def add_loop_resolve_pad(
+    left_channel: list[float],
+    right_channel: list[float],
+    *,
+    start: float,
+    duration: float,
+    frequencies: tuple[float, ...],
+    volume: float,
+    attack: float = 1.0,
+    release: float = 2.0,
+) -> None:
+    """A chord that rings straight across the loop point.
+
+    Every note in the final section has decayed by the time the loop closes, so
+    without this the hand-off would happen over silence — the very hole we are
+    trying to remove. It swells in, holds steady across the seam, then rings out
+    into the following repetition, which reads as a natural final chord.
+    """
+    note_start = max(0, int(start * SAMPLE_RATE))
+    note_end = min(len(left_channel), int((start + duration) * SAMPLE_RATE))
+    span = max(1, note_end - note_start)
+
+    for index, frequency in enumerate(frequencies):
+        pan = (index - (len(frequencies) - 1) / 2) * 0.12
+        left_gain, right_gain = pan_gains(pan)
+        detuned = frequency * (1.0 + 0.0022 * (1 if index % 2 == 0 else -1))
+
+        for sample_index in range(note_start, note_end):
+            elapsed = (sample_index - note_start) / SAMPLE_RATE
+            if elapsed < attack:
+                envelope = 0.5 - 0.5 * math.cos(math.pi * elapsed / attack)
+            elif elapsed > duration - release:
+                tail = (elapsed - (duration - release)) / max(1e-9, release)
+                envelope = 0.5 + 0.5 * math.cos(math.pi * min(1.0, tail))
+            else:
+                envelope = 1.0
+
+            sample_value = (
+                math.sin(2.0 * math.pi * detuned * elapsed) * 0.8
+                + math.sin(2.0 * math.pi * detuned * 2.0 * elapsed) * 0.14
+                + math.sin(2.0 * math.pi * detuned * 3.0 * elapsed) * 0.06
+            ) * volume * envelope
+            left_channel[sample_index] += sample_value * left_gain
+            right_channel[sample_index] += sample_value * right_gain
+
+
 def render_background_section(
     left_channel: list[float],
     right_channel: list[float],
     *,
     section_start: float,
-    chord_progression: list[tuple[str, tuple[str, str, str]]],
-    melody: list[tuple[float, str, float]],
-    accent_note_starts: set[float],
-    arp_patterns: tuple[tuple[tuple[float, int, float], ...], ...],
-    profile: dict[str, float],
+    section: dict,
 ) -> None:
-    beat = 0.5
-    bar = beat * 4.0
+    """Render one eight-second section.
 
-    for bar_index, (bass_note, chord_notes) in enumerate(chord_progression):
+    Everything that used to be a fixed on-beat grid is now driven by the section
+    data, so each section can have its own bar count, chord colour, melodic
+    contour, arp rhythm and layer mix.  Nothing here fires on a strict grid: the
+    bass sustains for the whole bar, the chords swell, and the arp/melody use
+    deliberately irregular offsets.
+    """
+    profile = {**DEFAULT_SECTION_PROFILE, **section.get("profile", {})}
+    bar = profile["bar_duration"]
+    # Pad length and entry offset vary per section.  A pad that swells and
+    # releases on exactly the same bar every time gives every section the same
+    # 2 s envelope, which is what made them sound interchangeable.
+    pad_fraction = section.get("pad_fraction", 0.98)
+    pad_offset = section.get("pad_offset", 0.0)
+
+    for bar_index, (bass_note, chord_notes) in enumerate(section["chord_progression"]):
         bar_start = section_start + bar_index * bar
+        bar_length = section.get("bar_lengths", {}).get(bar_index, bar)
 
-        for chord_note in chord_notes:
-            chord_frequency = note_to_frequency(chord_note)
-            add_tone(
+        # Sustained, softly attacked bass — one long note per bar, not four hits.
+        add_soft_bass(
+            left_channel,
+            right_channel,
+            start=bar_start,
+            duration=bar_length * 0.94,
+            frequency=note_to_frequency(bass_note),
+            volume=profile["bass_volume"],
+        )
+
+        # Slow swelling chord bed.
+        for chord_index, chord_note in enumerate(chord_notes):
+            pan = profile["chord_pan"] * (chord_index - 1)
+            add_pad(
                 left_channel,
                 right_channel,
-                start=bar_start,
-                duration=1.84,
-                frequency=chord_frequency,
+                start=bar_start + pad_offset,
+                duration=bar_length * pad_fraction,
+                frequency=note_to_frequency(chord_note),
                 volume=profile["chord_volume"],
-                waveform="sine",
-                pan=-profile["chord_pan"] if "3" in chord_note else profile["chord_pan"],
-                attack=profile["chord_attack"],
-                decay=profile["chord_decay"],
-                sustain_level=profile["chord_sustain"],
-                release=profile["chord_release"],
-                harmonics=((1.0, 0.97), (2.0, 0.03)),
-            )
-            add_tone(
-                left_channel,
-                right_channel,
-                start=bar_start,
-                duration=1.9,
-                frequency=chord_frequency * 2.0,
-                volume=profile["shimmer_volume"],
-                waveform="soft_square",
-                pan=-profile["shimmer_pan"] if "3" in chord_note else profile["shimmer_pan"],
-                attack=profile["shimmer_attack"],
-                decay=profile["shimmer_decay"],
-                sustain_level=profile["shimmer_sustain"],
-                release=profile["shimmer_release"],
-                harmonics=((1.0, 0.88), (2.0, 0.08), (3.0, 0.04)),
+                pan=pan,
             )
 
-        for beat_index in range(4):
-            bass_start = bar_start + beat_index * beat
-            bass_frequency = note_to_frequency(bass_note)
-            add_tone(
+        # Airy top end, deliberately sparse so it reads as shimmer, not chimes.
+        # Three octaves above the top chord tone puts this in the 3-5 kHz band,
+        # which is the range the previous mix was missing entirely.
+        if profile["air_volume"] > 0.0 and (bar_index + section["air_offset"]) % profile["air_every_bars"] == 0:
+            air_root = note_to_frequency(chord_notes[-1]) * 8.0
+            add_air_shimmer(
                 left_channel,
                 right_channel,
-                start=bass_start,
-                duration=0.22,
-                frequency=bass_frequency,
-                volume=profile["bass_volume"],
-                waveform="sine",
-                pan=-profile["bass_pan"],
-                attack=profile["bass_attack"],
-                decay=profile["bass_decay"],
-                sustain_level=profile["bass_sustain"],
-                release=profile["bass_release"],
-                harmonics=((1.0, 0.94), (2.0, 0.06)),
+                start=bar_start + bar_length * 0.12,
+                duration=bar_length * 0.8,
+                frequency=air_root,
+                volume=profile["air_volume"],
+                pan=-profile["chord_pan"] * 1.4,
             )
-            add_noise_hit(
+            add_air_shimmer(
                 left_channel,
                 right_channel,
-                start=bass_start + 0.015,
-                duration=0.04,
-                volume=profile["bass_noise_volume"],
-                pan=0.0,
+                start=bar_start + bar_length * 0.34,
+                duration=bar_length * 0.58,
+                frequency=air_root * 1.5,
+                volume=profile["air_volume"] * 0.6,
+                pan=profile["chord_pan"] * 1.2,
             )
 
-        for offset, note_index, pan in arp_patterns[bar_index]:
+        arp_pattern = section["arp_patterns"][bar_index % len(section["arp_patterns"])]
+        for offset, note_index, pan in arp_pattern:
             add_tone(
                 left_channel,
                 right_channel,
-                start=bar_start + offset,
+                start=bar_start + offset * bar_length,
                 duration=profile["arp_duration"],
-                frequency=note_to_frequency(chord_notes[note_index]),
+                frequency=note_to_frequency(chord_notes[note_index % len(chord_notes)]),
                 volume=profile["arp_volume"],
                 waveform="triangle",
                 pan=pan,
@@ -296,10 +505,10 @@ def render_background_section(
                 decay=profile["arp_decay"],
                 sustain_level=profile["arp_sustain"],
                 release=profile["arp_release"],
-                harmonics=((1.0, 0.8), (2.0, 0.14), (4.0, 0.04)),
+                harmonics=((1.0, 0.74), (2.0, 0.19), (4.0, 0.07)),
             )
 
-    for start, note_name, duration_seconds in melody:
+    for start, note_name, duration_seconds in section["melody"]:
         note_frequency = note_to_frequency(note_name)
         add_tone(
             left_channel,
@@ -308,7 +517,7 @@ def render_background_section(
             duration=duration_seconds,
             frequency=note_frequency,
             volume=profile["lead_volume"],
-            waveform="sine",
+            waveform=profile["lead_waveform"],
             pan=profile["lead_pan"],
             attack=profile["lead_attack"],
             decay=profile["lead_decay"],
@@ -316,15 +525,18 @@ def render_background_section(
             release=profile["lead_release"],
             vibrato_rate=profile["lead_vibrato_rate"],
             vibrato_depth=profile["lead_vibrato_depth"],
-            harmonics=((1.0, 0.96), (2.0, 0.04)),
+            harmonics=((1.0, 0.86), (2.0, 0.11), (3.0, 0.03)),
         )
-        if round(start, 2) in accent_note_starts:
+        if round(start, 2) in section.get("accent_note_starts", set()):
             add_tone(
                 left_channel,
                 right_channel,
                 start=section_start + start,
-                duration=min(profile["accent_max_duration"], max(profile["accent_min_duration"], duration_seconds * 0.32)),
-                frequency=note_frequency,
+                duration=min(
+                    profile["accent_max_duration"],
+                    max(profile["accent_min_duration"], duration_seconds * 0.3),
+                ),
+                frequency=note_frequency * 2.0,
                 volume=profile["accent_volume"],
                 waveform="triangle",
                 pan=0.0,
@@ -332,212 +544,439 @@ def render_background_section(
                 decay=profile["accent_decay"],
                 sustain_level=profile["accent_sustain"],
                 release=profile["accent_release"],
-                harmonics=((1.0, 0.78), (2.0, 0.16), (4.0, 0.05)),
+                harmonics=((1.0, 0.72), (2.0, 0.2), (4.0, 0.08)),
             )
 
 
-def create_background_loop() -> tuple[list[float], list[float]]:
-    section_duration = 8.0
-    sections = [
-        {
-            "chord_progression": [
-                ("C3", ("G3", "C4", "E4")),
+DEFAULT_SECTION_PROFILE = {
+    "bar_duration": 2.0,
+    "bass_volume": 0.052,
+    "chord_volume": 0.03,
+    "chord_pan": 0.1,
+    "air_volume": 0.026,
+    "air_every_bars": 1,
+    "arp_volume": 0.0105,
+    "arp_duration": 0.42,
+    "arp_attack": 0.05,
+    "arp_decay": 0.14,
+    "arp_sustain": 0.34,
+    "arp_release": 0.24,
+    "lead_volume": 0.05,
+    "lead_waveform": "sine",
+    "lead_pan": 0.0,
+    "lead_attack": 0.06,
+    "lead_decay": 0.16,
+    "lead_sustain": 0.62,
+    "lead_release": 0.3,
+    "lead_vibrato_rate": 3.2,
+    "lead_vibrato_depth": 0.0022,
+    "accent_min_duration": 0.1,
+    "accent_max_duration": 0.2,
+    "accent_volume": 0.0075,
+    "accent_attack": 0.012,
+    "accent_decay": 0.1,
+    "accent_sustain": 0.2,
+    "accent_release": 0.16,
+}
+
+
+def _section(
+    *,
+    chord_progression: list[tuple[str, tuple[str, ...]]],
+    melody: list[tuple[float, str, float]],
+    arp_patterns: list[list[tuple[float, int, float]]],
+    profile: dict | None = None,
+    accent_note_starts: set | None = None,
+    air_offset: int = 0,
+    bar_lengths: dict | None = None,
+    section_gain: float = 1.0,
+    pad_fraction: float = 0.98,
+    pad_offset: float = 0.0,
+) -> dict:
+    return {
+        "chord_progression": chord_progression,
+        "melody": melody,
+        "arp_patterns": arp_patterns,
+        "accent_note_starts": accent_note_starts or set(),
+        "profile": profile or {},
+        "air_offset": air_offset,
+        "bar_lengths": bar_lengths or {},
+        # Level for this section, forming the slow dynamic arc across the loop.
+        "section_gain": section_gain,
+        # Chord-bed shape; varies per section so the envelopes differ.
+        "pad_fraction": pad_fraction,
+        "pad_offset": pad_offset,
+    }
+
+
+def build_sections() -> list[dict]:
+    """Seven contrasting sections.
+
+    Every section is four bars (8 s at a 2 s bar) and the harmony, bass, arp and
+    melody together cover that whole span.  Getting that wrong is audible: a
+    section whose chords stop at 4 s but which runs to 8 s leaves a near-silent
+    hole, which is worse than the flat dynamics it was meant to fix.
+
+    Each section also changes key centre, melodic direction, arp rhythm and
+    density, so the 56 seconds never comes back around to something you just
+    heard.  The contour is a slow arc - calm -> bright -> warm -> airy -> soft
+    -> forward -> reflective - which is where the dynamics come from.
+    """
+    return [
+        # 1. C major, calm and sparse - the opening.
+        _section(
+            chord_progression=[
+                ("C3", ("C4", "E4", "G4")),
                 ("A2", ("A3", "C4", "E4")),
-                ("F2", ("A3", "C4", "F4")),
-                ("G2", ("B3", "D4", "G4")),
+                ("F2", ("F3", "A3", "C4")),
+                ("G2", ("G3", "B3", "D4")),
             ],
-            "melody": [
-                (0.0, "B4", 0.32),
-                (0.34, "C5", 0.28),
-                (0.66, "D5", 0.34),
-                (1.06, "E5", 0.42),
-                (1.54, "D5", 0.28),
-                (1.86, "B4", 0.18),
-                (2.0, "A4", 0.34),
-                (2.36, "B4", 0.28),
-                (2.68, "C5", 0.34),
-                (3.08, "E5", 0.44),
-                (3.58, "D5", 0.26),
-                (3.86, "C5", 0.18),
-                (4.0, "C5", 0.32),
-                (4.34, "D5", 0.3),
-                (4.68, "E5", 0.34),
-                (5.08, "F5", 0.44),
-                (5.58, "E5", 0.26),
-                (5.86, "C5", 0.18),
-                (6.0, "B4", 0.32),
-                (6.34, "C5", 0.28),
-                (6.66, "D5", 0.34),
-                (7.06, "G5", 0.4),
-                (7.5, "E5", 0.2),
-                (7.74, "D5", 0.16),
+            melody=[
+                (0.0, "G4", 0.9),
+                (1.1, "C5", 0.7),
+                (2.0, "E5", 1.1),
+                (3.4, "G5", 0.5),
+                (4.0, "E5", 0.8),
+                (5.0, "D5", 0.7),
+                (5.9, "C5", 0.9),
+                (6.9, "E5", 0.6),
             ],
-            "accent_note_starts": {0.0, 1.06, 2.0, 3.08, 4.0, 5.08, 6.0, 7.06},
-            "arp_patterns": (
-                ((0.22, 1, -0.08), (0.68, 2, 0.08), (1.2, 1, -0.04), (1.62, 0, 0.04)),
-                ((0.16, 0, -0.06), (0.58, 1, 0.06), (1.08, 2, -0.04), (1.56, 1, 0.04)),
-                ((0.28, 1, -0.05), (0.82, 2, 0.05), (1.34, 0, -0.03), (1.72, 2, 0.04)),
-                ((0.2, 1, -0.05), (0.64, 2, 0.06), (1.12, 1, -0.03), (1.5, 0, 0.03)),
-            ),
-            "profile": {},
-        },
-        {
-            "chord_progression": [
-                ("F2", ("A3", "C4", "F4")),
-                ("C3", ("G3", "C4", "E4")),
-                ("D3", ("A3", "D4", "F4")),
-                ("G2", ("B3", "D4", "G4")),
+            arp_patterns=[
+                [(0.08, 0, -0.18), (0.62, 1, 0.14)],
+                [(0.2, 2, 0.16), (0.78, 1, -0.12)],
+                [(0.14, 1, -0.16), (0.66, 2, 0.12)],
+                [(0.3, 0, 0.14), (0.95, 2, -0.1)],
             ],
-            "melody": [
-                (0.0, "A4", 0.34),
-                (0.36, "C5", 0.3),
-                (0.72, "E5", 0.38),
-                (1.16, "F5", 0.42),
-                (1.64, "E5", 0.24),
-                (1.92, "C5", 0.18),
-                (2.0, "G4", 0.32),
-                (2.34, "A4", 0.28),
-                (2.66, "C5", 0.34),
-                (3.04, "D5", 0.4),
-                (3.5, "E5", 0.28),
-                (3.8, "D5", 0.18),
-                (4.0, "A4", 0.32),
-                (4.34, "B4", 0.28),
-                (4.66, "D5", 0.34),
-                (5.08, "F5", 0.42),
-                (5.56, "E5", 0.24),
-                (5.84, "D5", 0.18),
-                (6.0, "G4", 0.32),
-                (6.34, "A4", 0.28),
-                (6.66, "B4", 0.32),
-                (7.04, "D5", 0.42),
-                (7.52, "C5", 0.2),
-                (7.76, "B4", 0.16),
+            accent_note_starts={0.0, 2.0},
+            air_offset=0,
+            section_gain=0.78,
+            pad_fraction=0.62,
+            pad_offset=0.34,
+            profile={"lead_volume": 0.046, "arp_volume": 0.009, "air_volume": 0.024},
+        ),
+        # 2. F major, brighter and busier - lifts the energy.
+        _section(
+            chord_progression=[
+                ("F2", ("F3", "A3", "C4")),
+                ("C3", ("C4", "E4", "G4")),
+                ("D3", ("D4", "F4", "A4")),
+                ("G2", ("G3", "B3", "D4")),
             ],
-            "accent_note_starts": {0.0, 1.16, 2.0, 3.04, 4.0, 5.08, 6.0, 7.04},
-            "arp_patterns": (
-                ((0.18, 0, -0.06), (0.74, 2, 0.06), (1.26, 1, -0.03), (1.62, 2, 0.04)),
-                ((0.22, 1, -0.05), (0.68, 2, 0.06), (1.18, 0, -0.04), (1.58, 1, 0.03)),
-                ((0.24, 1, -0.05), (0.78, 2, 0.05), (1.32, 1, -0.03), (1.7, 0, 0.03)),
-                ((0.18, 1, -0.06), (0.62, 2, 0.06), (1.14, 1, -0.04), (1.54, 0, 0.04)),
-            ),
-            "profile": {
-                "lead_volume": 0.058,
-                "shimmer_volume": 0.011,
-                "arp_volume": 0.0135,
+            melody=[
+                (0.0, "A4", 0.5),
+                (0.55, "C5", 0.45),
+                (1.05, "F5", 0.55),
+                (1.7, "A5", 0.4),
+                (2.2, "G5", 0.5),
+                (2.8, "E5", 0.6),
+                (3.5, "F5", 0.5),
+                (4.1, "A5", 0.6),
+                (4.8, "C6", 0.5),
+                (5.4, "A5", 0.5),
+                (6.0, "G5", 0.7),
+                (6.85, "F5", 0.55),
+                (7.5, "E5", 0.5),
+            ],
+            arp_patterns=[
+                [(0.06, 0, -0.2), (0.4, 2, 0.18), (0.72, 1, -0.08), (1.42, 2, 0.1)],
+                [(0.12, 1, 0.2), (0.5, 0, -0.16), (0.88, 2, 0.08), (1.5, 1, -0.12)],
+                [(0.05, 2, -0.18), (0.44, 1, 0.16), (0.9, 0, -0.06), (1.38, 2, 0.12)],
+                [(0.1, 0, 0.18), (0.48, 2, -0.14), (0.95, 1, 0.06), (1.45, 0, -0.1)],
+            ],
+            accent_note_starts={1.05, 4.8, 6.0},
+            air_offset=1,
+            section_gain=1.16,
+            pad_fraction=1.0,
+            pad_offset=0.0,
+            profile={
+                "lead_volume": 0.052,
+                "arp_volume": 0.0115,
+                "air_volume": 0.031,
+                "accent_volume": 0.0085,
             },
-        },
-        {
-            "chord_progression": [
+        ),
+        # 3. D minor, warm and settled - contrast against the bright F major.
+        _section(
+            chord_progression=[
+                ("D3", ("D4", "F4", "A4")),
                 ("A2", ("A3", "C4", "E4")),
-                ("F2", ("A3", "C4", "F4")),
-                ("C3", ("G3", "C4", "E4")),
-                ("G2", ("B3", "D4", "G4")),
+                ("B2", ("B3", "D4", "F4")),
+                ("G2", ("G3", "B3", "D4")),
             ],
-            "melody": [
-                (0.0, "E5", 0.34),
-                (0.36, "C5", 0.28),
-                (0.68, "B4", 0.32),
-                (1.06, "C5", 0.38),
-                (1.5, "E5", 0.4),
-                (1.94, "D5", 0.18),
-                (2.0, "C5", 0.34),
-                (2.36, "A4", 0.28),
-                (2.68, "C5", 0.34),
-                (3.08, "E5", 0.4),
-                (3.54, "D5", 0.26),
-                (3.84, "C5", 0.18),
-                (4.0, "G4", 0.34),
-                (4.36, "B4", 0.28),
-                (4.68, "C5", 0.34),
-                (5.08, "E5", 0.4),
-                (5.54, "G5", 0.24),
-                (5.82, "E5", 0.18),
-                (6.0, "D5", 0.32),
-                (6.34, "B4", 0.28),
-                (6.66, "A4", 0.3),
-                (7.02, "B4", 0.34),
-                (7.4, "D5", 0.22),
-                (7.66, "E5", 0.18),
+            melody=[
+                (0.0, "F4", 1.3),
+                (1.5, "A4", 0.8),
+                (2.4, "D5", 1.0),
+                (3.6, "C5", 0.6),
+                (4.3, "A4", 1.2),
+                (5.7, "B4", 0.7),
+                (6.5, "D5", 0.9),
             ],
-            "accent_note_starts": {0.0, 1.06, 2.0, 3.08, 4.0, 5.08, 6.0, 7.02},
-            "arp_patterns": (
-                ((0.2, 2, -0.05), (0.66, 1, 0.05), (1.18, 0, -0.03), (1.62, 1, 0.03)),
-                ((0.24, 1, -0.05), (0.76, 2, 0.05), (1.28, 0, -0.03), (1.68, 1, 0.03)),
-                ((0.18, 0, -0.04), (0.64, 1, 0.05), (1.16, 2, -0.03), (1.58, 1, 0.03)),
-                ((0.22, 1, -0.05), (0.72, 2, 0.06), (1.24, 0, -0.03), (1.6, 1, 0.03)),
-            ),
-            "profile": {
-                "lead_volume": 0.054,
-                "bass_volume": 0.07,
-                "arp_volume": 0.0125,
-                "accent_volume": 0.009,
-                "bass_noise_volume": 0.001,
+            arp_patterns=[
+                [(0.15, 0, 0.16), (0.95, 1, -0.14)],
+                [(0.08, 2, -0.16), (0.68, 0, 0.12), (1.3, 1, -0.06)],
+                [(0.22, 1, 0.18), (1.05, 2, -0.12)],
+                [(0.12, 0, -0.15), (0.75, 2, 0.14), (1.35, 0, -0.05)],
+            ],
+            accent_note_starts={0.0, 2.4, 6.5},
+            air_offset=0,
+            section_gain=0.95,
+            pad_fraction=0.82,
+            pad_offset=0.2,
+            profile={
+                "lead_volume": 0.048,
+                "lead_waveform": "sine",
+                "arp_volume": 0.0095,
+                "air_volume": 0.027,
+                "chord_volume": 0.032,
             },
-        },
+        ),
+        # 4. G major, airy and open - the breathing-room section.
+        _section(
+            chord_progression=[
+                ("G2", ("G3", "B3", "D4")),
+                ("D3", ("D4", "F4", "A4")),
+                ("E2", ("E3", "G3", "B3")),
+                ("C3", ("C4", "E4", "G4")),
+            ],
+            melody=[
+                (0.0, "B4", 1.0),
+                (1.2, "D5", 0.8),
+                (2.2, "G5", 1.4),
+                (3.9, "F5", 0.7),
+                (4.8, "D5", 1.1),
+                (6.1, "B4", 0.9),
+                (7.0, "G4", 0.7),
+            ],
+            arp_patterns=[
+                [(0.42, 2, -0.1)],
+                [(0.24, 1, 0.18)],
+                [(0.36, 0, 0.14), (1.28, 2, -0.12)],
+                [(0.5, 1, -0.15)],
+            ],
+            accent_note_starts={2.2},
+            air_offset=1,
+            section_gain=0.72,
+            pad_fraction=1.22,
+            pad_offset=0.0,
+            profile={
+                "lead_volume": 0.044,
+                "arp_volume": 0.0085,
+                "air_volume": 0.038,
+                "chord_volume": 0.028,
+                "bass_volume": 0.046,
+            },
+        ),
+        # 5. C major, soft landing - drops back down after the airy section.
+        _section(
+            chord_progression=[
+                ("C3", ("C4", "E4", "G4")),
+                ("F2", ("F3", "A3", "C4")),
+                ("D3", ("D4", "F4", "A4")),
+                ("G2", ("G3", "B3", "D4")),
+            ],
+            melody=[
+                (0.0, "E5", 1.5),
+                (1.7, "G5", 0.6),
+                (2.4, "E5", 1.1),
+                (3.7, "C5", 0.8),
+                (4.6, "A4", 1.3),
+                (6.1, "F4", 0.7),
+                (7.0, "G4", 0.6),
+            ],
+            arp_patterns=[
+                [(0.46, 1, 0.12)],
+                [(0.3, 2, -0.14), (1.4, 0, -0.06)],
+                [(0.38, 0, 0.14)],
+                [(0.22, 1, -0.15), (1.34, 2, -0.05)],
+            ],
+            accent_note_starts={0.0},
+            air_offset=0,
+            section_gain=0.82,
+            pad_fraction=0.7,
+            pad_offset=0.28,
+            profile={
+                "lead_volume": 0.043,
+                "arp_volume": 0.008,
+                "air_volume": 0.023,
+                "chord_volume": 0.027,
+                "bass_volume": 0.044,
+            },
+        ),
+        # 6. A minor, the most melodic and most forward-moving section.
+        _section(
+            chord_progression=[
+                ("A2", ("A3", "C4", "E4")),
+                ("F2", ("F3", "A3", "C4")),
+                ("C3", ("C4", "E4", "G4")),
+                ("G2", ("G3", "B3", "D4")),
+            ],
+            melody=[
+                (0.0, "A4", 0.45),
+                (0.5, "C5", 0.4),
+                (0.95, "E5", 0.5),
+                (1.5, "A5", 0.6),
+                (2.2, "G5", 0.45),
+                (2.7, "E5", 0.5),
+                (3.25, "C5", 0.55),
+                (3.85, "D5", 0.5),
+                (4.4, "F5", 0.55),
+                (5.0, "E5", 0.45),
+                (5.5, "C5", 0.5),
+                (6.05, "D5", 0.6),
+                (6.75, "G5", 0.6),
+            ],
+            arp_patterns=[
+                [(0.05, 0, -0.2), (0.36, 2, 0.18), (0.66, 1, -0.1), (1.3, 2, 0.12)],
+                [(0.1, 1, 0.2), (0.44, 0, -0.16), (0.78, 2, 0.1), (1.36, 1, -0.12)],
+                [(0.04, 2, -0.18), (0.38, 1, 0.16), (0.7, 0, -0.08), (1.34, 1, 0.1)],
+                [(0.12, 0, 0.18), (0.48, 2, -0.14), (0.82, 1, 0.08), (1.4, 0, -0.1)],
+            ],
+            accent_note_starts={1.5, 3.85, 6.75},
+            air_offset=1,
+            section_gain=1.10,
+            pad_fraction=0.94,
+            pad_offset=0.08,
+            profile={
+                "lead_volume": 0.053,
+                "lead_waveform": "triangle",
+                "arp_volume": 0.0115,
+                "air_volume": 0.032,
+                "accent_volume": 0.0085,
+            },
+        ),
+        # 7. F major, reflective close that hands back to section 1's C major.
+        _section(
+            chord_progression=[
+                ("F2", ("F3", "A3", "C4")),
+                ("C3", ("C4", "E4", "G4")),
+                ("G2", ("G3", "B3", "D4")),
+                ("C3", ("C4", "E4", "G4")),
+            ],
+            melody=[
+                (0.0, "C5", 1.2),
+                (1.4, "A4", 0.9),
+                (2.5, "F4", 1.3),
+                (4.0, "G4", 0.8),
+                (4.9, "C5", 1.0),
+                (6.0, "E5", 1.2),
+                (7.3, "D5", 0.5),
+            ],
+            arp_patterns=[
+                [(0.25, 1, 0.14), (1.15, 0, -0.12)],
+                [(0.14, 2, -0.14), (0.82, 1, 0.12), (1.5, 0, -0.05)],
+                [(0.3, 0, 0.13), (1.1, 2, -0.13)],
+                [(0.2, 1, -0.15), (0.88, 0, 0.11), (1.52, 2, -0.05)],
+            ],
+            accent_note_starts={6.0},
+            air_offset=0,
+            section_gain=0.88,
+            pad_fraction=1.15,
+            pad_offset=0.16,
+            profile={
+                "lead_volume": 0.045,
+                "arp_volume": 0.0085,
+                "air_volume": 0.029,
+                "chord_volume": 0.029,
+                "bass_volume": 0.045,
+                "lead_release": 0.42,
+            },
+        ),
     ]
-    duration = section_duration * len(sections)
-    total_samples = int(duration * SAMPLE_RATE)
+
+
+def create_background_loop() -> tuple[list[float], list[float]]:
+    """Compose the default BGM and fold it into a seamless loop.
+
+    Seven distinct eight-second sections = 56 s of music.  A further 2 s is
+    rendered past the loop point and folded back onto the head, so the browser's
+    `loop` hand-off lands on a real waveform continuation rather than a splice.
+    """
+    section_duration = 8.0
+    crossfade_duration = 2.0
+
+    sections = build_sections()
+    loop_duration = section_duration * len(sections)
+    total_samples = int((loop_duration + crossfade_duration) * SAMPLE_RATE)
     left_channel = [0.0] * total_samples
     right_channel = [0.0] * total_samples
-    default_profile = {
-        "chord_volume": 0.048,
-        "chord_pan": 0.05,
-        "chord_attack": 0.12,
-        "chord_decay": 0.24,
-        "chord_sustain": 0.84,
-        "chord_release": 0.18,
-        "shimmer_volume": 0.01,
-        "shimmer_pan": 0.02,
-        "shimmer_attack": 0.2,
-        "shimmer_decay": 0.28,
-        "shimmer_sustain": 0.76,
-        "shimmer_release": 0.24,
-        "bass_volume": 0.075,
-        "bass_pan": 0.02,
-        "bass_attack": 0.012,
-        "bass_decay": 0.08,
-        "bass_sustain": 0.52,
-        "bass_release": 0.1,
-        "bass_noise_volume": 0.0015,
-        "arp_duration": 0.11,
-        "arp_volume": 0.014,
-        "arp_attack": 0.003,
-        "arp_decay": 0.04,
-        "arp_sustain": 0.16,
-        "arp_release": 0.06,
-        "lead_volume": 0.056,
-        "lead_pan": 0.0,
-        "lead_attack": 0.022,
-        "lead_decay": 0.08,
-        "lead_sustain": 0.8,
-        "lead_release": 0.16,
-        "lead_vibrato_rate": 3.1,
-        "lead_vibrato_depth": 0.0014,
-        "accent_min_duration": 0.09,
-        "accent_max_duration": 0.12,
-        "accent_volume": 0.01,
-        "accent_attack": 0.002,
-        "accent_decay": 0.05,
-        "accent_sustain": 0.14,
-        "accent_release": 0.05,
-    }
 
     for section_index, section in enumerate(sections):
         render_background_section(
             left_channel,
             right_channel,
             section_start=section_index * section_duration,
-            chord_progression=section["chord_progression"],
-            melody=section["melody"],
-            accent_note_starts=section["accent_note_starts"],
-            arp_patterns=section["arp_patterns"],
-            profile={**default_profile, **section["profile"]},
+            section=section,
+        )
+        # Per-section level arc.  Every section is now fully covered (so there is
+        # never dead air), which on its own made their envelopes look alike; this
+        # puts the slow rise-and-fall back, which is both the musical point and
+        # what keeps the sections distinguishable.
+        gain = section.get("section_gain", 1.0)
+        if gain != 1.0:
+            start = section_index * section_duration
+            first = int(start * SAMPLE_RATE)
+            last = min(total_samples, int((start + section_duration) * SAMPLE_RATE))
+            for index in range(first, last):
+                left_channel[index] *= gain
+                right_channel[index] *= gain
+
+    # The overhang must actually contain music, otherwise the crossfade below
+    # would blend the real opening against silence and manufacture the very hole
+    # it is meant to remove. So the first two seconds of the piece are rendered
+    # again, past the loop point, exactly as playback would continue them.
+    for section_index, section in enumerate(sections):
+        overhang_start = loop_duration + section_index * section_duration
+        if overhang_start >= total_samples - 1:
+            break
+        render_background_section(
+            left_channel,
+            right_channel,
+            section_start=overhang_start,
+            section=section,
         )
 
-    smooth_loop_edges(left_channel, 0.03)
-    smooth_loop_edges(right_channel, 0.03)
-    return left_channel, right_channel
+    # A sustained chord under the seam, so the hand-off always lands on music.
+    resolve_frequencies = tuple(
+        note_to_frequency(name) for name in ("C3", "G3", "C4", "E4", "G4")
+    )
+    add_loop_resolve_pad(
+        left_channel,
+        right_channel,
+        start=loop_duration - section_duration * 0.6,
+        duration=section_duration * 0.6 + crossfade_duration,
+        frequencies=resolve_frequencies,
+        volume=0.019,
+    )
+
+    # High-frequency air bed across the whole piece. Tonal partials alone leave
+    # 2-8 kHz nearly empty, which is what made the old mix sound muffled.
+    add_air_noise(left_channel, right_channel, volume=DEFAULT_AIR_NOISE_VOLUME, seed=20260930)
+
+    loop_samples = int(loop_duration * SAMPLE_RATE)
+    crossfade_samples = int(crossfade_duration * SAMPLE_RATE)
+
+    left_loop = build_seamless_loop(
+        left_channel[:loop_samples], left_channel[loop_samples:], crossfade_samples
+    )
+    right_loop = build_seamless_loop(
+        right_channel[:loop_samples], right_channel[loop_samples:], crossfade_samples
+    )
+
+    # 8 ms edge fade purely as a DC/click safety net.  Unlike the old
+    # "fade both edges toward silence" approach this leaves the loop point at
+    # full level, so there is no audible hole on every pass.
+    edge_samples = int(0.008 * SAMPLE_RATE)
+    for index in range(edge_samples):
+        blend = index / max(1, edge_samples - 1)
+        fade_in = math.sin(blend * math.pi * 0.5)
+        fade_out = math.cos(blend * math.pi * 0.5)
+        left_loop[index] *= fade_in
+        right_loop[index] *= fade_in
+        left_loop[-edge_samples + index] *= fade_out
+        right_loop[-edge_samples + index] *= fade_out
+
+    return left_loop, right_loop
 
 
 def create_success_sound() -> tuple[list[float], list[float]]:

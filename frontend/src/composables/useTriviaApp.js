@@ -2,6 +2,8 @@ import { storeToRefs } from "pinia";
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { playAudioCue, syncAudioSettings, unlockAudioEngine } from "../audio/audioEngine";
+import { syncIslandAmbiencePreferences } from "../audio/islandAmbience";
+import { syncIslandSoundscapePreferences } from "../audio/islandSoundscape";
 import { APP_ROUTE_NAME, GROWTH_BOOK_TAB } from "../router/routes";
 import {
   fetchQuestionCoverage,
@@ -1929,8 +1931,18 @@ export function useTriviaApp() {
     return `${enabledChannels.join(" + ") || "音频已关闭"} · ${masterVolumeText.value}`;
   });
 
+  // 全站声音状态的唯一接线点：BGM / 答题音效走 syncAudioSettings，
+  // 知识岛环境声（海浪 / 海鸥 / 风 / 铃 / 雾号）走下面两个 sync。
+  // 环境声必须在这里跟着全局状态走，而不是只靠知识岛页面自己的 watch ——
+  // 页面一卸载本地 watch 就死了，全局静音就再也管不住还响着的环境声，
+  // 症状就是"在首页听海浪、点静音停不掉"。两个 sync 都幂等，重复触发没有副作用。
+  //
+  // audioReady 也要监听：取消静音时 unlockAudioEngine() 是异步的，静音按钮先把
+  // 音量改回来（此刻还没解锁），过一会儿才解锁成功；不监听它，那一次取消静音
+  // 就永远等不到"可以播了"的那一刻。能不能播由环境声自己问引擎
+  // （isAudioEngineUnlocked / audioState.unlocked），这里只负责把"状态变了"送达。
   watch(
-    [masterVolume, musicEnabled, musicVolume, sfxEnabled, sfxVolume],
+    [masterVolume, musicEnabled, musicVolume, sfxEnabled, sfxVolume, audioReady],
     ([nextMasterVolume, nextMusicEnabled, nextMusicVolume, nextSfxEnabled, nextSfxVolume]) => {
       syncAudioSettings({
         masterVolume: nextMasterVolume,
@@ -1939,6 +1951,17 @@ export function useTriviaApp() {
         sfxEnabled: nextSfxEnabled,
         sfxVolume: nextSfxVolume
       });
+
+      // 环境声只认这三个键：它跟着"总音量 + 通道开关"走，
+      // 音乐 / 音效各自的分通道音量与这一层无关。
+      const ambiencePreferences = {
+        masterVolume: nextMasterVolume,
+        musicEnabled: nextMusicEnabled,
+        sfxEnabled: nextSfxEnabled
+      };
+
+      syncIslandAmbiencePreferences(ambiencePreferences);
+      syncIslandSoundscapePreferences(ambiencePreferences);
     },
     { immediate: true }
   );
@@ -2035,6 +2058,26 @@ export function useTriviaApp() {
     resetQuizPracticeContext();
     // 从收藏册进来时顺手把弹窗收掉，避免弹窗盖在知识岛页面上。
     closeBackpack();
+
+    // 这一下点击本身就是一次合法用户手势，所以顺手把音频引擎解锁。
+    //
+    // 为什么必须在这里解锁：知识岛的声音有两道闸门，BGM 走
+    // shouldBackgroundAudioPlay() 里的 audioState.unlocked，环境声走
+    // canPlayAmbience() 里的 isAudioEngineUnlocked()。而解锁此前只有两个入口 ——
+    // 设置页的「启用音频」和右上角静音按钮的取消静音。两者都在别的页面上，
+    // 于是「第一次使用就直奔知识岛」这条最自然的路径上，用户点的是一枚真实的
+    // 按钮，却没有把这枚手势交给音频引擎：知识岛整页都是安静的，
+    // 音频状态还停在「待启用」，用户完全不知道该怎么让它出声。
+    //
+    // 这里复用既有的 ensureAudioReady()，与那两个入口走同一条解锁流程，
+    // 不新增旁路、不碰 autoplay 策略。
+    //
+    // 它也不会让普通页面漏出持续 BGM：unlockAudioEngine() 只负责解锁引擎，
+    // 是否起播由 islandBgmActive 决定，而那一页此刻还没被 suspendBackgroundMusic()
+    // 置位，所以首页这边依然不会起播任何持续音乐。真正的路由跳转保持同步，
+    // 异步的解锁结果由 audioReady 触发上面那条声音状态 watcher，
+    // 知识岛的环境声与 BGM 在页面挂载后按当时的状态自行决定响不响。
+    void ensureAudioReady();
 
     if (route.name !== APP_ROUTE_NAME.KNOWLEDGE_ISLAND) {
       void router.push({ name: APP_ROUTE_NAME.KNOWLEDGE_ISLAND });

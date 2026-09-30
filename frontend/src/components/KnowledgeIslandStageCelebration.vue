@@ -8,10 +8,17 @@
 // 阶段名 / 新元素 / 岛屿画面全部来自 knowledgeIslandGrowth 的纯函数结果。
 import KnowledgeIslandGrowth from "./KnowledgeIslandGrowth.vue";
 
+// 契约：celebration 是可空对象，null = 「现在没有要庆祝的阶段变化」。
+// 它必须可空、且不能 required：这个弹层是常驻挂在 App 根节点的，
+// 由父级传进来的 knowledgeIslandStageCelebration 初值就是 null，
+// 只有服务端确认这次真的跨过阶段阈值时才会被填上对象。
+// 下面模板里的 v-if="props.celebration" 就是靠这个 null 来决定「什么都不画」，
+// 所以声明如果写成 required:true，就会和模板自己的约定打架，
+// 每次冷启动都刷一条 prop 校验警告。两者必须同时是「可空」。
 const props = defineProps({
   celebration: {
     type: Object,
-    required: true
+    default: null
   }
 });
 

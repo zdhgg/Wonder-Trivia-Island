@@ -21,24 +21,42 @@
 //   - 组件卸载时暂停并归零，再进来按全局状态恢复；
 //   - 播放由 islandAmbience 负责，每种素材各一个实例，快速进出不会叠播。
 //
-// 还有一个「借」的动作：系统背景音乐和海浪一起响会显繁杂，
-// 所以进入这一页时把系统 BGM 临时让出来，离开时原样还回去。
-// 这是 route/page 生命周期内的临时 pause/resume，
-// 不是修改用户的全局背景音乐设置 —— 用户的 BGM 开关、音量、偏好一个字都不动，
-// 而且离开时的恢复有四个条件同时成立才生效（见 audioEngine 的注释）。
-import { computed, onBeforeUnmount, onMounted, watch } from "vue";
+// 还有一件事：持续背景音乐（BGM）只属于这一页。
+// 进入时 suspendBackgroundMusic() 把持续音乐的所有权交给知识岛，
+// 离开时 resumeBackgroundMusic() 无条件收走 —— 普通页面一律不放持续音乐。
+// 这不修改用户的任何全局设置（BGM 开关、音量、偏好一个字都不动），
+// 状态只有一个布尔量，反复进出幂等（见 audioEngine 的注释）。
+//
+// 环境声有两层，都完全跟随全站声音状态：
+//   - islandAmbience：海浪循环 + 偶尔一声海鸥（任何阶段都一样）；
+//   - islandSoundscape：随阶段 / 繁荣度变化的风、船铃与雾号，
+//     鸥鸣间隔也随繁荣度收紧。两层都只在全局允许且引擎已解锁时才响。
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { storeToRefs } from "pinia";
 import { useRouter } from "vue-router";
 import KnowledgeIslandGrowth from "../components/KnowledgeIslandGrowth.vue";
-import { resumeBackgroundMusic, suspendBackgroundMusic } from "../audio/audioEngine";
+import { playAudioCue, resumeBackgroundMusic, suspendBackgroundMusic } from "../audio/audioEngine";
 import {
   startIslandAmbience,
   stopIslandAmbience,
-  syncIslandAmbiencePreferences
+  syncIslandAmbiencePreferences,
+  syncIslandAmbienceScene
 } from "../audio/islandAmbience";
+import {
+  resolveIslandSoundscape,
+  startIslandSoundscape,
+  stopIslandSoundscape,
+  syncIslandSoundscapePreferences,
+  syncIslandSoundscapeScene
+} from "../audio/islandSoundscape";
 import { useAudioStore } from "../stores/useAudioStore";
+import { usePageEntryCue } from "../composables/usePageEntryCue";
+import { useIslandBottle } from "../composables/useIslandBottle";
 import { APP_ROUTE_NAME } from "../router/routes.js";
-import { getKnowledgeIslandStageIndexById } from "../utils/knowledgeIslandGrowth.js";
+import {
+  KNOWLEDGE_ISLAND_STAGES,
+  getKnowledgeIslandStageIndexById
+} from "../utils/knowledgeIslandGrowth.js";
 import { KNOWLEDGE_ISLAND_PROSPERITY_TIERS } from "../utils/knowledgeIslandProsperity.js";
 
 const props = defineProps({
@@ -50,13 +68,31 @@ const props = defineProps({
 
 const router = useRouter();
 const audioStore = useAudioStore();
+const { playPageEntryCue } = usePageEntryCue();
+// 漂流瓶：每天一只。日期与存储在这一层，组件只收 prop、抛事件。
+const { bottleAvailable, bottleLine, openBottle } = useIslandBottle();
 
-const { audioReady, masterVolume, musicEnabled, sfxEnabled } = storeToRefs(audioStore);
+// 拆开瓶子的瞬间不能立刻收走瓶子：prop 一变，组件的 watch 会把刚弹出的
+// 字条气泡一起清掉。所以先让气泡说完话（约 2.4 秒），再记下「今天拆过了」。
+let bottleConsumeTimer = 0;
 
-// 把全站声音状态原样递给 islandAmbience，由它决定这一页该响还是该安静。
-// audioReady 也要带上：取消静音时 unlockAudioEngine() 是异步的，
-// 静音按钮先把音量改回来（此时还没解锁），过一会儿才解锁成功。
-// 不监听它的话，那一次取消静音就永远等不到"可以播了"的那一刻。
+function handleBottleOpen() {
+  if (typeof window === "undefined" || bottleConsumeTimer) {
+    return;
+  }
+
+  bottleConsumeTimer = window.setTimeout(() => {
+    bottleConsumeTimer = 0;
+    openBottle();
+  }, 2600);
+}
+
+const { masterVolume, musicEnabled, sfxEnabled } = storeToRefs(audioStore);
+
+// 把全站声音状态原样递给 islandAmbience / islandSoundscape，由它们决定这一页该响还是该安静。
+// 全局状态的变化由 useTriviaApp 里那条声音状态 watcher 统一送达（它同时也监听
+// audioReady，异步解锁完成的那个瞬间不会被漏掉）。挂载时这里再同步一次，
+// 是为了接住"进入这一页但全局状态自那以后没有变化过"的初始时刻。
 function currentAmbiencePreferences() {
   return {
     masterVolume: masterVolume.value,
@@ -65,30 +101,55 @@ function currentAmbiencePreferences() {
   };
 }
 
+// 阶段与繁荣度：声景的"配方"输入。阶段顺序仍然只有 knowledgeIslandGrowth 一个来源。
+const currentStageId = computed(() => String(props.island?.currentStage?.id || ""));
+const currentProsperityLevel = computed(() => Number(props.island?.prosperityLevel) || 0);
+
+// 把「现在岛上该听到什么」同步给两层声音：
+//   - islandSoundscape 按阶段加风 / 船铃 / 雾号；
+//   - islandAmbience 的鸥鸣间隔按繁荣度收紧（系数来自同一份声景配置）。
+function syncSceneToAudio() {
+  const scene = resolveIslandSoundscape(currentStageId.value, currentProsperityLevel.value);
+
+  syncIslandSoundscapeScene({
+    stageId: currentStageId.value,
+    prosperityLevel: currentProsperityLevel.value
+  });
+  syncIslandAmbienceScene({ gullDelayFactor: scene.gullDelayFactor });
+}
+
 onMounted(() => {
-  // 先把系统背景音乐让出来，再放海的声音：两者不同时响。
-  // 这一步只暂停，不改用户的任何偏好。
+  // 持续背景音乐只属于这一页：进入时交给知识岛，离开时彻底收走。
+  // 这一步本身不改用户的任何偏好；真正起不起播还要看引擎解没解锁、音量够不够。
   suspendBackgroundMusic();
   // 进来的第一件事只是"按全局状态恢复"，不会绕过交互闸门自己出声。
   syncIslandAmbiencePreferences(currentAmbiencePreferences());
   startIslandAmbience();
+  // 阶段化声景：风 / 船铃 / 雾号。同样只在全局允许且已解锁时才会真的响。
+  syncSceneToAudio();
+  syncIslandSoundscapePreferences(currentAmbiencePreferences());
+  startIslandSoundscape();
 });
 
-// 全局声音状态一变（右上角静音按钮、设置页里的开关与音量、音频被解锁），
-// 这一页立刻跟着变：静音就立刻停，取消静音就立刻恢复。
-// syncIslandAmbiencePreferences 是幂等的，重复触发没有副作用。
+// 全局声音状态的变化（右上角静音按钮、设置页里的开关与音量、音频被解锁）
+// 由 useTriviaApp 的声音状态 watcher 统一送达环境声，这一页不再自己监听一遍：
+// 同一份状态接两个 watch，容易在改动时只改一处、漏掉另一处。
+
+// 阶段 / 繁荣度一变（领完印章回到这一页、星星涨了），声景立刻换成新配方。
 watch(
-  () => [masterVolume.value, musicEnabled.value, sfxEnabled.value, audioReady.value],
+  () => [currentStageId.value, currentProsperityLevel.value],
   () => {
-    syncIslandAmbiencePreferences(currentAmbiencePreferences());
+    syncSceneToAudio();
   }
 );
 
 onBeforeUnmount(() => {
   // 离开这一页就把海浪与海鸥彻底停掉（定时器也一并清干净）。
   stopIslandAmbience();
-  // 再把系统背景音乐还回去：进入前在播、而且此刻全局仍然允许播，才继续播。
-  // 顺序很重要 —— 先静音这一页，再恢复别的页面的声音。
+  // 声景同样收干净：风平掉、铃与雾号的调度全部清掉。
+  stopIslandSoundscape();
+  // 再把持续背景音乐收走：普通页面本来就不放持续音乐，所以这一句之后
+  // 整个站点都是安静的。顺序很重要 —— 先静音这一页，再退场。
   resumeBackgroundMusic();
 });
 
@@ -109,7 +170,80 @@ const stagePosition = computed(() => {
   return `第 ${safeIndex + 1} / ${stageCount} 个阶段`;
 });
 
+// ---------------------------------------------------------------------------
+// 成长路线图：把 KNOWLEDGE_ISLAND_STAGES 的六个阶段整列摆出来。
+// 未解锁的显示剪影 + 锁，点一下告诉孩子还差几枚 —— 期待感是长期留存的核心。
+// 这一列只读阶段常量与已经算好的 stampCount，不做任何第二份阈值判定。
+// ---------------------------------------------------------------------------
+const stageRoadmap = computed(() => {
+  const stamps = stampCount.value;
+  const currentIndex = Math.max(0, getKnowledgeIslandStageIndexById(props.island?.currentStage?.id));
+
+  return KNOWLEDGE_ISLAND_STAGES.map((stage, index) => ({
+    id: stage.id,
+    name: stage.name,
+    glyph: stage.glyph,
+    threshold: stage.threshold,
+    reached: stamps >= stage.threshold,
+    isCurrent: index === currentIndex,
+    remaining: Math.max(0, stage.threshold - stamps)
+  }));
+});
+
+const roadmapMessage = ref("");
+let roadmapMessageTimer = 0;
+
+function showStageNote(stage) {
+  playAudioCue("toggle");
+
+  if (stage.isCurrent) {
+    roadmapMessage.value = `「${stage.name}」就是小岛现在的样子`;
+  } else if (stage.reached) {
+    roadmapMessage.value = `「${stage.name}」已经解锁啦`;
+  } else {
+    roadmapMessage.value = `再集 ${stage.remaining} 枚印章，就能解锁「${stage.name}」`;
+  }
+
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  if (roadmapMessageTimer) {
+    window.clearTimeout(roadmapMessageTimer);
+  }
+
+  roadmapMessageTimer = window.setTimeout(() => {
+    roadmapMessage.value = "";
+    roadmapMessageTimer = 0;
+  }, 3200);
+}
+
+onBeforeUnmount(() => {
+  if (roadmapMessageTimer) {
+    window.clearTimeout(roadmapMessageTimer);
+    roadmapMessageTimer = 0;
+  }
+
+  if (bottleConsumeTimer) {
+    window.clearTimeout(bottleConsumeTimer);
+    bottleConsumeTimer = 0;
+  }
+});
+
+// 繁荣度档位的星数范围：「0–20 星」「21–62 星」「63+ 星」，阈值直接读常量，不在这里重写。
+function tierRangeText(tier) {
+  if (tier.maxStars === null || tier.maxStars === undefined) {
+    return `${tier.minStars}+ 星`;
+  }
+
+  return `${tier.minStars}–${tier.maxStars} 星`;
+}
+
 function goHome() {
+  // 「返回首页」也是一次页面导航，响一声再走。
+  // 知识岛自己的 BGM 与环境声由下面 onBeforeUnmount 收掉，与这一声互不影响。
+  void playPageEntryCue();
+
   void router.push({ name: APP_ROUTE_NAME.HOME });
 }
 </script>
@@ -137,8 +271,15 @@ function goHome() {
       </div>
     </header>
 
-    <!-- 主体：同一座岛，只是不再被压缩在收藏册的小模块里。 -->
-    <KnowledgeIslandGrowth :island="island" size="hero" />
+    <!-- 主体：同一座岛，只是不再被压缩在收藏册的小模块里。
+         漂流瓶由这一页的 useIslandBottle 提供：每天一只，拆开就收走。 -->
+    <KnowledgeIslandGrowth
+      :island="island"
+      size="hero"
+      :bottle="bottleAvailable"
+      :bottle-line="bottleLine"
+      @bottle-open="handleBottleOpen"
+    />
 
     <p class="island-page__summary">{{ stageSummary }}</p>
 
@@ -180,7 +321,8 @@ function goHome() {
     </section>
 
     <!-- 繁荣度三档：档位名称与顺序都直接读 knowledgeIslandProsperity 的常量，
-         页面只负责把「已经走到哪一档」画出来，不在这里重新判定星数。 -->
+         页面只负责把「已经走到哪一档」画出来，不在这里重新判定星数。
+         每档补上星数范围，下面再跟一句本档进度，孩子看得见「下一档还有多远」。 -->
     <div class="island-page__tiers" aria-label="繁荣度三个档位">
       <span
         v-for="tier in KNOWLEDGE_ISLAND_PROSPERITY_TIERS"
@@ -192,8 +334,60 @@ function goHome() {
         ]"
       >
         {{ tier.label }}
+        <span class="island-page__tier-range">{{ tierRangeText(tier) }}</span>
       </span>
     </div>
+
+    <p class="island-page__tier-progress" data-role="island-page-tier-progress">
+      {{ island.prosperity.nextText }}
+      <template v-if="island.prosperity.hasNextTier">
+        （这一档已经走了 {{ island.prosperity.progressValue }} / {{ island.prosperity.progressTarget }} 颗）
+      </template>
+    </p>
+
+    <!-- 成长路线图：六个阶段整列摆出来，未解锁的是剪影 + 锁。
+         点任何一格都会告诉孩子这一格差几枚（或已经解锁）。 -->
+    <section class="island-page__roadmap" aria-label="小岛成长路线">
+      <h2 class="island-page__roadmap-title">小岛成长路线</h2>
+      <ol class="island-page__roadmap-list">
+        <li v-for="stage in stageRoadmap" :key="stage.id" class="island-page__roadmap-item">
+          <button
+            type="button"
+            :class="[
+              'island-page__roadmap-stage',
+              {
+                'island-page__roadmap-stage--reached': stage.reached,
+                'island-page__roadmap-stage--current': stage.isCurrent
+              }
+            ]"
+            :data-role="`island-page-roadmap-${stage.id}`"
+            :aria-label="
+              stage.reached
+                ? `${stage.name}，${stage.threshold} 枚印章，已解锁`
+                : `${stage.name}，需要 ${stage.threshold} 枚印章，还差 ${stage.remaining} 枚`
+            "
+            @click="showStageNote(stage)"
+          >
+            <span class="island-page__roadmap-glyph" aria-hidden="true">
+              {{ stage.reached ? stage.glyph : "🔒" }}
+            </span>
+            <span class="island-page__roadmap-name">{{ stage.name }}</span>
+            <span class="island-page__roadmap-threshold">
+              {{ stage.reached ? `${stage.threshold} 枚` : `还差 ${stage.remaining} 枚` }}
+            </span>
+          </button>
+        </li>
+      </ol>
+      <p
+        v-if="roadmapMessage"
+        class="island-page__roadmap-message"
+        data-role="island-page-roadmap-message"
+        role="status"
+        aria-live="polite"
+      >
+        {{ roadmapMessage }}
+      </p>
+    </section>
   </section>
 </template>
 
@@ -430,6 +624,9 @@ function goHome() {
 }
 
 .island-page__tier {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
   padding: 4px 12px;
   border: 1.5px dashed rgba(36, 50, 74, 0.16);
   border-radius: 999px;
@@ -437,6 +634,12 @@ function goHome() {
   font-size: 0.8rem;
   font-weight: 800;
   opacity: 0.55;
+}
+
+.island-page__tier-range {
+  font-size: 0.72rem;
+  font-weight: 700;
+  opacity: 0.85;
 }
 
 .island-page__tier--reached {
@@ -460,6 +663,157 @@ function goHome() {
   border-color: rgba(198, 141, 26, 0.4);
   background: rgba(255, 249, 226, 0.92);
   color: #8a5a00;
+}
+
+.island-page__tier-progress {
+  margin: 0;
+  color: var(--color-ink-soft);
+  font-size: 0.84rem;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+/* ===========================================================================
+   成长路线图
+   ---------------------------------------------------------------------------
+   六个阶段整列摆出：已解锁的显示阶段图标，未解锁的是锁 + 剪影灰。
+   当前阶段描一圈边，点任何一格都会给出「还差几枚」的回话。
+   =========================================================================== */
+.island-page__roadmap {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1.5px solid rgba(36, 50, 74, 0.1);
+  border-radius: 20px;
+  background: linear-gradient(160deg, #ffffff 0%, #f7fbfe 100%);
+  box-shadow: 0 18px 30px -32px rgba(36, 50, 74, 0.4);
+}
+
+.island-page__roadmap-title {
+  margin: 0;
+  color: var(--color-ink);
+  font-family: "ZCOOL KuaiLe", "Baloo 2", "Trebuchet MS", sans-serif;
+  font-size: 1.05rem;
+  line-height: 1.3;
+}
+
+.island-page__roadmap-list {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.island-page__roadmap-item {
+  min-width: 0;
+}
+
+.island-page__roadmap-stage {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  width: 100%;
+  min-height: 96px;
+  padding: 10px 6px;
+  border: 1.5px solid rgba(36, 50, 74, 0.12);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--color-ink-soft);
+  font: inherit;
+  cursor: pointer;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    background-color 160ms ease;
+}
+
+.island-page__roadmap-stage:hover,
+.island-page__roadmap-stage:focus-visible {
+  border-color: rgba(124, 216, 184, 0.5);
+  background: rgba(247, 252, 249, 0.98);
+  box-shadow: 0 12px 20px -20px rgba(36, 50, 74, 0.42);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.island-page__roadmap-glyph {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  background: rgba(238, 244, 248, 0.9);
+  font-size: 1.25rem;
+  line-height: 1;
+  /* 未解锁的格子：图标位置换成锁，整体压灰一点，像剪影。 */
+  filter: grayscale(0.9);
+  opacity: 0.66;
+}
+
+.island-page__roadmap-stage--reached .island-page__roadmap-glyph {
+  background: rgba(238, 250, 246, 0.95);
+  filter: none;
+  opacity: 1;
+}
+
+.island-page__roadmap-name {
+  color: var(--color-ink);
+  font-size: 0.78rem;
+  font-weight: 900;
+  line-height: 1.3;
+  text-align: center;
+}
+
+.island-page__roadmap-stage:not(.island-page__roadmap-stage--reached) .island-page__roadmap-name {
+  color: var(--color-ink-soft);
+}
+
+.island-page__roadmap-threshold {
+  font-size: 0.7rem;
+  font-weight: 800;
+  line-height: 1.2;
+  opacity: 0.85;
+}
+
+/* 当前阶段：一圈清楚的描边 + 微微发光，一眼认出「小岛现在在这里」。 */
+.island-page__roadmap-stage--current {
+  border-color: rgba(72, 154, 148, 0.55);
+  background: rgba(238, 250, 246, 0.9);
+  box-shadow: 0 0 0 3px rgba(124, 216, 184, 0.25);
+}
+
+.island-page__roadmap-message {
+  margin: 0;
+  color: #1f6b51;
+  font-size: 0.86rem;
+  font-weight: 900;
+  line-height: 1.5;
+}
+
+@media (max-width: 900px) {
+  .island-page__roadmap-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .island-page__roadmap-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .island-page__roadmap-stage {
+    transition: none;
+  }
+
+  .island-page__roadmap-stage:hover,
+  .island-page__roadmap-stage:focus-visible {
+    transform: none;
+  }
 }
 
 @media (max-width: 900px) {

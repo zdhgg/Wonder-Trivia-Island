@@ -1,20 +1,22 @@
-// 系统背景音乐被知识岛「临时借用」的行为约束（纯逻辑，不碰真实音频）。
+// 背景音乐的作用范围（纯逻辑，不碰真实音频）。
 //
-// 知识岛要的是「专属环境声」：进页面把系统 BGM 让出来，走的时候原样还回去。
-// 这里锁住的是那件事的边界 —— 借还必须是页面生命周期内的临时 pause/resume，
-// 而不是一个偷偷改掉用户偏好的开关。
+// 这一份锁住的是**页面范围**：
+//   持续 BGM 只属于知识岛这一页。首页、答题、设置等普通页面一律不放持续音乐；
+//   进入知识岛才起播，离开知识岛必定停。
 //
-// 覆盖的五条：
-//   1) 进入知识岛 → BGM 真的暂停，并且记住「进入前在不在播」；
-//   2) 离开知识岛 → 按进入前的状态原样恢复；
-//   3) 进入前本来就没播 → 离开时绝不擅自启动；
-//   4) suspend 幂等：连续借两次不会把「在播」记丢（否则 BGM 再也回不来）；
-//   5) 恢复要四个条件同时成立：进入前在播 + musicEnabled 仍开着 +
-//      没有全局静音 + 音量够听。用户在岛上期间改了其中任何一项，
-//      离开时都必须尊重，绝不能擅自把 BGM 打开。
+// 覆盖的八条：
+//   1) 普通页面解锁音频：只解锁引擎，BGM 不启动，也不新建 <audio>；
+//   2) 进入知识岛 → BGM 起播；
+//   3) 离开知识岛 → BGM 停止，且此后在普通页面上也不会自己回来；
+//   4) suspend 幂等：连续进入不会新建第二个元素；
+//   5) 反复进出 N 次：元素总数不变（不叠出第二个实例）；
+//   6) 知识岛上才解锁声音：那一次手势之后音乐就响；
+//   7) 知识岛期间关掉音乐 / 全局静音 / 音乐音量拉到 0 → 都不响，也不擅自重开；
+//   8) 取消静音后，只有"仍在知识岛且各项允许"才恢复 —— 普通页面取消静音不启动。
 //
 // 测试环境没有 window，所以 WebAudio 那条路整个走不通（createAudioGraph 返回 null），
-// 只剩 <audio> 元素这一条分支 —— 正好就是被借用的那一条。
+// 剩下 <audio> 元素这一条分支 —— 也就是 WAV 降级路径。
+// Tone 主路径由 audioEngine.toneBgm.test.js 用假 Tone 单独覆盖。
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 class FakeAudio {
@@ -66,81 +68,98 @@ afterEach(() => {
   delete globalThis.Audio;
 });
 
-// 走完一次解锁：这时系统 BGM 正在播，正是「知识岛页面被打开」的那一刻之前的状态。
-async function unlockWithMusicPlaying() {
+// 走完一次解锁，但**当前不在知识岛**。
+// 这正是"首页点一次启用音频"的真实状态：引擎解锁了，音乐不该起。
+async function unlockOnNormalPage() {
   engine = await loadEngine();
   await engine.unlockAudioEngine();
-  expect(engine.isBackgroundMusicPlaying()).toBe(true);
+  return engine;
 }
 
-describe("知识岛借走系统背景音乐", () => {
-  it("进入知识岛：BGM 暂停，并且记住进入前是在播的", async () => {
-    await unlockWithMusicPlaying();
+// 解锁 + 进入知识岛：这时音乐才应该响。
+async function unlockOnIsland() {
+  engine = await loadEngine();
+  await engine.unlockAudioEngine();
+  engine.suspendBackgroundMusic();
+  return engine;
+}
+
+describe("背景音乐只属于知识岛", () => {
+  it("普通页面解锁音频：只解锁引擎，背景音乐不启动", async () => {
+    await unlockOnNormalPage();
+
+    expect(engine.isBackgroundMusicPlaying()).toBe(false);
+    // 「不应持续播放」不等于「什么都不许准备」：解锁闸门仍然要放行音效，
+    // 所以 <audio> 元素可能存在，但绝不能处于播放状态。
     const music = backgroundAudio();
 
-    const wasPlaying = engine.suspendBackgroundMusic();
-
-    expect(wasPlaying).toBe(true);
-    expect(engine.isBackgroundMusicSuppressed()).toBe(true);
-    expect(engine.isBackgroundMusicPlaying()).toBe(false);
-    expect(music.paused).toBe(true);
+    if (music) {
+      expect(music.paused).toBe(true);
+    }
   });
 
-  it("离开知识岛：按进入前的状态把 BGM 还回去", async () => {
-    await unlockWithMusicPlaying();
-    const music = backgroundAudio();
-    const playCallsBefore = music.playCalls;
+  it("普通页面解锁时也不该凭空多拉一个背景音乐元素", async () => {
+    await unlockOnNormalPage();
+
+    // 没有音乐就没有 <audio>；有的话也不该在播。
+    const playing = FakeAudio.instances.filter((audio) => !audio.paused);
+
+    expect(playing).toHaveLength(0);
+  });
+
+  it("进入知识岛：背景音乐起播", async () => {
+    await unlockOnNormalPage();
 
     engine.suspendBackgroundMusic();
-    const resumed = engine.resumeBackgroundMusic();
 
-    expect(resumed).toBe(true);
-    expect(engine.isBackgroundMusicSuppressed()).toBe(false);
     expect(engine.isBackgroundMusicPlaying()).toBe(true);
-    expect(music.playCalls).toBe(playCallsBefore + 1);
+    expect(backgroundAudio()?.paused).toBe(false);
   });
 
-  it("进入前 BGM 本来就没播：离开时绝不擅自启动", async () => {
-    engine = await loadEngine();
-    // 还没解锁 —— 用户的 BGM 此刻就是静默的。
-    expect(engine.isBackgroundMusicPlaying()).toBe(false);
-
-    const wasPlaying = engine.suspendBackgroundMusic();
-    expect(wasPlaying).toBe(false);
-
-    const resumed = engine.resumeBackgroundMusic();
-    expect(resumed).toBe(false);
-    expect(engine.isBackgroundMusicPlaying()).toBe(false);
-    // 借用不该凭空把那个 7MB 循环拉下来。
-    expect(FakeAudio.instances).toHaveLength(0);
-  });
-
-  it("连续借两次不会把「本来在播」记丢，BGM 回得来", async () => {
-    await unlockWithMusicPlaying();
-    const music = backgroundAudio();
-    // 解锁流程里 primeBackgroundAudio() 也会暂停一次，所以从当前值开始比。
-    const pauseCallsBefore = music.pauseCalls;
-
-    engine.suspendBackgroundMusic();
-    // 幂等：第二次进入时音频已经被我们自己暂停了，
-    // 如果照着 !paused 重新记一次，就会永远记成 false。
-    engine.suspendBackgroundMusic();
-    engine.suspendBackgroundMusic();
-    expect(music.pauseCalls - pauseCallsBefore).toBe(1);
+  it("离开知识岛：背景音乐停止", async () => {
+    await unlockOnIsland();
+    expect(engine.isBackgroundMusicPlaying()).toBe(true);
 
     engine.resumeBackgroundMusic();
+
+    expect(engine.isBackgroundMusicPlaying()).toBe(false);
+    expect(backgroundAudio()?.paused).toBe(true);
+  });
+
+  it("离开知识岛之后即使继续改设置，音乐也不会在普通页面上自己回来", async () => {
+    await unlockOnIsland();
+    engine.resumeBackgroundMusic();
+
+    // 改音量、改开关都不会把普通页面的音乐拉起来。
+    engine.syncAudioSettings({ musicVolume: 0.42, musicEnabled: true, masterVolume: 0.72 });
+    expect(engine.isBackgroundMusicPlaying()).toBe(false);
+
+    engine.syncAudioSettings({ masterVolume: 0 });
+    engine.syncAudioSettings({ masterVolume: 0.72 });
+    expect(engine.isBackgroundMusicPlaying()).toBe(false);
+  });
+
+  it("连续进入三次是幂等的：不会新建第二个元素", async () => {
+    await unlockOnNormalPage();
+    const instanceCount = FakeAudio.instances.length;
+
+    engine.suspendBackgroundMusic();
+    engine.suspendBackgroundMusic();
+    engine.suspendBackgroundMusic();
+
+    expect(FakeAudio.instances).toHaveLength(instanceCount);
     expect(engine.isBackgroundMusicPlaying()).toBe(true);
   });
 
   it("反复进出 5 次：只暂停/恢复玩家自己的那一条，不新建元素", async () => {
-    await unlockWithMusicPlaying();
+    await unlockOnIsland();
     const music = backgroundAudio();
     const instanceCount = FakeAudio.instances.length;
 
     for (let round = 0; round < 5; round += 1) {
-      engine.suspendBackgroundMusic();
-      expect(engine.isBackgroundMusicPlaying()).toBe(false);
       engine.resumeBackgroundMusic();
+      expect(engine.isBackgroundMusicPlaying()).toBe(false);
+      engine.suspendBackgroundMusic();
       expect(engine.isBackgroundMusicPlaying()).toBe(true);
     }
 
@@ -148,102 +167,87 @@ describe("知识岛借走系统背景音乐", () => {
     expect(FakeAudio.instances[0]).toBe(music);
   });
 
-  it("在知识岛上才第一次打开声音：离开时 BGM 必须还回来", async () => {
+  it("在知识岛上才第一次打开声音：那一次手势之后音乐就响", async () => {
     engine = await loadEngine();
-    // 这一次文档里从来没交互过：进岛时引擎还没解锁，BGM 也没在播。
-    expect(engine.isBackgroundMusicPlaying()).toBe(false);
-
+    // 这一次文档里从来没交互过：进岛时引擎还没解锁，音乐也没响。
     engine.suspendBackgroundMusic();
     expect(engine.isBackgroundMusicPlaying()).toBe(false);
 
     // 用户在知识岛这一页点了右上角「取消静音」—— 那一下把引擎解锁了。
-    // BGM 之所以还没响，唯一原因就是被我们借出期间按住了。
     await engine.unlockAudioEngine();
-    // 借出期间 unlockAudioEngine 也不能把 BGM 抢着播起来。
-    expect(engine.isBackgroundMusicPlaying()).toBe(false);
 
-    const resumed = engine.resumeBackgroundMusic();
-
-    expect(resumed).toBe(true);
+    // 引擎一解锁，syncBackgroundAudio() 立刻按当前设置决定要不要起播。
     expect(engine.isBackgroundMusicPlaying()).toBe(true);
   });
 
-  it("在知识岛上打开声音之后又静音：离开时仍然不擅自打开", async () => {
+  it("普通页面取消静音（解锁）不会启动背景音乐", async () => {
     engine = await loadEngine();
-    engine.suspendBackgroundMusic();
+
+    // 这就是普通页面上点右上角「取消静音」：unlockAudioEngine() 会解锁引擎。
     await engine.unlockAudioEngine();
-    // muteAll()：主音量归零 + 两个通道都关掉。
-    engine.syncAudioSettings({ masterVolume: 0, musicEnabled: false, sfxEnabled: false });
-
-    engine.resumeBackgroundMusic();
 
     expect(engine.isBackgroundMusicPlaying()).toBe(false);
   });
 
-  it("知识岛期间关掉背景音乐：离开时绝不擅自重新打开", async () => {
-    await unlockWithMusicPlaying();
+  it("知识岛期间关掉背景音乐：立刻停，且不会擅自重开", async () => {
+    await unlockOnIsland();
     const music = backgroundAudio();
 
-    engine.suspendBackgroundMusic();
-    expect(engine.isBackgroundMusicPlaying()).toBe(false);
-
-    // 知识岛页面上没有自己的声音开关了，所以"关掉音乐"只能发生在全局设置里。
-    // 孩子在那期间把背景音乐关了 —— 离开时必须尊重这个选择。
     engine.syncAudioSettings({ musicEnabled: false });
-    const playCallsWhileSuppressed = music.playCalls;
-    const resumed = engine.resumeBackgroundMusic();
-
-    // 返回值仍然诚实地报告"进入前是在播的"，但真实播放状态是静音。
-    expect(resumed).toBe(true);
     expect(engine.isBackgroundMusicPlaying()).toBe(false);
-    expect(music.playCalls).toBe(playCallsWhileSuppressed);
+
+    const playCallsWhileOff = music.playCalls;
+    engine.syncAudioSettings({ musicEnabled: true });
+    expect(music.playCalls).toBe(playCallsWhileOff + 1);
   });
 
-  it("知识岛期间全局静音：离开时同样不恢复", async () => {
-    await unlockWithMusicPlaying();
+  it("知识岛期间全局静音：立刻停", async () => {
+    await unlockOnIsland();
     const music = backgroundAudio();
 
-    engine.suspendBackgroundMusic();
     // muteAll() 在 store 里做的事：主音量归零 + 两个通道都关掉。
     engine.syncAudioSettings({ masterVolume: 0, musicEnabled: false, sfxEnabled: false });
-    engine.resumeBackgroundMusic();
 
     expect(engine.isBackgroundMusicPlaying()).toBe(false);
     expect(music.volume).toBe(0);
   });
 
-  it("知识岛期间把音乐音量拉到 0：离开时不恢复；拉回来之后才会响", async () => {
-    await unlockWithMusicPlaying();
+  it("知识岛期间把音乐音量拉到 0：不响；拉回来之后才会响", async () => {
+    await unlockOnIsland();
 
-    engine.suspendBackgroundMusic();
     engine.syncAudioSettings({ musicVolume: 0 });
-    engine.resumeBackgroundMusic();
     expect(engine.isBackgroundMusicPlaying()).toBe(false);
 
-    // 用户后来又把音乐音量调回来了 —— 这时恢复 BGM 是顺着用户的意愿，不算擅自打开。
+    // 用户后来又把音乐音量调回来了 —— 这时恢复是顺着用户的意愿，不算擅自打开。
     engine.syncAudioSettings({ musicVolume: 0.42 });
     expect(engine.isBackgroundMusicPlaying()).toBe(true);
   });
 
-  it("全局静音优先：借出期间不会被偏好同步拉起来，还回来之后仍然是静音", async () => {
-    await unlockWithMusicPlaying();
-    const music = backgroundAudio();
+  it("全局静音优先：静音期间不会被偏好同步拉起来", async () => {
+    await unlockOnIsland();
 
-    engine.suspendBackgroundMusic();
-
-    // 借出期间用户改了设置：也不能把 BGM 顺手播起来。
-    engine.syncAudioSettings({ masterVolume: 0.5, musicEnabled: true });
+    engine.syncAudioSettings({ masterVolume: 0, musicEnabled: false });
     expect(engine.isBackgroundMusicPlaying()).toBe(false);
 
-    engine.resumeBackgroundMusic();
-    expect(engine.isBackgroundMusicPlaying()).toBe(true);
-
-    // 真正静音时优先级最高：还回来也不会响。
-    engine.syncAudioSettings({ masterVolume: 0 });
+    // 只改音乐音量、保持主音量为 0：仍然是静音优先，不许借机出声。
+    engine.syncAudioSettings({ musicVolume: 0.9, musicEnabled: true });
     expect(engine.isBackgroundMusicPlaying()).toBe(false);
 
+    // 主音量回来才恢复。
     engine.syncAudioSettings({ masterVolume: 0.72 });
     expect(engine.isBackgroundMusicPlaying()).toBe(true);
-    expect(music.volume).toBeGreaterThan(0);
+  });
+
+  it("静音状态会一直保持：连续同步设置不会自己重新起播", async () => {
+    await unlockOnIsland();
+
+    engine.syncAudioSettings({ masterVolume: 0, musicEnabled: false, sfxEnabled: false });
+
+    for (let i = 0; i < 5; i += 1) {
+      engine.syncAudioSettings({ musicVolume: 0.5, masterVolume: 0.72 });
+      engine.syncAudioSettings({ masterVolume: 0 });
+    }
+
+    expect(engine.isBackgroundMusicPlaying()).toBe(false);
   });
 });

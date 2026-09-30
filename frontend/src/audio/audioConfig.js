@@ -67,6 +67,42 @@ export const AUDIO_CUES = Object.freeze({
   toggle: Object.freeze([
     { frequency: 493.88, start: 0, duration: 0.08, volume: 0.09, type: "triangle" },
     { frequency: 659.25, start: 0.08, duration: 0.16, volume: 0.11, type: "triangle" }
+  ]),
+  // ---------------------------------------------------------------------------
+  // 知识岛热点的「声画同步」短音（只走 WebAudio 合成路径，没有 WAV 素材）。
+  // 全部是两三个音的极短动机，音量刻意压得很低 —— 是"点一下有个回应"，
+  // 不是"点一下放一段音乐"。
+  // ---------------------------------------------------------------------------
+  // 贝壳：清亮的一声"叮"。
+  ding: Object.freeze([
+    { frequency: 1318.51, start: 0, duration: 0.09, volume: 0.08, type: "triangle" },
+    { frequency: 1760, start: 0.08, duration: 0.14, volume: 0.07, type: "triangle" }
+  ]),
+  // 石头：低低的一声闷响。
+  thud: Object.freeze([
+    { frequency: 130.81, start: 0, duration: 0.1, volume: 0.16, type: "sine" },
+    { frequency: 98, start: 0.09, duration: 0.14, volume: 0.13, type: "sine" }
+  ]),
+  // 海面：下行的两个音，模仿"扑通"。
+  plop: Object.freeze([
+    { frequency: 220, start: 0, duration: 0.07, volume: 0.14, type: "sine" },
+    { frequency: 146.83, start: 0.07, duration: 0.13, volume: 0.12, type: "sine" }
+  ]),
+  // 太阳：一串很轻的琶音。
+  chime: Object.freeze([
+    { frequency: 1046.5, start: 0, duration: 0.08, volume: 0.06, type: "triangle" },
+    { frequency: 1318.51, start: 0.07, duration: 0.08, volume: 0.06, type: "triangle" },
+    { frequency: 1567.98, start: 0.14, duration: 0.12, volume: 0.06, type: "triangle" }
+  ]),
+  // 云朵：软软的两声。
+  puff: Object.freeze([
+    { frequency: 392, start: 0, duration: 0.1, volume: 0.06, type: "sine" },
+    { frequency: 523.25, start: 0.09, duration: 0.12, volume: 0.05, type: "sine" }
+  ]),
+  // 漂流瓶：拆开字条的一声轻响。
+  message: Object.freeze([
+    { frequency: 659.25, start: 0, duration: 0.09, volume: 0.08, type: "triangle" },
+    { frequency: 880, start: 0.08, duration: 0.15, volume: 0.08, type: "triangle" }
   ])
 });
 

@@ -6,6 +6,7 @@ import KnowledgeIslandStageCelebration from "./components/KnowledgeIslandStageCe
 import PracticeHomeView from "./views/PracticeHomeView.vue";
 import StudyMapView from "./views/StudyMapView.vue";
 import { createRouterDrivenPages } from "./composables/app/useRouterDrivenPages";
+import { usePageEntryCue } from "./composables/usePageEntryCue";
 import { useSettingsCenter } from "./composables/useSettingsCenter";
 import { useToolsCenter } from "./composables/useToolsCenter";
 import { useTriviaApp } from "./composables/useTriviaApp";
@@ -32,6 +33,7 @@ export default {
   },
   setup() {
     const app = useTriviaApp();
+    const { playPageEntryCue } = usePageEntryCue();
     const settingsCenter = useSettingsCenter(app);
     const toolsCenter = useToolsCenter(app);
     // 工具台 / 设置页已由路由负责渲染，这里只做 props 与事件的适配
@@ -151,6 +153,30 @@ export default {
       toolsCenter.openToolsWorkspace(sectionId);
     }
 
+    /**
+     * 「点这个按钮会把你带到另一个页面」—— 响一次轻短音效，然后照常执行原来的动作。
+     *
+     * 为什么要包一层而不是直接改那些导航函数本身：首页的入口已经在
+     * PracticeHomeView 里就地响过一声了，而大地图的岛卡、闯关地图的关卡、
+     * 学习地图的课程……最终都汇流到同一批 openXxxView / startXxx 函数。
+     * 如果把音效塞进那些函数里，首页点「错题练习」就会响两次。
+     * 所以这里只包"点击发生的那一瞬间"，导航函数本身保持原样：
+     * **一次点击 = 一声**，这条性质靠绑定处收口，而不是靠调用链上的运气。
+     *
+     * 什么时候不包（有意为之）：
+     *   - 右上角那颗声音按钮：它自己就是声音开关，语义上不是"进入页面"；
+     *   - 答题页的选项、错题本的筛选标签：已经有 success / error 那套音效，
+     *     或者只是页内切换，不是页面入口；
+     *   - 「重开 / 重新加载」：是重跑当前内容，不是换一个页面。
+     *
+     * 静音的判定、首次点击的解锁都在 useTriviaApp.playPageEntryCue() 里，
+     * 这里不重复判断，也不碰用户的音量与开关。
+     */
+    function withEntryCue(action, ...args) {
+      void playPageEntryCue();
+      return action(...args);
+    }
+
     return {
       ...app,
       ...settingsCenter,
@@ -163,7 +189,8 @@ export default {
       challengeSceneryZones,
       toggleGlobalMute,
       handleHomeNavigation,
-      openToolsWorkspace
+      openToolsWorkspace,
+      withEntryCue
     };
   }
 };
@@ -181,7 +208,7 @@ export default {
   >
     <header v-if="!isImmersiveView && !isQuizActive" :class="['site-nav', { 'site-nav--home': currentView === VIEW_MODE.HOME }]">
       <div class="site-nav__compact">
-        <button class="site-brand__home" type="button" @click="handleHomeNavigation">
+        <button class="site-brand__home" type="button" @click="withEntryCue(handleHomeNavigation)">
           <span class="site-brand__home-mark">奇妙知识岛</span>
         </button>
 
@@ -200,21 +227,21 @@ export default {
             v-if="currentView !== VIEW_MODE.HOME"
             class="site-nav__quick-button"
             type="button"
-            @click="handleHomeNavigation"
+            @click="withEntryCue(handleHomeNavigation)"
           >
             返回首页
           </button>
           <button
             :class="['site-nav__quick-button', 'site-nav__quick-button--manage', { 'site-nav__quick-button--active': isToolsActive }]"
             type="button"
-            @click="openToolsWorkspace"
+            @click="withEntryCue(openToolsWorkspace)"
           >
             工具
           </button>
           <button
             :class="['site-nav__quick-button', 'site-nav__quick-button--settings', { 'site-nav__quick-button--active': isSettingsActive }]"
             type="button"
-            @click="openSettingsView"
+            @click="withEntryCue(openSettingsView)"
           >
             设置
           </button>
@@ -263,10 +290,10 @@ export default {
         :initial-lesson-id="selectedStudyLessonId"
         :systematic-sections="knowledgeSystematicSections"
         :knowledge-items="knowledgeStudyItems"
-        @start-practice="startKnowledgeTagPractice"
-        @open-study-lesson="openStudyLessonPlayer"
-        @open-wrong-review="openWrongBookView"
-        @open-study-map="openStudyMapView"
+        @start-practice="withEntryCue(startKnowledgeTagPractice)"
+        @open-study-lesson="withEntryCue(openStudyLessonPlayer)"
+        @open-wrong-review="withEntryCue(openWrongBookView)"
+        @open-study-map="withEntryCue(openStudyMapView)"
       />
 
       <StudyMapView
@@ -277,10 +304,10 @@ export default {
         :selected-lesson-id="selectedStudyLessonId"
         :profile-grade="studyProfileGrade"
         :active-grade="studyMapGrade"
-        @select-grade="openStudyMapView({ grade: $event })"
-        @continue-lesson="openStudyLessonPlayer"
-        @open-lesson="openStudyLessonPlayer"
-        @back="openStudyView"
+        @select-grade="withEntryCue(openStudyMapView, { grade: $event })"
+        @continue-lesson="withEntryCue(openStudyLessonPlayer)"
+        @open-lesson="withEntryCue(openStudyLessonPlayer)"
+        @back="withEntryCue(openStudyView)"
       />
 
       <StudyLessonPlayerView
@@ -297,9 +324,9 @@ export default {
         :overview="wrongBookOverview"
         :wrong-questions="wrongQuestionItems"
         :focus-knowledge-tag="wrongBookFocusTag"
-        @start-review="startWrongQuestionReview"
-        @review-question="startSingleWrongQuestionReview"
-        @practice-knowledge="startKnowledgeTagPractice"
+        @start-review="withEntryCue(startWrongQuestionReview)"
+        @review-question="withEntryCue(startSingleWrongQuestionReview)"
+        @practice-knowledge="withEntryCue(startKnowledgeTagPractice)"
       />
 
       <section v-else-if="currentView === VIEW_MODE.CHALLENGE_WORLD" class="challenge-panel challenge-world-map">
@@ -311,7 +338,7 @@ export default {
           </div>
 
           <div class="challenge-route__actions-group">
-            <button class="btn-cartoon btn-cartoon--settings-float" type="button" @click="openSettingsView">
+            <button class="btn-cartoon btn-cartoon--settings-float" type="button" @click="withEntryCue(openSettingsView)">
               ⚙️ 系统设置
             </button>
           </div>
@@ -326,7 +353,7 @@ export default {
               'challenge-world-card--current': chapter.isCurrentGrade,
               'challenge-world-card--other': chapter.isOtherGrade
             }"
-            @click="openChallengeView({ nextChallengeChapterId: chapter.id })"
+            @click="withEntryCue(openChallengeView, { nextChallengeChapterId: chapter.id })"
           >
             <span v-if="chapter.isCurrentGrade" class="challenge-world-card__own-badge">我的年级</span>
             <div class="challenge-world-card__icon">{{ chapter.emoji || '🏝️' }}</div>
@@ -351,7 +378,7 @@ export default {
         <!-- 🧭 Top Adventure Toolbar -->
         <div class="challenge-route__header-toolbar">
           <div class="challenge-route__title-group">
-            <button class="btn-cartoon btn-cartoon--ghost btn-cartoon--world-map" type="button" @click="openChallengeWorld" title="返回大地图">
+            <button class="btn-cartoon btn-cartoon--ghost btn-cartoon--world-map" type="button" @click="withEntryCue(openChallengeWorld)" title="返回大地图">
               🗺️ 世界大地图
             </button>
             <span class="challenge-route__badge-tag">🌋 主线探险</span>
@@ -360,10 +387,10 @@ export default {
           </div>
 
           <div class="challenge-route__actions-group">
-            <button class="btn-cartoon btn-cartoon--settings-float" type="button" @click="openQuizSettings">
+            <button class="btn-cartoon btn-cartoon--settings-float" type="button" @click="withEntryCue(openQuizSettings)">
               ⚙️ 关卡设置
             </button>
-            <button v-if="challengeAchievements.length" class="btn-cartoon btn-cartoon--backpack-float" type="button" @click="openBackpack(selectedChallengeChapterId)">
+            <button v-if="challengeAchievements.length" class="btn-cartoon btn-cartoon--backpack-float" type="button" @click="withEntryCue(openBackpack, selectedChallengeChapterId)">
               📖 我的探险收藏册
             </button>
           </div>
@@ -423,7 +450,7 @@ export default {
             :style="{ '--challenge-node-offset': stage.routeOffset }"
             type="button"
             :disabled="isLoading"
-            @click="selectChallengeStage(stage.id)"
+            @click="withEntryCue(selectChallengeStage, stage.id)"
           >
             <span class="challenge-node__halo" aria-hidden="true"></span>
 
@@ -501,7 +528,7 @@ export default {
           <button
             class="btn-cartoon btn-cartoon--pink btn-cartoon--back"
             type="button"
-            @click="isChallengeMode ? openChallengeView() : openHomeView()"
+            @click="isChallengeMode ? withEntryCue(openChallengeView) : withEntryCue(openHomeView)"
           >
             🔙 返回{{ isChallengeMode ? "地图" : "首页" }}
           </button>
@@ -569,11 +596,11 @@ export default {
                   v-if="isChallengeMode"
                   class="btn-cartoon btn-cartoon--pink"
                   type="button"
-                  @click="openChallengeView"
+                  @click="withEntryCue(openChallengeView)"
                 >
                   返回地图
                 </button>
-                <button class="btn-cartoon" type="button" @click="openQuizSettings">
+                <button class="btn-cartoon" type="button" @click="withEntryCue(openQuizSettings)">
                   {{ settingsButtonText }}
                 </button>
 
@@ -628,21 +655,21 @@ export default {
                   v-if="shouldShowQuizSettingsButton"
                   class="btn-cartoon btn-cartoon--yellow"
                   type="button"
-                  @click="openQuizSettings"
+                  @click="withEntryCue(openQuizSettings)"
                 >
                   {{ settingsButtonText }}
                 </button>
                 <button
                   class="btn-cartoon btn-cartoon--mint"
                   type="button"
-                  @click="openImportView"
+                  @click="withEntryCue(openImportView)"
                 >
                   去导入题库
                 </button>
                 <button
                   class="btn-cartoon"
                   type="button"
-                  @click="openHomeView"
+                  @click="withEntryCue(openHomeView)"
                 >
                   返回首页
                 </button>
@@ -663,9 +690,9 @@ export default {
             @question-resolved="handleQuizQuestionResolvedWithDailyTasks"
             @finished="handleQuizFinished"
             @restart="handleQuizRestart"
-            @next-stage="handleNextStage"
-            @open-wrong-review="openWrongBookView"
-            @practice-knowledge="startKnowledgeTagPractice"
+            @next-stage="withEntryCue(handleNextStage)"
+            @open-wrong-review="withEntryCue(openWrongBookView)"
+            @practice-knowledge="withEntryCue(startKnowledgeTagPractice)"
           />
         </div>
       </section>

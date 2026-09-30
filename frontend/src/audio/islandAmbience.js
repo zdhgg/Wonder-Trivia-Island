@@ -3,6 +3,10 @@
 // 这一层刻意做得很薄：它不是第二个音频引擎，只是"一个循环 + 偶尔一声点缀"：
 //   - 不碰 WebAudio 图，不新增任何音频引擎；
 //   - 只有知识岛页面在挂载时调用 startIslandAmbience()、卸载时调用 stopIslandAmbience()；
+//     两者之间就是「页面在位」（running）状态。全局状态的同步（sync）只认它：
+//     页面不在位时，无论全局状态看起来多"该响"，这里都保持安静。没有这道闸，
+//     任何一个页面上的音量变化都会把海浪重新拉起来，而离开知识岛之后右上角
+//     的静音按钮反而管不到它 —— 首页听海浪、点静音停不掉（真实发生过的 bug）。
 //   - 没有自己的开关、自己的按钮、自己的偏好 —— 上一轮那颗「海岛声音」
 //     已经删掉，现在它完全跟随全站的声音状态（见 audioConfig 的
 //     isGlobalAudioAudible）。全站只有右上角那一个声音入口。
@@ -43,12 +47,18 @@ const ambienceState = {
     musicEnabled: DEFAULT_AUDIO_PREFERENCES.musicEnabled,
     sfxEnabled: DEFAULT_AUDIO_PREFERENCES.sfxEnabled
   },
+  // 「知识岛页面此刻在不在」：startIslandAmbience() 置 true，stopIslandAmbience() 置 false。
+  // syncIslandAmbiencePreferences 只在它为 true 时才允许起播；false 时一律保持安静。
+  running: false,
   // 海鸥的调度定时器。任何时刻最多只有一个待触发的。
   gullTimer: 0,
   // 是否已经叫过：决定下一次用「首声延迟」还是「随机间隔」。
   // 进这一页的第一声刻意固定得短一些（先只听一会儿海），之后就交给随机间隔，
   // 所以听不出规律。
   hasPlayedGullCry: false,
+  // 鸥鸣间隔的收紧系数：由 syncIslandAmbienceScene 按繁荣度下发。
+  // 岛上越热闹，海鸥叫得越勤一点（1 = 基础间隔，最小收紧到 0.62 倍）。
+  gullDelayFactor: 1,
   // 定时器句柄也要能被统一清掉，所以登记进来。
   activeTimers: new Set()
 };
@@ -176,8 +186,11 @@ function clearTimers() {
 
 function randomDelayMs() {
   const { minDelayMs, maxDelayMs } = ISLAND_GULL_CRY_SCHEDULE;
+  const factor = Number(ambienceState.gullDelayFactor);
+  // 繁荣度只收紧间隔（0 < 系数 ≤ 1），绝不放大 —— 上限仍然是配置里的 34~68 秒。
+  const safeFactor = Number.isFinite(factor) && factor > 0 && factor <= 1 ? factor : 1;
 
-  return minDelayMs + Math.random() * Math.max(0, maxDelayMs - minDelayMs);
+  return (minDelayMs + Math.random() * Math.max(0, maxDelayMs - minDelayMs)) * safeFactor;
 }
 
 function nextGullCryDelayMs() {
@@ -255,9 +268,41 @@ export function isIslandAmbiencePlaying() {
   return isWavesRunning();
 }
 
-// 知识岛页面挂载时调用：只在"全站没静音"且"这一份文档里已经发生过用户交互"
-// 的前提下起播。什么都没有发生过时这里只是安静地什么都不做。
+// 点画面上的海鸥时真的叫一声：复用环境声里那一份海鸥素材，
+// 所以「任意时刻最多一声」「全局静音优先」这些约束天然成立。
+// 与排程叫声不同：这一声由点击触发，不算在"几十秒一声"的调度里。
+export function playIslandGullCryOnce() {
+  if (!isAudible() || !isAudioEngineUnlocked()) {
+    return false;
+  }
+
+  const existing = ambienceState.audios[GULL_CRY_NAME];
+
+  if (existing && !existing.paused) {
+    return false;
+  }
+
+  const audio = getAmbienceAudio(GULL_CRY_NAME, { loop: false });
+
+  if (!audio || resolveAmbienceVolume(GULL_CRY_NAME) <= 0) {
+    return false;
+  }
+
+  audio.currentTime = 0;
+  audio.volume = resolveAmbienceVolume(GULL_CRY_NAME);
+  ambienceState.hasPlayedGullCry = true;
+  audio.play()?.catch?.(() => {});
+
+  return true;
+}
+
+// 知识岛页面挂载时调用：先把「页面在位」记下来，之后的全局状态同步才允许
+// 按全局状态起播 / 恢复（比如异步解锁完成的那个瞬间）；然后只在"全站没静音"
+// 且"这一份文档里已经发生过用户交互"的前提下起播。什么都没有发生过时这里
+// 只是安静地什么都不做。
 export function startIslandAmbience() {
+  ambienceState.running = true;
+
   if (!canPlayAmbience()) {
     return false;
   }
@@ -274,8 +319,9 @@ export function startIslandAmbience() {
   return started;
 }
 
-// 知识岛页面卸载时调用：真正暂停并归零，同时把海鸥的调度彻底清掉。
-export function stopIslandAmbience() {
+// 把声音停干净，但不改「页面在位」标志：静音（页面还在，之后可能恢复）与
+// 离开页面（不在了，之后绝不能再响）共用这一步，区别只由 running 表达。
+function stopAmbiencePlayback() {
   const waves = ambienceState.audios[WAVES_NAME];
 
   if (waves) {
@@ -286,9 +332,16 @@ export function stopIslandAmbience() {
   stopGullCry();
 }
 
+// 知识岛页面卸载时调用：页面从此不在位 —— 之后的任何全局状态同步都只会保持安静。
+export function stopIslandAmbience() {
+  ambienceState.running = false;
+  stopAmbiencePlayback();
+}
+
 // 全局声音状态变化时调用（总音量 / 音乐开关 / 音效开关 / 音频是否已解锁）。
-// 这是"右上角那一个按钮控制所有声音"在知识岛这一页的落点：
-// 全站静音 → 立刻停；取消静音且已经解锁过 → 立刻按全局状态恢复。
+// 这是"右上角那一个按钮控制所有声音"在环境声这一层的落点：全站静音 → 立刻停；
+// 取消静音且已经解锁过、且页面在位 → 立刻按全局状态恢复。
+// 无论在哪个页面被调用都必须安全：页面不在位时这里只保持安静，绝不起播。
 // 这个函数是幂等的，可以随便重复调用。
 export function syncIslandAmbiencePreferences(nextPreferences = {}) {
   ambienceState.settings = {
@@ -308,9 +361,12 @@ export function syncIslandAmbiencePreferences(nextPreferences = {}) {
     audio.volume = resolveAmbienceVolume(name);
   }
 
-  if (!canPlayAmbience()) {
-    // 全站静音 / 还没解锁 / 素材坏了：这一页保持安静，海鸥也不再排程。
-    stopIslandAmbience();
+  if (!ambienceState.running || !canPlayAmbience()) {
+    // 页面不在位 / 全站静音 / 还没解锁 / 素材坏了：保持安静，海鸥也不再排程。
+    // 「页面不在位」这道闸同时是兜底：全局状态在哪个页面上变化都会走到这里，
+    // 所以就算海浪因为任何原因还响着（异常残留、竞态），也会在这里被按住 ——
+    // 右上角那一个按钮在全站任何页面都管得住这一层。
+    stopAmbiencePlayback();
     return;
   }
 
@@ -325,4 +381,12 @@ export function syncIslandAmbiencePreferences(nextPreferences = {}) {
 // 离页清理干净时它必须是 0。
 export function getPendingGullCryCount() {
   return ambienceState.activeTimers.size;
+}
+
+// 繁荣度变化时调用：收紧或放松鸥鸣间隔（由 islandSoundscape 的配置表解释繁荣度）。
+// 只改"之后排的声"，已经在走的那一声定时器不受影响。
+export function syncIslandAmbienceScene(scene = {}) {
+  const factor = Number(scene.gullDelayFactor);
+
+  ambienceState.gullDelayFactor = Number.isFinite(factor) && factor > 0 && factor <= 1 ? factor : 1;
 }

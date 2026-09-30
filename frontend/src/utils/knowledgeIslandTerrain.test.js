@@ -60,7 +60,7 @@ describe("knowledgeIslandTerrain · 阶段与地形一一对应", () => {
 });
 
 describe("knowledgeIslandTerrain · 岛屿随阶段明显变大", () => {
-  it("五个阶段的岛身面积严格递增", () => {
+  it("六个阶段的岛身面积严格递增", () => {
     const areas = STAGE_IDS.map((stageId) => footprintArea(getKnowledgeIslandTerrain(stageId)));
 
     for (let index = 1; index < areas.length; index += 1) {
@@ -75,11 +75,12 @@ describe("knowledgeIslandTerrain · 岛屿随阶段明显变大", () => {
     const first = footprintArea(getKnowledgeIslandTerrain("first-sight"));
     const last = footprintArea(getKnowledgeIslandTerrain("knowledge-lighthouse"));
 
-    // 宽度口径也对齐本轮定下的 30% / 44% / 56% / 66% / 76% 量级。
+    // 宽度口径也对齐本轮定下的 30% / 44% / 56% / 66% / 71% / 76% 量级。
     expect(getKnowledgeIslandTerrain("first-sight").footprint.width).toBe(30);
     expect(getKnowledgeIslandTerrain("sprout-coast").footprint.width).toBe(44);
     expect(getKnowledgeIslandTerrain("palm-camp").footprint.width).toBe(56);
     expect(getKnowledgeIslandTerrain("explorer-dock").footprint.width).toBe(66);
+    expect(getKnowledgeIslandTerrain("starwatch-hill").footprint.width).toBe(71);
     expect(getKnowledgeIslandTerrain("knowledge-lighthouse").footprint.width).toBe(76);
 
     // 「明显的小沙洲」：最大阶段至少 4 倍面积。
@@ -161,10 +162,10 @@ describe("knowledgeIslandTerrain · 岸线 / 绿地 / 高地", () => {
     }
   });
 
-  it("高地只属于最高阶段（灯塔阶段）", () => {
+  it("高地从观星高台开始出现，一直留到灯塔阶段", () => {
     const withRelief = STAGE_IDS.filter((stageId) => getKnowledgeIslandTerrain(stageId).relief);
 
-    expect(withRelief).toEqual(["knowledge-lighthouse"]);
+    expect(withRelief).toEqual(["starwatch-hill", "knowledge-lighthouse"]);
   });
 
   it("所有形状都是 0~100 的合法多边形点，clip-path 与 SVG 共用同一份点", () => {

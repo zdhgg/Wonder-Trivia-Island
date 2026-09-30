@@ -20,8 +20,10 @@
 
 import { buildKnowledgeIslandProsperity } from "./knowledgeIslandProsperity";
 
-// 阶段阈值本轮固定：0 / 3 / 7 / 15 / 30。
+// 阶段阈值本轮固定：0 / 3 / 7 / 15 / 22 / 30。
 // 不动态生成、不随机、不消费印章——印章只累计，不会被花掉。
+// 22 这一档是后来补的：15 → 30 原本隔着整整 15 枚（一天一枚就是半个月），
+// 中段没有任何正反馈，所以在中间立了一座「观星高台」接住这段路。
 // 繁荣度阈值（0 / 21 / 63）独立定义在 knowledgeIslandProsperity，不与阶段阈值混在一起。
 export const KNOWLEDGE_ISLAND_STAGES = Object.freeze([
   Object.freeze({
@@ -31,7 +33,8 @@ export const KNOWLEDGE_ISLAND_STAGES = Object.freeze([
     glyph: "🏝️",
     summary: "一座刚刚露出海面的小岛，等着你每天来看看它。",
     // features 是本阶段结束时岛上有的全部元素（只会一个个多出来，不会消失）。
-    features: Object.freeze(["沙滩", "海浪"])
+    // 海星与漂流木是初见小岛的专属小物：空岛也可以空得有细节，而不是空得单薄。
+    features: Object.freeze(["沙滩", "海浪", "海星", "漂流木"])
   }),
   Object.freeze({
     id: "sprout-coast",
@@ -39,7 +42,7 @@ export const KNOWLEDGE_ISLAND_STAGES = Object.freeze([
     name: "萌芽海岸",
     glyph: "🌱",
     summary: "海岸边冒出第一丛嫩芽，小岛开始有生气了。",
-    features: Object.freeze(["沙滩", "海浪", "嫩芽", "小草丛"])
+    features: Object.freeze(["沙滩", "海浪", "海星", "漂流木", "嫩芽", "小草丛"])
   }),
   Object.freeze({
     id: "palm-camp",
@@ -47,7 +50,7 @@ export const KNOWLEDGE_ISLAND_STAGES = Object.freeze([
     name: "椰林营地",
     glyph: "🌴",
     summary: "椰子树长高了，树荫下多了一个可以歇脚的小营地。",
-    features: Object.freeze(["沙滩", "海浪", "嫩芽", "小草丛", "椰子树", "小帐篷"])
+    features: Object.freeze(["沙滩", "海浪", "海星", "漂流木", "嫩芽", "小草丛", "椰子树", "小帐篷"])
   }),
   Object.freeze({
     id: "explorer-dock",
@@ -55,7 +58,38 @@ export const KNOWLEDGE_ISLAND_STAGES = Object.freeze([
     name: "探险码头",
     glyph: "⛵",
     summary: "岛上修好了小码头，小船可以靠岸，也能出海看看。",
-    features: Object.freeze(["沙滩", "海浪", "嫩芽", "小草丛", "椰子树", "小帐篷", "小码头", "泊岸小船"])
+    features: Object.freeze([
+      "沙滩",
+      "海浪",
+      "海星",
+      "漂流木",
+      "嫩芽",
+      "小草丛",
+      "椰子树",
+      "小帐篷",
+      "小码头",
+      "泊岸小船"
+    ])
+  }),
+  Object.freeze({
+    id: "starwatch-hill",
+    threshold: 22,
+    name: "观星高台",
+    glyph: "🔭",
+    summary: "山坡上搭起了观星台，晚上能看见满天的星星。",
+    features: Object.freeze([
+      "沙滩",
+      "海浪",
+      "海星",
+      "漂流木",
+      "嫩芽",
+      "小草丛",
+      "椰子树",
+      "小帐篷",
+      "小码头",
+      "泊岸小船",
+      "观星台"
+    ])
   }),
   Object.freeze({
     id: "knowledge-lighthouse",
@@ -66,12 +100,15 @@ export const KNOWLEDGE_ISLAND_STAGES = Object.freeze([
     features: Object.freeze([
       "沙滩",
       "海浪",
+      "海星",
+      "漂流木",
       "嫩芽",
       "小草丛",
       "椰子树",
       "小帐篷",
       "小码头",
       "泊岸小船",
+      "观星台",
       "灯塔",
       "灯光"
     ])
@@ -83,12 +120,15 @@ export const KNOWLEDGE_ISLAND_MAX_STAGE = KNOWLEDGE_ISLAND_STAGES[KNOWLEDGE_ISLA
 // 岛上元素的图标：阶段配置只写元素名字，图标在这里集中一份，
 // 收藏册的舞台和阶段庆祝都从这里取，避免同一件东西在两处各画一遍。
 export const KNOWLEDGE_ISLAND_FEATURE_GLYPHS = Object.freeze({
+  海星: "🌟",
+  漂流木: "🪵",
   嫩芽: "🌱",
   小草丛: "🌿",
   椰子树: "🌴",
   小帐篷: "⛺",
   小码头: "🛶",
   泊岸小船: "⛵",
+  观星台: "🔭",
   灯塔: "🗼",
   灯光: "💡"
 });
