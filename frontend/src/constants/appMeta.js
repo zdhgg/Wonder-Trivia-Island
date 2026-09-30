@@ -1,14 +1,29 @@
 export const APP_META = Object.freeze({
   productName: "奇妙知识岛",
-  version: "1.5.0",
-  releaseTag: "v1.5.0",
-  releaseLabel: "1.5 导入流程与整册地图版",
-  releasedAt: "2026-09-14",
+  version: "1.6.0",
+  releaseTag: "v1.6.0",
+  releaseLabel: "1.6 知识岛成长与每日冒险版",
+  releasedAt: "2026-10-01",
   repositoryUrl: "https://github.com/zdhgg/Wonder-Trivia-Island",
-  releaseUrl: "https://github.com/zdhgg/Wonder-Trivia-Island/releases/tag/v1.5.0",
+  releaseUrl: "https://github.com/zdhgg/Wonder-Trivia-Island/releases/tag/v1.6.0",
   architectureSummary: "Vue 3 + Vite 8 · Node.js 24 + Express 5 · SQLite",
   dataModeLabel: "单学习档案 · 本机优先",
   changelog: Object.freeze([
+    Object.freeze({
+      version: "1.6.0",
+      tag: "v1.6.0",
+      date: "2026-10-01",
+      channel: "正式版",
+      title: "知识岛成长与每日学习冒险",
+      summary: "首页重排成每日学习冒险闭环，知识岛长大为有专属页面、随阶段与繁荣度生长的绘本小岛并配上自己的声音，新增探险收藏册与成长纪念册，AI 出题迁往外部网关与教学演示工作流。",
+      highlights: Object.freeze([
+        "首页改版为每日学习冒险：每日小任务、宝箱奖励和探险印章串起每天的成长闭环。",
+        "知识岛长成绘本小岛：地形随印章阶段生长、繁荣度随星星提升，拥有专属页面、太阳云朵海鸥等环境动画与贝壳石头漂流瓶轻互动，连点太阳还有黄昏彩蛋。",
+        "知识岛有了自己的声音：合成背景音乐只在岛上起播、离岛即停，页面切换配一声轻短音效，全部让位于音频解锁与全局静音。",
+        "新增探险收藏册与成长纪念册：印章、航海收藏与成就可随时翻阅，纪念册支持两条成长记录线、一起玩想法与照片灯箱。",
+        "AI 出题整体迁往外部网关：出题与教学演示走 External Harness 工作流，提案先审后用，本地网关只监听本机并收紧管理边界。"
+      ])
+    }),
     Object.freeze({
       version: "1.5.0",
       tag: "v1.5.0",
