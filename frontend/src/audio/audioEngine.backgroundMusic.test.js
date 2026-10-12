@@ -19,6 +19,66 @@
 // Tone 主路径由 audioEngine.toneBgm.test.js 用假 Tone 单独覆盖。
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+describe("island music entrance and reading mix", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => {
+    engine?.resumeBackgroundMusic();
+    vi.useRealTimers();
+  });
+
+  it("waits for the wave entrance, then fades in the WAV fallback", async () => {
+    await unlockOnNormalPage();
+    engine.suspendBackgroundMusic({ delayMs: 1200 });
+    vi.advanceTimersByTime(1199);
+    expect(engine.isBackgroundMusicPlaying()).toBe(false);
+    vi.advanceTimersByTime(1);
+    expect(engine.isBackgroundMusicPlaying()).toBe(true);
+    expect(backgroundAudio().volume).toBe(0);
+    vi.advanceTimersByTime(1800);
+    expect(backgroundAudio().volume).toBeCloseTo(0.72 * 0.42);
+  });
+
+  it("does not start a delayed track after leaving or muting", async () => {
+    await unlockOnNormalPage();
+    engine.suspendBackgroundMusic({ delayMs: 1200 });
+    vi.advanceTimersByTime(600);
+    engine.resumeBackgroundMusic();
+    vi.advanceTimersByTime(5000);
+    expect(engine.isBackgroundMusicPlaying()).toBe(false);
+    engine.suspendBackgroundMusic({ delayMs: 1200 });
+    engine.syncAudioSettings({ masterVolume: 0 });
+    vi.advanceTimersByTime(5000);
+    expect(engine.isBackgroundMusicPlaying()).toBe(false);
+  });
+
+  it("starts the entrance delay after a late audio unlock", async () => {
+    engine = await loadEngine();
+    engine.suspendBackgroundMusic({ delayMs: 1200 });
+    vi.advanceTimersByTime(5000);
+    await engine.unlockAudioEngine();
+    expect(engine.isBackgroundMusicPlaying()).toBe(false);
+    vi.advanceTimersByTime(1200);
+    expect(engine.isBackgroundMusicPlaying()).toBe(true);
+  });
+
+  it("ducks the active track without restarting it or changing preferences", async () => {
+    await unlockOnIsland();
+    vi.advanceTimersByTime(1800);
+    const music = backgroundAudio();
+    const playCalls = music.playCalls;
+    const normalVolume = music.volume;
+    const focus = await import("./islandAudioFocus");
+    focus.setIslandReading(true);
+    vi.advanceTimersByTime(800);
+    expect(music.volume).toBeCloseTo(normalVolume * 0.5);
+    focus.setIslandReading(false);
+    vi.advanceTimersByTime(800);
+    expect(music.volume).toBeCloseTo(normalVolume);
+    expect(music.playCalls).toBe(playCalls);
+  });
+});
+
+
 class FakeAudio {
   static instances = [];
 
@@ -65,6 +125,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  engine?.resumeBackgroundMusic();
   delete globalThis.Audio;
 });
 

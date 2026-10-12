@@ -31,8 +31,8 @@ vi.mock("../audio/audioEngine", () => ({
 }));
 
 const DEFAULT_MASTER_VOLUME = 0.72;
-const ISLAND_WAVES_VOLUME = 0.16;
-const FIRST_DELAY_MS = ISLAND_GULL_CRY_SCHEDULE.firstDelayMs;
+const ISLAND_WAVES_VOLUME = 0.16 * 0.9;
+const FIRST_DELAY_MS = (ISLAND_GULL_CRY_SCHEDULE.firstMinDelayMs + ISLAND_GULL_CRY_SCHEDULE.firstMaxDelayMs) / 2;
 const GULL_MIN_MS = ISLAND_GULL_CRY_SCHEDULE.minDelayMs;
 const GULL_MAX_MS = ISLAND_GULL_CRY_SCHEDULE.maxDelayMs;
 
@@ -102,6 +102,8 @@ function mutedPreferences(overrides = {}) {
 }
 
 beforeEach(() => {
+  vi.useFakeTimers();
+  ambience = undefined;
   FakeAudio.instances = [];
   engineState.unlocked = true;
   engineState.unlockCalls = 0;
@@ -109,6 +111,10 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  ambience?.stopIslandAmbience();
+  vi.unstubAllGlobals();
+  vi.clearAllTimers();
+  vi.useRealTimers();
   delete globalThis.Audio;
   engineState.unlocked = false;
 });
@@ -127,6 +133,8 @@ describe("知识岛环境声跟随全局声音控制", () => {
     expect(waves.loop).toBe(true);
     expect(waves.paused).toBe(false);
     // 音量必须明显低于总音量：它只是垫在下面的海声，不能盖住学习页面。
+    expect(waves.volume).toBe(0);
+    vi.advanceTimersByTime(2000);
     expect(waves.volume).toBeCloseTo(DEFAULT_MASTER_VOLUME * ISLAND_WAVES_VOLUME, 5);
   });
 
@@ -200,6 +208,7 @@ describe("知识岛环境声跟随全局声音控制", () => {
     ambience.startIslandAmbience();
 
     ambience.syncIslandAmbiencePreferences(preferences({ masterVolume: 0.1 }));
+    vi.advanceTimersByTime(800);
     expect(FakeAudio.instances[0].volume).toBeCloseTo(0.1 * ISLAND_WAVES_VOLUME, 5);
   });
 
@@ -392,10 +401,9 @@ describe("知识岛海鸥叫的调度", () => {
     // 偏好被反复同步也不会攒出一串待触发的叫声。
     ambience.syncIslandAmbiencePreferences(preferences());
     ambience.syncIslandAmbiencePreferences(preferences());
-    expect(ambience.getPendingGullCryCount()).toBe(1);
+    expect(ambience.getPendingGullCryCount()).toBe(0);
 
-    // FakeAudio 不会自己结束（paused 一直是 false），所以这里手工再触发一次调度：
-    // 真实场景是"定时器到点时上一声还在响"，这里验证的正是那道闸门。
+    // While the current call is playing, preference updates cannot queue another.
     vi.advanceTimersByTime(GULL_MIN_MS + 0.5 * (GULL_MAX_MS - GULL_MIN_MS));
 
     // 一声都没有叠上去，也没多建实例。
@@ -475,5 +483,123 @@ describe("知识岛海鸥叫的调度", () => {
     expect(ambience.getPendingGullCryCount()).toBe(0);
     // 5 轮里只有海浪一个实例（海鸥还没到点就被清掉了）。
     expect(FakeAudio.instances).toHaveLength(1);
+  });
+});
+
+describe("知识岛声景的交互与避让", () => {
+  beforeEach(async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    ambience = await loadAmbienceModule();
+    ambience.syncIslandAmbiencePreferences(preferences());
+    ambience.startIslandAmbience();
+  });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  function finishGull() {
+    const gull = FakeAudio.instances[1];
+    gull.paused = true;
+    gull.emit("ended");
+    return gull;
+  }
+
+  it("点击替换即将到点的自动叫声，并从播放结束后重新等待", () => {
+    vi.advanceTimersByTime(FIRST_DELAY_MS - 100);
+    expect(ambience.playIslandGullCryOnce()).toBe(true);
+    const gull = finishGull();
+    vi.advanceTimersByTime(100);
+    expect(gull.playCalls).toBe(1);
+    vi.advanceTimersByTime((GULL_MIN_MS + GULL_MAX_MS) / 2 - 100);
+    expect(gull.playCalls).toBe(2);
+  });
+
+  it("三秒冷却防止连点，不连续重复同一份录音", () => {
+    expect(ambience.playIslandGullCryOnce()).toBe(true);
+    const gull = finishGull();
+    const firstSource = gull.src;
+    expect(ambience.playIslandGullCryOnce()).toBe(false);
+    vi.advanceTimersByTime(3000);
+    expect(ambience.playIslandGullCryOnce()).toBe(true);
+    expect(gull.src).not.toBe(firstSource);
+    expect(FakeAudio.instances).toHaveLength(2);
+  });
+
+  it("自动叫声比点击回应更轻，均受音效音量控制", () => {
+    vi.advanceTimersByTime(FIRST_DELAY_MS);
+    const gull = finishGull();
+    const automaticVolume = gull.volume;
+    vi.advanceTimersByTime(3000);
+    ambience.playIslandGullCryOnce();
+    expect(gull.volume).toBeGreaterThan(automaticVolume);
+    const responseVolume = gull.volume;
+    ambience.syncIslandAmbiencePreferences(preferences({ sfxVolume: 0.45 }));
+    expect(gull.volume).toBeCloseTo(responseVolume / 2);
+    ambience.syncIslandAmbiencePreferences(preferences({ sfxEnabled: false }));
+    expect(gull.paused).toBe(true);
+    expect(FakeAudio.instances[0].paused).toBe(true);
+    expect(ambience.playIslandGullCryOnce()).toBe(false);
+  });
+
+  it("阅读时降低海浪并暂停鸟鸣，关闭后重新等完整间隔", async () => {
+    const focus = await import("./islandAudioFocus");
+    vi.advanceTimersByTime(2000);
+    const normalVolume = FakeAudio.instances[0].volume;
+    focus.setIslandReading(true);
+    vi.advanceTimersByTime(800);
+    expect(FakeAudio.instances[0].volume).toBeCloseTo(normalVolume * 0.5);
+    expect(ambience.getPendingGullCryCount()).toBe(0);
+    expect(ambience.playIslandGullCryOnce()).toBe(false);
+    vi.advanceTimersByTime(GULL_MAX_MS * 2);
+    focus.setIslandReading(false);
+    vi.advanceTimersByTime(FIRST_DELAY_MS - 1);
+    expect(FakeAudio.instances).toHaveLength(1);
+    vi.advanceTimersByTime(1);
+    expect(FakeAudio.instances).toHaveLength(2);
+  });
+
+  it("奖励优先，恢复时仍保持阅读的音量", async () => {
+    const focus = await import("./islandAudioFocus");
+    vi.advanceTimersByTime(2000);
+    const normalVolume = FakeAudio.instances[0].volume;
+    focus.setIslandReading(true);
+    focus.duckIslandForReward();
+    vi.advanceTimersByTime(800);
+    expect(FakeAudio.instances[0].volume).toBeCloseTo(normalVolume * 0.28);
+    vi.advanceTimersByTime(2200);
+    expect(FakeAudio.instances[0].volume).toBeCloseTo(normalVolume * 0.5);
+    expect(ambience.getPendingGullCryCount()).toBe(0);
+  });
+
+  it("淡入途中静音后，旧的音量渐变不能恢复声音", () => {
+    vi.advanceTimersByTime(600);
+    expect(FakeAudio.instances[0].volume).toBeGreaterThan(0);
+    ambience.syncIslandAmbiencePreferences(preferences({ sfxVolume: 0 }));
+    vi.advanceTimersByTime(5000);
+    expect(FakeAudio.instances[0].paused).toBe(true);
+    expect(FakeAudio.instances[0].volume).toBe(0);
+    expect(ambience.getPendingGullCryCount()).toBe(0);
+  });
+
+  it("后台不能手动播放，恢复页面后不会补播过期的叫声", () => {
+    vi.stubGlobal("document", { hidden: true });
+    ambience.stopIslandAmbience();
+    expect(ambience.playIslandGullCryOnce()).toBe(false);
+    vi.advanceTimersByTime(GULL_MAX_MS * 2);
+    vi.stubGlobal("document", { hidden: false });
+    ambience.startIslandAmbience();
+    vi.advanceTimersByTime(FIRST_DELAY_MS - 1);
+    expect(FakeAudio.instances).toHaveLength(1);
+    vi.advanceTimersByTime(1);
+    expect(FakeAudio.instances).toHaveLength(2);
+    vi.unstubAllGlobals();
+  });
+
+  it("船铃刚响过时自动海鸥让位，手动回应仍然即时", async () => {
+    const focus = await import("./islandAudioFocus");
+    vi.advanceTimersByTime(FIRST_DELAY_MS - 100);
+    expect(focus.reserveIslandAccent()).toBe(true);
+    vi.advanceTimersByTime(100);
+    expect(FakeAudio.instances).toHaveLength(1);
+    expect(ambience.playIslandGullCryOnce()).toBe(true);
   });
 });

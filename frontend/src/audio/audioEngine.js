@@ -1,5 +1,11 @@
 import { AUDIO_ASSETS, AUDIO_ASSET_VOLUME } from "./audioAssets";
 import { AUDIO_CUES, DEFAULT_AUDIO_PREFERENCES, ISLAND_BGM_TRACK } from "./audioConfig";
+import { cancelAudioFade, fadeAudioVolume } from "./audioFades";
+import { getIslandAudioFocus, subscribeIslandAudioFocus } from "./islandAudioFocus";
+import {
+  getRecordedBgmSnapshot, isRecordedBgmSupported, prepareRecordedBgm,
+  startRecordedBgm, stopRecordedBgm
+} from "./recordedBgm";
 import {
   disposeToneBgm,
   getToneBgmRuntimeSnapshot,
@@ -16,9 +22,11 @@ const SILENCE_LEVEL = 0.0001;
 const GAIN_RAMP_SECONDS = 0.08;
 const MUSIC_LOOP_LEAD_SECONDS = 0.03;
 
-// BGM 现在有两条路径，而且**互斥、绝不叠播**：
+// 默认播放处理过循环接缝的 Steps on Sand，解码一次后用 AudioBuffer 循环。
+// 加载/解码不可用时沿用下面的合成和媒体元素降级路径，各路径互斥。
+// BGM 的备用路径：
 //
-//   1) Tone.js 主路径（toneBgm.js）—— 默认。Transport 负责节拍与段落调度，
+//   1) Tone.js（toneBgm.js）。Transport 负责节拍与段落调度，
 //      28 小节循环，音色更亮、段落变化更自然，循环点没有文件边界所以没有接缝。
 //   2) WAV 降级路径（下面 createBackgroundAudio()）—— 只有在 Tone 不可用
 //      时才启用，比如环境里根本没有 Tone，或者 Tone 初始化失败。
@@ -30,6 +38,7 @@ const MUSIC_LOOP_LEAD_SECONDS = 0.03;
 // 除 BGM 以外的声音 —— 答题音效、海浪、海鸥、讲解音频 —— 一律不走 Tone，
 // 仍然走原来的 WebAudio / <audio> 路径。
 const BGM_SOURCE_NONE = "none";
+const BGM_SOURCE_RECORDING = "recording";
 const BGM_SOURCE_TONE = "tone";
 const BGM_SOURCE_WAV = "wav";
 
@@ -49,6 +58,8 @@ const audioState = {
   // 此刻到底是哪条 BGM 路径在响（"none" / "tone" / "wav"）。
   // 这是"绝不叠播"的唯一依据：换路径之前一定先把上一条停掉。
   backgroundActiveSource: BGM_SOURCE_NONE,
+  recordedBgmAvailable: true,
+  recordedLoadPromise: null,
   // Tone 路径是否可用。不可用时才允许退到 WAV 降级路径。
   toneBgmAvailable: true,
   // 一旦 Tone 被判定不可用（启动失败 / 强制降级），就不再自动翻回可用。
@@ -57,6 +68,9 @@ const audioState = {
   // 持续 BGM 只在这一页存在：普通页面为 false，所以任何普通页面的解锁
   // 都只会解锁引擎，不会顺手起播音乐。这是"首页不放持续音乐"的唯一开关。
   islandBgmActive: false,
+  entryDelayMs: 0,
+  entryTimer: null,
+  entryReady: true,
   // 旧模型（"全站 BGM + 知识岛借走"）留下的三个字段已整体删除。
   // 它们描述的是"离开时要按进入前的样子还回去"这种需要回忆旧状态的设计，
   // 而现在 BGM 只属于知识岛：离开就是停，进入就是（按当前设置）起播，
@@ -115,7 +129,7 @@ function normalizeSettings(nextSettings = {}) {
 }
 
 function getMusicOutputVolume() {
-  return clampVolume(audioState.settings.masterVolume * audioState.settings.musicVolume, 0);
+  return clampVolume(audioState.settings.masterVolume * audioState.settings.musicVolume * getIslandAudioFocus().backgroundGain, 0);
 }
 
 function getCueOutputVolume(cueName) {
@@ -144,7 +158,7 @@ function syncGainNodes(referenceTime) {
   setGainValue(audioState.masterGain, audioState.settings.masterVolume, referenceTime);
   setGainValue(
     audioState.musicGain,
-    audioState.settings.musicEnabled ? audioState.settings.musicVolume : 0,
+    audioState.settings.musicEnabled ? audioState.settings.musicVolume * getIslandAudioFocus().backgroundGain : 0,
     referenceTime
   );
   setGainValue(audioState.sfxGain, audioState.settings.sfxEnabled ? audioState.settings.sfxVolume : 0, referenceTime);
@@ -274,7 +288,7 @@ function syncFallbackMusicLoop() {
   const context = audioState.context;
 
   if (
-    !context ||
+    !shouldBackgroundAudioPlay() || !audioState.entryReady || !context ||
     context.state !== "running" ||
     !audioState.settings.musicEnabled ||
     audioState.settings.masterVolume <= 0 ||
@@ -300,6 +314,7 @@ function syncCueAssetVolumes() {
 
 /** 把当前响着的那条 BGM 停掉，并清干净另一条可能残留的状态。 */
 function stopActiveBackgroundSource() {
+  stopRecordedBgm();
   if (audioState.backgroundActiveSource === BGM_SOURCE_TONE) {
     stopToneBgm();
   }
@@ -308,6 +323,8 @@ function stopActiveBackgroundSource() {
     const backgroundAudio = audioState.backgroundAudio;
 
     if (backgroundAudio) {
+      cancelAudioFade(backgroundAudio);
+      backgroundAudio.volume = 0;
       backgroundAudio.pause();
     }
   }
@@ -334,9 +351,43 @@ function stopActiveBackgroundSource() {
 function shouldBackgroundAudioPlay() {
   return (
     audioState.islandBgmActive &&
+    (typeof document === "undefined" || !document.hidden) &&
     audioState.unlocked &&
     shouldToneBgmPlay(audioState.settings)
   );
+}
+
+function usesRecordedBgm() {
+  return audioState.recordedBgmAvailable && isRecordedBgmSupported(audioState.context);
+}
+
+function startRecordedBackgroundMusic() {
+  if (!getRecordedBgmSnapshot().ready) {
+    if (!audioState.recordedLoadPromise) {
+      audioState.recordedLoadPromise = prepareRecordedBgm(audioState.context)
+        .catch(() => { audioState.recordedBgmAvailable = false; })
+        .finally(() => {
+          audioState.recordedLoadPromise = null;
+          // Re-evaluate island, mute, visibility and entrance delay after I/O.
+          // A completed download must never start music on a page we left.
+          syncBackgroundAudio();
+        });
+    }
+    return true;
+  }
+  if (audioState.backgroundActiveSource !== BGM_SOURCE_RECORDING) {
+    stopActiveBackgroundSource();
+    stopMusicLoop();
+  }
+  try {
+    if (!startRecordedBgm(getMusicOutputVolume())) return true;
+    audioState.backgroundActiveSource = BGM_SOURCE_RECORDING;
+    return true;
+  } catch {
+    stopRecordedBgm();
+    audioState.recordedBgmAvailable = false;
+    return false;
+  }
 }
 
 function startToneBackgroundMusic() {
@@ -346,7 +397,7 @@ function startToneBackgroundMusic() {
   if (audioState.backgroundActiveSource === BGM_SOURCE_TONE) {
     // 已经在响：只跟着最新的音量走（用户拖滑块就靠这里），
     // 不重新 start，也不碰 Transport。
-    setToneBgmVolume(getMusicOutputVolume());
+    setToneBgmVolume(getMusicOutputVolume(), { rampSeconds: 0.8 });
     return true;
   }
 
@@ -388,7 +439,6 @@ function startWavBackgroundMusic() {
   }
 
   stopMusicLoop();
-  backgroundAudio.volume = getMusicOutputVolume();
 
   if (!shouldBackgroundAudioPlay()) {
     backgroundAudio.pause();
@@ -398,11 +448,14 @@ function startWavBackgroundMusic() {
   // 已经在播就不要再 play() 一次：用户拖音量滑块时 sync 会被调很多次，
   // 每次都重播会让 BGM 一顿一顿的。
   if (!backgroundAudio.paused) {
+    fadeAudioVolume(backgroundAudio, getMusicOutputVolume(), 800);
     audioState.backgroundActiveSource = BGM_SOURCE_WAV;
     return true;
   }
 
+  backgroundAudio.volume = 0;
   const playPromise = backgroundAudio.play();
+  fadeAudioVolume(backgroundAudio, getMusicOutputVolume(), 1800);
 
   audioState.wavStartCount += 1;
 
@@ -421,6 +474,9 @@ function startWavBackgroundMusic() {
 
 function syncBackgroundAudio() {
   if (!shouldBackgroundAudioPlay()) {
+    clearTimeout(audioState.entryTimer);
+    audioState.entryTimer = null;
+    audioState.entryReady = audioState.entryDelayMs === 0;
     // 该安静：把两条路径都停干净，知识岛借出 / 静音 / 音乐关闭都走这一条。
     stopActiveBackgroundSource();
     stopMusicLoop();
@@ -435,7 +491,23 @@ function syncBackgroundAudio() {
     return;
   }
 
-  // Tone 是主路径；只有它明确不可用时才退到 WAV 降级。
+  // Start the wait only when audio is actually allowed, including late unlock.
+  if (!audioState.entryReady) {
+    if (audioState.entryTimer === null) {
+      audioState.entryTimer = setTimeout(() => {
+        audioState.entryTimer = null;
+        audioState.entryReady = true;
+        syncBackgroundAudio();
+      }, audioState.entryDelayMs);
+    }
+    return;
+  }
+
+  // The recording owns playback while loading too, so the old melody cannot
+  // start briefly underneath it. Existing fallbacks handle failed decoding.
+  if (usesRecordedBgm() && startRecordedBackgroundMusic()) return;
+
+  // 录音不可用时才尝试旧合成音乐，再退到媒体元素。
   if (audioState.toneBgmAvailable && isToneBgmSupported()) {
     if (startToneBackgroundMusic()) {
       return;
@@ -448,6 +520,9 @@ function syncBackgroundAudio() {
 
 
 async function primeBackgroundAudio() {
+  // The recording uses the already unlocked shared AudioContext. Fetch only
+  // on the island; unlocking from the home page must not load a music file.
+  if (usesRecordedBgm()) return false;
   // Tone 主路径不需要"预热 WAV 元素"：Transport 随时可以起播，
   // 真正需要预热的是 WebAudio 上下文，那条已经由 unlockAudioEngine() 负责。
   // 所以这里只在 Tone 真的不可用、确实要走 WAV 降级时才建 <audio> 元素。
@@ -620,6 +695,12 @@ export function isAudioEngineUnlocked() {
   return audioState.unlocked;
 }
 
+subscribeIslandAudioFocus(() => {
+  if (!audioState.islandBgmActive) return;
+  if (audioState.context) syncGainNodes(audioState.context.currentTime);
+  syncBackgroundAudio();
+});
+
 // ---------------------------------------------------------------------------
 // 背景音乐的作用范围：只有知识岛那一页
 // ---------------------------------------------------------------------------
@@ -640,7 +721,11 @@ export function isAudioEngineUnlocked() {
 // 仍然绝不碰用户偏好：musicEnabled / musicVolume 一个字都不改。
 // 起不起播一律由下面的 shouldBackgroundAudioPlay() 现算：
 //   知识岛在场 + 引擎已解锁 + musicEnabled + 主音量 > 0 + 音乐音量 > 0。
-export function suspendBackgroundMusic() {
+export function suspendBackgroundMusic({ delayMs = 0 } = {}) {
+  if (!audioState.islandBgmActive) {
+    audioState.entryDelayMs = Math.max(0, Number(delayMs) || 0);
+    audioState.entryReady = audioState.entryDelayMs === 0;
+  }
   audioState.islandBgmActive = true;
 
   // 幂等：重复进入只是把同一个布尔再置一次，不会新建 runtime / Transport。
@@ -662,6 +747,7 @@ export function resumeBackgroundMusic() {
 // 测试与界面用的只读探针：背景音乐此刻是不是真的在响。
 // 两条路径都要看：Tone 主路径在响就返回 true，WAV 降级路径在响也返回 true。
 export function isBackgroundMusicPlaying() {
+  if (getRecordedBgmSnapshot().playing) return true;
   if (isToneBgmPlaying()) {
     return true;
   }
@@ -689,7 +775,7 @@ export function isBackgroundMusicSuppressed() {
 // 以下是排障 / 测试用的只读探针。都不改变任何播放行为。
 // ---------------------------------------------------------------------------
 
-/** 此刻是哪条 BGM 路径在响："none" / "tone" / "wav"。 */
+/** 此刻是哪条 BGM 路径在响："none" / "recording" / "tone" / "wav"。 */
 export function getActiveBackgroundSource() {
   return audioState.backgroundActiveSource;
 }
@@ -711,6 +797,7 @@ export function isToneBackgroundMusicAvailable() {
  * 比失败更糟。引擎自己的引用一定是真的。
  */
 export function getBackgroundMusicBuildCount() {
+  if (usesRecordedBgm()) return getRecordedBgmSnapshot().buildCount;
   if (audioState.backgroundActiveSource === BGM_SOURCE_WAV || !isToneBgmSupported()) {
     return audioState.backgroundAudio ? 1 : 0;
   }
@@ -725,6 +812,7 @@ export function getBackgroundMusicBuildCount() {
  * 所以"知识岛借用不该顺手多播一次"这类断言要看这个计数。
  */
 export function getBackgroundMusicStartCount() {
+  if (usesRecordedBgm()) return getRecordedBgmSnapshot().startCount;
   if (audioState.backgroundActiveSource === BGM_SOURCE_WAV || !isToneBgmSupported()) {
     return audioState.wavStartCount;
   }
@@ -740,6 +828,9 @@ export function getBackgroundMusicStartCount() {
  * 真正被播放的那一套 Tone 对象上。
  */
 export function getBackgroundMusicStructure() {
+  if (usesRecordedBgm()) {
+    return { ...getRecordedBgmSnapshot(), hasTransport: false, source: BGM_SOURCE_RECORDING };
+  }
   const snapshot = getToneBgmRuntimeSnapshot();
 
   return {

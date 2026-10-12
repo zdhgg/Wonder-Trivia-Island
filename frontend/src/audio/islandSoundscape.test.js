@@ -19,7 +19,7 @@ describe("islandSoundscape · 阶段化声景配置", () => {
     expect(scene.windLevel).toBe(0);
     expect(scene.bellEnabled).toBe(false);
     expect(scene.foghornEnabled).toBe(false);
-    expect(scene.gullDelayFactor).toBe(1);
+    expect(scene.gullVariationCount).toBe(2);
   });
 
   it("萌芽海岸起有风，且风的强度随阶段爬升", () => {
@@ -41,18 +41,17 @@ describe("islandSoundscape · 阶段化声景配置", () => {
     expect(resolveIslandSoundscape("knowledge-lighthouse", 0).foghornEnabled).toBe(true);
   });
 
-  it("繁荣度只收紧鸥鸣间隔，绝不放大：系数始终在 0 < f ≤ 1", () => {
+  it("繁荣度增加鸣叫种类，不增加自动鸣叫频率", () => {
     const basic = resolveIslandSoundscape("first-sight", 0);
     const lush = resolveIslandSoundscape("first-sight", 1);
     const flourishing = resolveIslandSoundscape("first-sight", 2);
 
-    expect(basic.gullDelayFactor).toBe(1);
-    expect(lush.gullDelayFactor).toBeLessThan(1);
-    expect(flourishing.gullDelayFactor).toBeLessThan(lush.gullDelayFactor);
-    expect(flourishing.gullDelayFactor).toBeGreaterThan(0);
+    expect(basic.gullVariationCount).toBe(2);
+    expect(lush.gullVariationCount).toBe(3);
+    expect(flourishing.gullVariationCount).toBe(3);
   });
 
-  it("繁荣度只影响鸥鸣间隔，不影响风 / 铃 / 雾号", () => {
+  it("繁荣度只影响鸥鸣种类，不影响风 / 铃 / 雾号", () => {
     for (const stage of KNOWLEDGE_ISLAND_STAGES) {
       const quiet = resolveIslandSoundscape(stage.id, 0);
       const lively = resolveIslandSoundscape(stage.id, 2);
@@ -75,8 +74,8 @@ describe("islandSoundscape · 阶段化声景配置", () => {
     for (const brokenLevel of [undefined, null, "abc", NaN, -5, 99, {}]) {
       const scene = resolveIslandSoundscape("palm-camp", brokenLevel);
 
-      expect(scene.gullDelayFactor).toBeGreaterThan(0);
-      expect(scene.gullDelayFactor).toBeLessThanOrEqual(1);
+      expect(scene.gullVariationCount).toBeGreaterThanOrEqual(2);
+      expect(scene.gullVariationCount).toBeLessThanOrEqual(3);
     }
   });
 });

@@ -299,7 +299,7 @@ export function startToneBgm() {
 
   if (target > 0) {
     applyToneBusGain(0, 0);
-    applyToneBusGain(target, 0.35);
+    applyToneBusGain(target, 1.8);
   }
 
   runtime.transport.start();

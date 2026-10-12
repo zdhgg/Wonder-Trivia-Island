@@ -1952,12 +1952,12 @@ export function useTriviaApp() {
         sfxVolume: nextSfxVolume
       });
 
-      // 环境声只认这三个键：它跟着"总音量 + 通道开关"走，
-      // 音乐 / 音效各自的分通道音量与这一层无关。
+      // Island environment and click responses belong to the SFX channel.
       const ambiencePreferences = {
         masterVolume: nextMasterVolume,
         musicEnabled: nextMusicEnabled,
-        sfxEnabled: nextSfxEnabled
+        sfxEnabled: nextSfxEnabled,
+        sfxVolume: nextSfxVolume
       };
 
       syncIslandAmbiencePreferences(ambiencePreferences);

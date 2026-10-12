@@ -27,25 +27,21 @@ export function isGlobalAudioAudible(preferences = {}) {
   return preferences.musicEnabled !== false || preferences.sfxEnabled !== false;
 }
 
-// 知识岛「专属环境声」两条素材各自的输出音量系数。
-// 它乘在 masterVolume 之上，所以设置里的总音量与「全部静音」仍然对它们生效
-// （muteAll() 会把它们一起按掉），而这一层再额外压低，保证它只是"垫在下面"的海声。
-//
-// 海鸥叫比海浪低一档：它只是偶尔的一声点缀，不能盖过海本身。
+// Environment levels multiply masterVolume and sfxVolume; no extra UI switch.
+// Real recordings are level-matched offline; automatic calls stay distant.
 export const ISLAND_AMBIENCE_VOLUME = Object.freeze({
   islandWaves: 0.16,
-  islandGullCry: 0.5
+  islandGullCry: 0.18,
+  islandGullResponse: 0.26
 });
 
-// 海鸥叫的调度：不是频繁事件，而是"几十秒偶尔一声"。
-//   firstDelayMs —— 这一份文档里的第一声不急着来（先只听一会儿海），
-//     避免刚进页面就被吓一跳；
-//   min/maxDelayMs —— 之后每一声之间的随机间隔，几十秒量级，所以听不出规律。
-// 用随机而不是固定间隔，是为了避免"每 N 秒准点叫一声"那种机械感。
+// Random first arrival and subsequent gaps. Re-entry never catches up missed calls.
 export const ISLAND_GULL_CRY_SCHEDULE = Object.freeze({
-  firstDelayMs: 14000,
-  minDelayMs: 34000,
-  maxDelayMs: 68000
+  firstMinDelayMs: 20000,
+  firstMaxDelayMs: 35000,
+  minDelayMs: 45000,
+  maxDelayMs: 90000,
+  clickCooldownMs: 3000
 });
 
 export const AUDIO_CUES = Object.freeze({
