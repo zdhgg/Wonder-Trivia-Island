@@ -93,8 +93,8 @@ export const KNOWLEDGE_ISLAND_ZONE_IDS = Object.freeze([
 //   世界坐标是一个固定 400 × 225 的画布（16:9），compact 与 hero 共用同一套坐标，
 //   只是整块缩放比例不同（见 KnowledgeIslandGrowth.vue 的 .knowledge-island__stage）。
 //   left / bottom / width / height 全部是这个画布上的百分比。
-//   六个阶段的面积单调递增：30×25 → 44×31 → 56×36 → 66×40 → 71×42 → 76×43，
-//   面积比约 1 : 1.82 : 2.69 : 3.52 : 3.98 : 4.36，一眼能看出岛在长大。
+//   六个阶段的面积单调递增：38×29 → 48×33 → 58×38 → 66×40 → 71×42 → 76×43。
+//   初始岛更容易看清，最终阶段仍接近初始面积的三倍。
 //   岛整体向右（东侧）扩张，所以西岸的位置相对稳定，变化集中在东边；
 //   东岸刻意留出一片水面给码头和小船，不让最大阶段的岛把港口挤出画布。
 //
@@ -109,11 +109,11 @@ export const KNOWLEDGE_ISLAND_ZONE_IDS = Object.freeze([
 const freezeShape = (points) => Object.freeze(points.map((point) => Object.freeze(point)));
 
 export const KNOWLEDGE_ISLAND_TERRAINS = Object.freeze({
-  // 初见小岛：30% 左右的小沙洲，只有沙，一根草都没有。
+  // 初见小岛：38% 宽的小沙洲，保留后续逐级扩张的空间。
   "first-sight": Object.freeze({
     id: "first-sight",
-    footprint: Object.freeze({ left: 30, bottom: 19, width: 30, height: 25 }),
-    unit: 0.72,
+    footprint: Object.freeze({ left: 26, bottom: 24, width: 38, height: 29 }),
+    unit: 0.84,
     ground: freezeShape([
       [2, 60], [7, 45], [16, 33], [29, 24], [43, 20], [57, 21], [70, 26],
       [82, 35], [93, 46], [98, 60], [92, 71], [79, 78], [63, 82], [47, 82],
@@ -127,8 +127,8 @@ export const KNOWLEDGE_ISLAND_TERRAINS = Object.freeze({
   // 萌芽海岸：46% 左右，面积接近翻倍，中央冒出第一片绿地。
   "sprout-coast": Object.freeze({
     id: "sprout-coast",
-    footprint: Object.freeze({ left: 26, bottom: 18, width: 44, height: 31 }),
-    unit: 0.84,
+    footprint: Object.freeze({ left: 24, bottom: 22, width: 48, height: 33 }),
+    unit: 0.9,
     ground: freezeShape([
       [1, 58], [5, 42], [13, 29], [25, 20], [38, 15], [50, 14], [60, 18],
       [68, 24], [76, 21], [85, 26], [94, 36], [99, 50], [96, 63], [88, 72],
@@ -145,7 +145,7 @@ export const KNOWLEDGE_ISLAND_TERRAINS = Object.freeze({
   // 椰林营地：59% 左右，绿地连成片，营地区成形。
   "palm-camp": Object.freeze({
     id: "palm-camp",
-    footprint: Object.freeze({ left: 22, bottom: 17, width: 56, height: 36 }),
+    footprint: Object.freeze({ left: 20, bottom: 21, width: 58, height: 38 }),
     unit: 0.94,
     ground: freezeShape([
       [1, 60], [4, 42], [11, 28], [22, 19], [34, 13], [47, 11], [58, 15],
@@ -162,7 +162,7 @@ export const KNOWLEDGE_ISLAND_TERRAINS = Object.freeze({
   // 探险码头：70% 左右，东侧海岸伸出一条岬角，把港口位置让出来。
   "explorer-dock": Object.freeze({
     id: "explorer-dock",
-    footprint: Object.freeze({ left: 17, bottom: 16, width: 66, height: 40 }),
+    footprint: Object.freeze({ left: 17, bottom: 19, width: 66, height: 40 }),
     unit: 1,
     ground: freezeShape([
       [1, 61], [4, 42], [11, 27], [22, 18], [35, 12], [47, 10], [58, 14],
@@ -181,7 +181,7 @@ export const KNOWLEDGE_ISLAND_TERRAINS = Object.freeze({
   // 高地在这样的阶段提前隆起，给观星台当地基（灯塔阶段沿用同一块高地）。
   "starwatch-hill": Object.freeze({
     id: "starwatch-hill",
-    footprint: Object.freeze({ left: 14, bottom: 15, width: 71, height: 42 }),
+    footprint: Object.freeze({ left: 14, bottom: 18, width: 71, height: 42 }),
     unit: 1.03,
     ground: freezeShape([
       [1, 61], [3, 42], [10, 27], [20, 18], [32, 12], [44, 9], [55, 12],
@@ -202,7 +202,7 @@ export const KNOWLEDGE_ISLAND_TERRAINS = Object.freeze({
   // 知识灯塔：81% 左右，最终完整岛形，中央偏东隆起一块高地。
   "knowledge-lighthouse": Object.freeze({
     id: "knowledge-lighthouse",
-    footprint: Object.freeze({ left: 11, bottom: 15, width: 76, height: 43 }),
+    footprint: Object.freeze({ left: 11, bottom: 17, width: 76, height: 43 }),
     unit: 1.06,
     ground: freezeShape([
       [1, 62], [3, 42], [9, 27], [18, 18], [29, 12], [41, 9], [52, 10],
@@ -298,6 +298,17 @@ export function buildTerrainSvgPoints(shape) {
   return shape.map((point) => `${Number(point?.[0]) || 0},${Number(point?.[1]) || 0}`).join(" ");
 }
 
+// Quadratic segments remain inside the control polygon. Ground and preview share
+// this exact curve so the next shoreline matches the island after it unlocks.
+export function buildTerrainSmoothPath(shape) {
+  if (!Array.isArray(shape) || shape.length < 3) return "";
+  const points = shape.map(point => [Number(point?.[0]) || 0, Number(point?.[1]) || 0]);
+  const mid = (a, b) => `${(a[0] + b[0]) / 2} ${(a[1] + b[1]) / 2}`;
+  return `M ${mid(points.at(-1), points[0])} ` + points.map((point, index) =>
+    `Q ${point[0]} ${point[1]} ${mid(point, points[(index + 1) % points.length])}`
+  ).join(" ") + " Z";
+}
+
 // ---------------------------------------------------------------------------
 // 下一阶段预告
 //
@@ -323,6 +334,7 @@ export function buildKnowledgeIslandNextTerrainPreview(island) {
   return {
     stageId: terrain.id,
     footprintStyle: buildTerrainFootprintStyle(terrain),
-    points: buildTerrainSvgPoints(terrain.ground)
+    points: buildTerrainSvgPoints(terrain.ground),
+    path: buildTerrainSmoothPath(terrain.ground)
   };
 }

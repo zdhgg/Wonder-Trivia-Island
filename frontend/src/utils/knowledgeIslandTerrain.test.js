@@ -71,20 +71,18 @@ describe("knowledgeIslandTerrain · 岛屿随阶段明显变大", () => {
     }
   });
 
-  it("0 枚是明显的小沙洲，最高阶段至少是它的四倍", () => {
+  it("初始小岛更容易看清，最终阶段仍有接近三倍的面积", () => {
     const first = footprintArea(getKnowledgeIslandTerrain("first-sight"));
     const last = footprintArea(getKnowledgeIslandTerrain("knowledge-lighthouse"));
 
-    // 宽度口径也对齐本轮定下的 30% / 44% / 56% / 66% / 71% / 76% 量级。
-    expect(getKnowledgeIslandTerrain("first-sight").footprint.width).toBe(30);
-    expect(getKnowledgeIslandTerrain("sprout-coast").footprint.width).toBe(44);
-    expect(getKnowledgeIslandTerrain("palm-camp").footprint.width).toBe(56);
+    expect(getKnowledgeIslandTerrain("first-sight").footprint.width).toBe(38);
+    expect(getKnowledgeIslandTerrain("sprout-coast").footprint.width).toBe(48);
+    expect(getKnowledgeIslandTerrain("palm-camp").footprint.width).toBe(58);
     expect(getKnowledgeIslandTerrain("explorer-dock").footprint.width).toBe(66);
     expect(getKnowledgeIslandTerrain("starwatch-hill").footprint.width).toBe(71);
     expect(getKnowledgeIslandTerrain("knowledge-lighthouse").footprint.width).toBe(76);
 
-    // 「明显的小沙洲」：最大阶段至少 4 倍面积。
-    expect(last / first).toBeGreaterThan(4);
+    expect(last / first).toBeGreaterThan(2.8);
   });
 
   it("每一阶段的岛身都在世界画布内，且不贴边", () => {
@@ -328,10 +326,10 @@ describe("knowledgeIslandTerrain · 样式输出", () => {
   it("岛身样式把 footprint 翻译成百分比，并带上尺寸倍率", () => {
     const style = buildTerrainFootprintStyle(getKnowledgeIslandTerrain("palm-camp"));
 
-    expect(style.left).toBe("22%");
-    expect(style.bottom).toBe("17%");
-    expect(style.width).toBe("56%");
-    expect(style.height).toBe("36%");
+    expect(style.left).toBe("20%");
+    expect(style.bottom).toBe("21%");
+    expect(style.width).toBe("58%");
+    expect(style.height).toBe("38%");
     expect(style["--ki-unit"]).toBe("0.94");
   });
 

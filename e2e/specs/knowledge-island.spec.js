@@ -353,8 +353,8 @@ async function readIslandPageSummary(page) {
     const text = (selector) => document.querySelector(selector)?.innerText.trim() || "";
 
     return {
-      stageName: text(".island-page__hero-stage strong"),
-      prosperityLabel: text(".island-page__hero-prosperity"),
+      stageName: text(".island-page__current strong"),
+      prosperityLabel: text(".island-growth__tier"),
       stampCount: text('[data-role="island-page-stamp-count"]'),
       starCount: text('[data-role="island-page-star-count"]'),
       nextText: text('[data-role="island-page-next"]'),
@@ -391,6 +391,150 @@ async function readHorizontalOverflow(page) {
     };
   });
 }
+
+test.describe("知识岛改版验收", () => {
+  const captureDir = require("node:path").resolve(__dirname, "../../tmp/island-review");
+  test.beforeAll(() => require("node:fs").mkdirSync(captureDir, { recursive: true }));
+
+  test("四种宽度：场景、成长行动与可点击物件完整，输出验收截图", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await openHomeWithStampAndStarCount(page, { stampCount: 0, starCount: 45 });
+    await openKnowledgeIslandPage(page);
+    for (const width of [1440, 1024, 820, 390]) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+      await expect(page.locator('[data-role="island-page-star-count"]')).toHaveText("45 颗");
+      await expect(page.getByRole("button", { name: "继续今日探索" })).toBeVisible();
+      const overflow = await readHorizontalOverflow(page);
+      expect(overflow.documentWidth).toBeLessThanOrEqual(width);
+      if (width === 1440) {
+        const action = await page.getByRole("button", { name: "继续今日探索" }).boundingBox();
+        expect(action.y + action.height).toBeLessThan(900);
+      }
+      await page.screenshot({ path: `${captureDir}/island-${width}.png`, fullPage: true });
+      for (const id of ["shell", "rock"]) {
+        const anchor = page.locator(`.knowledge-island__${id}--main`);
+        const hit = await anchor.evaluate(element => {
+          const rect = element.getBoundingClientRect();
+          return document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)?.closest("button")?.dataset.role;
+        });
+        expect(hit, `${width}px：${id} 可见物件中心必须点到自己`).toBe(`knowledge-island-hotspot-${id}`);
+      }
+      const chip = page.locator('[data-role="knowledge-island-hotspot-next"]');
+      expect((await chip.boundingBox()).height).toBeGreaterThanOrEqual(44);
+      expect(await chip.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+    }
+  });
+
+  test("六阶段三档繁荣：生成对比图，建筑随印章解锁", async ({ page }) => {
+    test.setTimeout(120000);
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    for (const stampCount of [0, 3, 7, 15, 22, 30]) {
+      for (const starCount of [0, 45, 70]) {
+        await openHomeWithStampAndStarCount(page, { stampCount, starCount });
+        const region = await openKnowledgeIslandPage(page);
+        const expected = await readIslandExpectation(page, stampCount);
+        await expect(region.locator(KNOWLEDGE_ISLAND_FIGURE)).toHaveAttribute("data-stage", expected.stageId);
+        await expect(region.locator(".knowledge-island__lighthouse")).toHaveCount(stampCount >= 30 ? 1 : 0);
+        await expect(region.locator(".knowledge-island__tidepool")).toHaveCount(starCount >= 21 ? 1 : 0);
+        await region.locator(KNOWLEDGE_ISLAND_FIGURE).screenshot({ path: `${captureDir}/stage-${stampCount}-stars-${starCount}.png` });
+      }
+    }
+    await page.screenshot({ path: `${captureDir}/island-final-stage.png`, fullPage: true });
+  });
+
+  test("未来阶段只预览，Escape 恢复焦点和当前进度", async ({ page }) => {
+    await openHomeWithStampAndStarCount(page, { stampCount: 0, starCount: 45 });
+    await openKnowledgeIslandPage(page);
+    const button = page.locator('[data-role="island-page-roadmap-knowledge-lighthouse"]');
+    await button.click();
+    const dialog = page.getByRole("dialog", { name: "知识灯塔 · 阶段预览" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText("还差 30 枚印章");
+    await expect(dialog.locator('[data-role="knowledge-island-hotspots"]')).toHaveCount(0);
+    await page.screenshot({ path: `${captureDir}/stage-preview.png`, fullPage: true });
+    await page.keyboard.press("Escape");
+    await expect(dialog).not.toBeVisible();
+    await expect(button).toBeFocused();
+    await expect(page.locator('[data-role="island-page-stamp-count"]')).toHaveText("0 枚");
+    await expect(page.locator(KNOWLEDGE_ISLAND_FIGURE)).toHaveAttribute("data-stage", "first-sight");
+  });
+
+  test("漂流瓶立即记录，刷新可重看，阅读不会自动消失", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openHomeWithStampCount(page, 0);
+    await openKnowledgeIslandPage(page);
+    await page.locator('[data-role="knowledge-island-hotspot-bottle"]').click();
+    const dialog = page.getByRole("dialog", { name: "海风捎来一封信" });
+    await expect(dialog).toBeVisible();
+    // 信纸上的称呼跟着设置里的昵称走：这一轮种下的档案就是 HOME_PROFILE。
+    await expect(dialog.locator(".bottle-letter__salutation")).toHaveText(`写给${HOME_PROFILE.displayName}：`);
+    const line = await dialog.locator(".bottle-letter__line").innerText();
+    expect(await page.evaluate(() => localStorage.getItem("wti:island-bottle:v1"))).toBe(getTodayDateKey());
+    await page.reload();
+    await page.getByRole("button", { name: "重读今日来信" }).click();
+    await expect(dialog.locator(".bottle-letter__line")).toHaveText(line);
+    await page.clock.install();
+    await page.clock.runFor(6000);
+    await expect(dialog).toBeVisible();
+    await page.screenshot({ path: `${captureDir}/bottle-mobile.png`, fullPage: true });
+  });
+
+  test("跨过本地午夜后自动出现新漂流瓶", async ({ page }) => {
+    const now = new Date();
+    now.setHours(23, 59, 50, 0);
+    await page.clock.install({ time: now });
+    await openHomeWithStampCount(page, 0);
+    await openKnowledgeIslandPage(page);
+    await page.getByRole("button", { name: "今日漂流瓶" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "关闭", exact: true }).click();
+    await expect(page.getByRole("button", { name: "重读今日来信" })).toBeVisible();
+    await page.clock.runFor(12000);
+    await expect(page.getByRole("button", { name: "今日漂流瓶" })).toBeVisible();
+    await expect(page.locator('[data-role="knowledge-island-hotspot-bottle"]')).toBeVisible();
+  });
+
+  test("岛内领取：处理中防重入，成功后印章更新，刷新仍已领取", async ({ page }) => {
+    await openHomeReadyToClaim(page, 0);
+    await openKnowledgeIslandPage(page);
+    let release;
+    let requests = 0;
+    const gate = new Promise(resolve => { release = resolve; });
+    await page.route("**/api/growth-progress/daily-chest", async route => { requests++; await gate; await route.continue(); });
+    await page.getByRole("button", { name: "领取今日宝箱" }).click();
+    await expect(page.getByRole("button", { name: "正在打开宝箱" })).toBeDisabled();
+    release();
+    await expect(page.locator('[data-role="island-page-stamp-count"]')).toHaveText("1 枚");
+    await expect(page.locator(".island-growth__today")).toContainText("获得 1 枚探险印章");
+    expect(requests).toBe(1);
+    await page.reload();
+    await expect(page.locator(".island-growth__today")).toContainText("已获得印章");
+    await expect(page.getByRole("button", { name: "领取今日宝箱" })).toHaveCount(0);
+  });
+
+  test("领取失败可重试，跨阶段只产生一次真实庆祝", async ({ page }) => {
+    await openHomeReadyToClaim(page, 2);
+    await openKnowledgeIslandPage(page);
+    await page.route("**/api/growth-progress/daily-chest", route => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ message: "暂时无法连接，请重试" }) }), { times: 1 });
+    await page.getByRole("button", { name: "领取今日宝箱" }).click();
+    await expect(page.getByRole("alert")).toContainText("请重试");
+    await expect(page.locator('[data-role="island-page-stamp-count"]')).toHaveText("2 枚");
+    await page.getByRole("button", { name: "领取今日宝箱" }).click();
+    await expect(celebrationDialog(page)).toBeVisible();
+    await celebrationDialog(page).getByRole("button", { name: "知道啦" }).click();
+    await expect(page.locator(KNOWLEDGE_ISLAND_FIGURE)).toHaveAttribute("data-stage", "sprout-coast");
+    await page.reload();
+    await expect(celebrationDialog(page)).toHaveCount(0);
+  });
+
+  test("今日探索直达首页任务区域", async ({ page }) => {
+    await openHomeWithStampCount(page, 0);
+    await openKnowledgeIslandPage(page);
+    await page.getByRole("button", { name: "继续今日探索" }).click();
+    await expect(page).toHaveURL(/#today-tasks$/);
+    await expect(page.locator("#today-tasks")).toBeInViewport();
+  });
+});
 
 test.describe("知识岛成长", () => {
   test("A. 0 枚：收藏册留一张入口卡，独立页面是完整的第一阶段小岛", async ({ page }) => {
@@ -658,7 +802,7 @@ test.describe("知识岛成长", () => {
     expect(figure.box.height).toBeGreaterThan(120);
 
     const clipped = await islandPage.evaluate((section) =>
-      [...section.querySelectorAll(".island-page__stat-value, .island-page__stat-label, .island-page__lead")]
+      [...section.querySelectorAll(".island-growth__description, .island-growth__features, .island-page__summary")]
         .filter((element) => element.scrollWidth > element.clientWidth + 1).length
     );
 
@@ -894,9 +1038,9 @@ async function openHomeWithStampAndStarCount(page, { stampCount, starCount }) {
       chapterEntries: {
         activeChapterId: REAL_CHAPTER_IDS[0],
         chapters: Object.fromEntries(
-          REAL_CHAPTER_IDS.slice(0, chapterCount).map((chapterId) => [
+          REAL_CHAPTER_IDS.slice(0, chapterCount).map((chapterId, chapterIndex) => [
             chapterId,
-            buildChapterEntry({ clearedStageCount: 7, earnedRewardCount: 7 })
+            buildExactStarChapter(Math.min(21, starCount - chapterIndex * 21))
           ])
         )
       }
@@ -913,6 +1057,15 @@ async function openHomeWithStampAndStarCount(page, { stampCount, starCount }) {
 }
 
 // 把这一幅画里所有「和地形有关」的量一次性读出来：岛身盒子、预告轮廓、街区、建筑。
+function buildExactStarChapter(stars) {
+  const entry = buildChapterEntry({ clearedStageCount: 7, earnedRewardCount: 7 });
+  Object.values(entry.bestResults).forEach((result, index) => {
+    result.starCount = Math.min(3, Math.max(0, stars - index * 3));
+    result.rewardEarned = result.starCount > 0;
+  });
+  return entry;
+}
+
 function readIslandTerrainState(container) {
   return container.evaluate((section) => {
     const box = (element) => (element ? element.getBoundingClientRect().toJSON() : null);
@@ -932,7 +1085,7 @@ function readIslandTerrainState(container) {
       next: next
         ? {
             box: next.getBoundingClientRect().toJSON(),
-            points: next.querySelector(".knowledge-island__next-outline")?.getAttribute("points") || ""
+            points: next.querySelector(".knowledge-island__next-outline")?.getAttribute("d") || ""
           }
         : null,
       hasGrassland: visible(section.querySelector(".knowledge-island__grassland")),
@@ -1009,8 +1162,8 @@ test.describe("知识岛地形随阶段长大", () => {
     const first = samples[0];
     const last = samples[samples.length - 1];
 
-    expect(last.area / first.area).toBeGreaterThan(3);
-    expect(first.width).toBeLessThan(last.width * 0.5);
+    expect(last.area / first.area).toBeGreaterThan(2.8);
+    expect(first.width).toBeLessThanOrEqual(last.width * 0.51);
   });
 
   test("0 枚：明显的小沙洲，画面上没有任何绿色", async ({ page }) => {
@@ -1191,7 +1344,7 @@ test.describe("知识岛下一阶段预告", () => {
 
     await expect(preview).toHaveCount(1);
     // 预告盒子里只有两条同形的 polygon（填充 + 虚线），没有任何建筑元素。
-    expect(await preview.locator("polygon").count()).toBe(2);
+    expect(await preview.locator("path").count()).toBe(2);
     expect(
       await preview
         .locator(".knowledge-island__lighthouse, .knowledge-island__dock, .knowledge-island__palm, .knowledge-island__camp")
@@ -1285,7 +1438,7 @@ test.describe("知识岛独立页面", () => {
     expect((await readIslandPageSummary(page)).figureStage).toBe(before.figureStage);
   });
 
-  test("页面把阶段、印章、繁荣度、累计星星、下一枚印章都说清楚", async ({ page }) => {
+  test("页面展示成长信息，首次探索后收起互动引导", async ({ page }) => {
     // 7 枚印章 + 7 关全通 = 21 颗累计星星 → 繁荣度进入「丰盛」。
     await openHomeWithStampAndStars(page, { stampCount: 7, clearedStageCount: 7 });
 
@@ -1300,8 +1453,11 @@ test.describe("知识岛独立页面", () => {
     expect(summary.figureProsperity).toBe("lush");
     expect(summary.nextText).toBe(expectation.nextText);
 
-    // 页面固定的那一句说明也在。
-    await expect(islandPage).toContainText("印章让小岛成长，星星让小岛更加繁荣。");
+    await expect(islandPage.locator(".island-page__guide")).toContainText("试着点点贝壳");
+    await islandPage.getByRole("button", { name: "看看西岸的贝壳" }).click();
+    await expect(islandPage.locator(".island-page__guide")).toHaveText("印章让小岛成长，星星让它更加繁荣。");
+    await page.reload();
+    await expect(page.locator(".island-page__guide")).toHaveText("印章让小岛成长，星星让它更加繁荣。");
   });
 
   test("0 枚印章 + 高星：繁荣度到顶也不会提前长出后续建筑", async ({ page }) => {
@@ -1353,7 +1509,7 @@ test.describe("知识岛独立页面", () => {
       expect(metrics.islandRight, `${width} 宽知识岛卡片超出视口`).toBeLessThanOrEqual(metrics.viewportWidth);
       expect(metrics.figureHeight, `${width} 宽画面被压扁`).toBeGreaterThan(120);
       // 宽屏上画面必须明显是主体；390 上也要占满大部分宽度。
-      expect(metrics.figureShare).toBeGreaterThanOrEqual(width === 390 ? 80 : 70);
+      expect(metrics.figureShare).toBeGreaterThanOrEqual(width === 390 ? 80 : width === 1440 ? 60 : 70);
       await expect(islandPage.locator(KNOWLEDGE_ISLAND_FIGURE)).toBeVisible();
       await expect(islandPage.locator(".knowledge-island__lighthouse")).toHaveCount(1);
     }
@@ -2013,7 +2169,7 @@ test.describe("知识岛环境声：跟随全站那一个声音入口", () => {
   const ENABLE_AUDIO_BUTTON = "启用音频";
   const MASTER_VOLUME_LABEL = "主音量";
   const MUSIC_TOGGLE_LABEL = "背景音乐";
-  const FIRST_GULL_CRY_WAIT_MS = 25_000;
+  const FIRST_GULL_CRY_WAIT_MS = 40_000;
   const ISLAND_TOGGLE_SELECTOR = '[data-role="island-ambience-toggle"]';
 
   // 用一个 Audio 替身来"数实例"：生产代码不会为测试暴露任何全局变量，
@@ -2038,7 +2194,7 @@ test.describe("知识岛环境声：跟随全站那一个声音入口", () => {
             bucket = probe.waves;
           } else if (url.includes("island-gull-cry")) {
             bucket = probe.gull;
-          } else if (url.includes("island-bgm-loop")) {
+          } else if (url.includes("island-bgm-loop") || url.includes("steps-on-sand-loop")) {
             bucket = probe.bgm;
           }
 
@@ -2191,9 +2347,9 @@ test.describe("知识岛环境声：跟随全站那一个声音入口", () => {
     await expect(globalSoundButton(page)).toBeVisible();
 
     // 顶部摘要只保留阶段、繁荣度和返回首页 —— 结构上就是这两个元素。
-    await expect(islandPage.locator(".island-page__hero-side .island-page__back")).toBeVisible();
-    await expect(islandPage.locator(".island-page__hero-stage")).toContainText("当前：");
-    await expect(islandPage.locator(".island-page__hero-side > *")).toHaveCount(2);
+    await expect(islandPage.locator(".island-page__hero .island-page__back")).toBeVisible();
+    await expect(islandPage.locator(".island-page__current")).toContainText("当前：");
+    await expect(islandPage.locator(".island-page__hero > *")).toHaveCount(2);
   });
 
   test("深链直接打开知识岛是安静的：没有用户交互之前一律不出声", async ({ page }) => {
@@ -2238,6 +2394,15 @@ test.describe("知识岛环境声：跟随全站那一个声音入口", () => {
     expect(onIsland.bgm.wavCreated).toBe(0);
     // 进入知识岛不该顺手重建第二个 runtime。
     expect(onIsland.bgm.created).toBe(1);
+    // Validate the actual selected music, not just that some fallback is playing.
+    const recording = await page.evaluate(async () => {
+      const engine = await import("/src/audio/audioEngine.js");
+      return { source: engine.getActiveBackgroundSource(), ...engine.getBackgroundMusicStructure() };
+    });
+    expect(recording.source).toBe("recording");
+    expect(recording.asset).toContain("steps-on-sand-loop.mp3");
+    expect(recording.loopEnd).toBeCloseTo(57, 1);
+    expect(recording.loop).toBe(true);
   });
 
   test("知识岛期间按右上角静音：所有声音立刻停；再取消静音：立刻恢复", async ({ page }) => {
@@ -2465,7 +2630,7 @@ test.describe("知识岛环境声：跟随全站那一个声音入口", () => {
     expect(finalProbe.bgm.created).toBe(1);
     // 主路径下从不建 WAV 音乐元素。
     expect(finalProbe.bgm.wavCreated).toBe(0);
-    // 海鸥整轮测试期间（不到 14 秒）不该被排上过。
+    // 每次停留均短于随机首声窗口，不应触发自动海鸥。
     expect(finalProbe.gull.created).toBe(0);
   });
 
@@ -2481,7 +2646,7 @@ test.describe("知识岛环境声：跟随全站那一个声音入口", () => {
 
     expect(first.gull.created).toBe(0);
 
-    // 等到第一声真的响起来（首声延迟十几秒，所以这一条比别的慢）。
+    // 等到第一声真的响起来（随机首声延迟 20–35 秒）。
     await expect
       .poll(async () => (await readAudioProbe(page)).gull.created, { timeout: FIRST_GULL_CRY_WAIT_MS })
       .toBe(1);
@@ -2526,6 +2691,79 @@ test.describe("知识岛环境声：跟随全站那一个声音入口", () => {
     expect((await readAudioProbe(page)).waves.created).toBe(1);
   });
 
+  test("阅读来信与阶段预览时降低背景声，关闭后恢复且不更改偏好", async ({ page }) => {
+    await installAudioProbe(page);
+    await openHomeWithStampCount(page, 7);
+    await enterKnowledgeIslandByClick(page);
+    await expect.poll(async () => (await readAudioProbe(page)).bgm.playing).toBe(1);
+    const waveVolume = () => page.evaluate(() => window.__islandAudioProbe.waves.instance.volume);
+    await expect.poll(waveVolume).toBeCloseTo(0.72 * 0.9 * 0.16, 4);
+    const normal = await waveVolume();
+    const preferences = await page.evaluate(() => localStorage.getItem("wonder-trivia-island.audio.preferences"));
+
+    for (const buttonName of [/今日漂流瓶|重读今日来信/, /看看它未来的样子/]) {
+      await page.getByRole("button", { name: buttonName }).click();
+      await expect(page.locator("dialog[open]")).toBeVisible();
+      await expect.poll(waveVolume).toBeCloseTo(normal * 0.5, 4);
+      const pending = await page.evaluate(async () => {
+        const ambience = await import("/src/audio/islandAmbience.js");
+        const soundscape = await import("/src/audio/islandSoundscape.js");
+        return ambience.getPendingGullCryCount() + soundscape.getPendingSoundscapeAccentCount();
+      });
+      expect(pending).toBe(0);
+      await page.locator("dialog[open]").getByRole("button", { name: "关闭", exact: true }).click();
+      await expect.poll(waveVolume).toBeCloseTo(normal, 4);
+    }
+    expect(await page.evaluate(() => localStorage.getItem("wonder-trivia-island.audio.preferences"))).toBe(preferences);
+    expect((await readAudioProbe(page)).bgm.startCount).toBe(1);
+  });
+
+  test("点击海鸥有真实短鸣、冷却和不重复的素材，离页后停止", async ({ page }) => {
+    await installAudioProbe(page);
+    await openHomeWithStampAndStarCount(page, { stampCount: 7, starCount: 45 });
+    await enterKnowledgeIslandByClick(page);
+    const gull = page.locator('[data-role="knowledge-island-hotspot-gull"]');
+    await gull.click();
+    await expect.poll(async () => (await readAudioProbe(page)).gull.playCalls).toBe(1);
+    const first = await page.evaluate(() => window.__islandAudioProbe.gull.instance.src);
+    await gull.click();
+    expect((await readAudioProbe(page)).gull.playCalls).toBe(1);
+    await expect.poll(() => page.evaluate(() => window.__islandAudioProbe.gull.instance.ended)).toBe(true);
+    await page.waitForTimeout(3000);
+    await gull.click();
+    await expect.poll(async () => (await readAudioProbe(page)).gull.playCalls).toBe(2);
+    expect(await page.evaluate(() => window.__islandAudioProbe.gull.instance.src)).not.toBe(first);
+    expect((await readAudioProbe(page)).gull.created).toBe(1);
+    await page.getByRole("button", { name: "返回首页" }).click();
+    await expect.poll(async () => (await readAudioProbe(page)).gull.playing).toBe(0);
+  });
+
+  test("页面可见性变化停止全部声景，回来后重新等待鸟鸣", async ({ page }) => {
+    await installAudioProbe(page);
+    await openHomeWithStampCount(page, 30);
+    await enterKnowledgeIslandByClick(page);
+    await expect.poll(async () => (await readAudioProbe(page)).bgm.playing).toBe(1);
+    await page.evaluate(() => {
+      Object.defineProperty(document, "hidden", { configurable: true, value: true });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    const hidden = await readAudioProbe(page);
+    expect(hidden.waves.playing).toBe(0);
+    expect(hidden.bgm.playing).toBe(0);
+    expect(await page.evaluate(async () => {
+      const soundscape = await import("/src/audio/islandSoundscape.js");
+      return soundscape.getPendingSoundscapeAccentCount();
+    })).toBe(0);
+    await page.evaluate(() => {
+      Object.defineProperty(document, "hidden", { configurable: true, value: false });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await expect.poll(async () => (await readAudioProbe(page)).waves.playing).toBe(1);
+    await expect.poll(async () => (await readAudioProbe(page)).bgm.playing).toBe(1);
+    expect((await readAudioProbe(page)).waves.created).toBe(1);
+    expect((await readAudioProbe(page)).gull.playCalls).toBe(0);
+  });
+
   test("390 窄屏：顶部更简洁、不横向溢出，而且返回首页依然好点", async ({ page }) => {
     await installAudioProbe(page);
     await page.setViewportSize({ width: 390, height: 844 });
@@ -2536,7 +2774,7 @@ test.describe("知识岛环境声：跟随全站那一个声音入口", () => {
     // 局部开关已经不在了：页面上只有「返回首页」这一个可点元素在摘要里。
     await expect(page.locator(ISLAND_TOGGLE_SELECTOR)).toHaveCount(0);
 
-    const backButton = islandPage.locator(".island-page__hero-side .island-page__back");
+    const backButton = islandPage.locator(".island-page__hero .island-page__back");
 
     await expect(backButton).toBeVisible();
     // 触摸目标仍然够点的高度。
@@ -2544,8 +2782,8 @@ test.describe("知识岛环境声：跟随全站那一个声音入口", () => {
 
     const layout = await page.evaluate(() => {
       const root = document.documentElement;
-      const back = document.querySelector(".island-page__hero-side .island-page__back");
-      const heroSide = document.querySelector(".island-page__hero-side");
+      const back = document.querySelector(".island-page__hero .island-page__back");
+      const heroSide = document.querySelector(".island-page__hero");
 
       return {
         docWidth: root.scrollWidth,
@@ -2642,10 +2880,10 @@ test.describe("知识岛轻互动不回归", () => {
     for (const box of boxes) {
       expect(box.insideFigure, `${box.role} 跑出画面了`).toBe(true);
 
-      // 预告是一枚看得见的小牌子（chip），它的高度是 0，所以只检查其余盖着元素的热点。
-      if (box.role !== "knowledge-island-hotspot-next") {
+      // 预告牌也有真实的点击尺寸。
+      if (box.role !== "knowledge-island-hotspot-sea") {
         expect(box.width, `${box.role} 宽度不足以点`).toBeGreaterThan(0);
-        expect(box.height, `${box.role} 高度不足以点`).toBeGreaterThan(0);
+        expect(box.height, `${box.role} 高度不足以点`).toBeGreaterThanOrEqual(44);
       }
 
       // 云在慢慢漂、热点每几秒跟着云重测一次，允许一点滞后；
@@ -2658,23 +2896,19 @@ test.describe("知识岛轻互动不回归", () => {
 
   test("八个热点逐个点下去都各有回应", async ({ page }) => {
     const islandPage = await openFullyBuiltIsland(page);
-    const hint = islandPage.locator('[data-role="knowledge-island-hint"]');
-
     for (const id of HOT_SPOT_IDS) {
       await hotSpot(page, id).click();
-
-      // 一次只回应一个：根节点上出现对应的 active 类。
-      await expect(islandPage.locator(".knowledge-island")).toHaveClass(new RegExp(`knowledge-island--active-${id}`));
-      // 并且说一句孩子听得懂的话。
-      await expect(hint).toBeVisible();
-      expect((await hint.innerText()).trim().length).toBeGreaterThan(0);
-      // 气泡带 aria-live，键盘和读屏用户点完同样知道发生了什么。
-      await expect(hint).toHaveAttribute("aria-live", "polite");
-
-      // 等这一轮回应结束，再点下一个。
-      await expect(islandPage.locator(".knowledge-island")).not.toHaveClass(
-        new RegExp(`knowledge-island--active-${id}`)
-      );
+      if (id === "bottle" || id === "next") {
+        const dialog = page.getByRole("dialog", { name: id === "bottle" ? "海风捎来一封信" : "观星高台 · 阶段预览" });
+        await expect(dialog).toBeVisible();
+        await dialog.getByRole("button", { name: "关闭", exact: true }).click();
+      } else {
+        await expect(islandPage.locator(".knowledge-island")).toHaveClass(new RegExp(`knowledge-island--active-${id}`));
+        const hint = islandPage.locator('[data-role="knowledge-island-hint"]');
+        await expect(hint).toBeVisible();
+        expect((await hint.innerText()).trim().length).toBeGreaterThan(0);
+        await expect(hint).toHaveAttribute("aria-live", "polite");
+      }
     }
   });
 
@@ -2702,7 +2936,7 @@ test.describe("知识岛轻互动不回归", () => {
   test("连点不会叠成一堆动画：同一时刻只有一个热点在回应", async ({ page }) => {
     const islandPage = await openFullyBuiltIsland(page);
 
-    for (const id of HOT_SPOT_IDS) {
+    for (const id of HOT_SPOT_IDS.filter(id => id !== "bottle" && id !== "next")) {
       await hotSpot(page, id).click();
     }
 

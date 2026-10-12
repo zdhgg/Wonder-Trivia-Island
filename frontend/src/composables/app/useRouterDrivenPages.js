@@ -38,7 +38,10 @@ export function createRouterDrivenPages({ route, app, settingsCenter, toolsCente
       // 所以这里不做任何判定，也不新建第二份知识岛状态。
       case APP_ROUTE_NAME.KNOWLEDGE_ISLAND:
         return {
-          island: app.knowledgeIsland.value
+          island: app.knowledgeIsland.value,
+          dailyChest: app.homeDashboard.value.dailyChest,
+          claiming: app.isDailyChestClaiming.value,
+          errorMessage: app.dailyChestErrorMessage.value
         };
       // 成长纪念册 / 想一起做都自己取数、自己管表单，不依赖应用状态，所以没有 props 要映射。
       case APP_ROUTE_NAME.GROWTH_BOOK:
@@ -50,6 +53,8 @@ export function createRouterDrivenPages({ route, app, settingsCenter, toolsCente
 
   const routerDrivenPageListeners = computed(() => {
     switch (String(route.name || "")) {
+      case APP_ROUTE_NAME.KNOWLEDGE_ISLAND:
+        return { onClaimDailyChest: app.claimDailyChest };
       case APP_ROUTE_NAME.TOOLS:
         return {
           onBack: toolsCenter.closeToolsView,

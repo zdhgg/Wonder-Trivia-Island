@@ -65,6 +65,10 @@ function createFakeShell() {
       activeSettingsSectionId: ref("settings-profile"),
       catalogPrefill: ref(null),
       handleImportFinished: vi.fn(),
+      homeDashboard: ref({ dailyChest: { canClaim: false } }),
+      isDailyChestClaiming: ref(false),
+      dailyChestErrorMessage: ref(""),
+      claimDailyChest: vi.fn(),
       // 知识岛独立页面用的那一份岛屿 ViewModel（应用状态里已经算好的）。
       knowledgeIsland: ref({ currentStage: { id: "first-sight", name: "初见小岛" }, stampCount: 0 })
     },
@@ -165,7 +169,7 @@ describe("router driven pages · 知识岛独立页面", () => {
 
     shell.app.knowledgeIsland.value = nextIsland;
 
-    expect(pages.routerDrivenPageProps.value).toEqual({ island: nextIsland });
+    expect(pages.routerDrivenPageProps.value.island).toEqual(nextIsland);
 
     // 领到新印章后页面跟着拿到同一份更新后的结果，而不是打开时的快照。
     shell.app.knowledgeIsland.value = {
@@ -178,10 +182,17 @@ describe("router driven pages · 知识岛独立页面", () => {
     expect(pages.routerDrivenPageProps.value.island.stampCount).toBe(30);
   });
 
-  it("页面自己不提交数据，没有需要映射的事件", () => {
-    const { pages } = createPages(APP_ROUTE_NAME.KNOWLEDGE_ISLAND);
-
-    expect(pages.routerDrivenPageListeners.value).toEqual({});
+  it("领取事件复用应用的唯一入口，领取状态和错误实时传递", () => {
+    const { pages, shell } = createPages(APP_ROUTE_NAME.KNOWLEDGE_ISLAND);
+    pages.routerDrivenPageListeners.value.onClaimDailyChest();
+    expect(shell.app.claimDailyChest).toHaveBeenCalledOnce();
+    shell.app.isDailyChestClaiming.value = true;
+    shell.app.dailyChestErrorMessage.value = "请重试";
+    shell.app.homeDashboard.value.dailyChest = { canClaim: true };
+    expect(pages.routerDrivenPageProps.value).toMatchObject({
+      dailyChest: { canClaim: true }, claiming: true, errorMessage: "请重试"
+    });
+    expect(Object.keys(pages.routerDrivenPageListeners.value)).toEqual(["onClaimDailyChest"]);
   });
 
   it("知识岛算宽版页面：内容本身就是一幅大画面，外壳要一起放宽", () => {
