@@ -26,7 +26,7 @@ async function seedHomeProfile(page) {
 }
 
 function milestoneEntries(page) {
-  return page.locator(".milestones__entry", { hasText: MILESTONE_TITLE });
+  return page.locator(".growth-book__entry", { hasText: MILESTONE_TITLE });
 }
 
 test.describe("她的成长", () => {
@@ -38,7 +38,7 @@ test.describe("她的成长", () => {
     const homeEntry = page.getByRole("button", { name: MILESTONE_ENTRY_LABEL });
 
     await expect(homeEntry).toBeVisible();
-    await expect(page.locator(".growth-summary__entry", { hasText: "她的成长" })).toContainText("她自己的成长瞬间");
+    await expect(homeEntry).toContainText("她的成长");
 
     await homeEntry.click();
     await expect(page).toHaveURL(/#\/growth-book\?tab=milestones/);
@@ -50,30 +50,31 @@ test.describe("她的成长", () => {
     // 空状态 + 「记下第一个瞬间」。
     await expect(page.getByRole("heading", { name: "这一页还是空的" })).toBeVisible();
 
-    await page.getByRole("button", { name: "记下第一个瞬间" }).click();
-    await expect(page.getByRole("heading", { name: "记下她的一个成长瞬间" })).toBeVisible();
+    await page.getByRole("button", { name: "记下第一件事" }).click();
+    await expect(page.getByRole("heading", { name: "记下一个瞬间" })).toBeVisible();
 
     // 标题必填。
-    await page.getByRole("button", { name: "收进成长纪念册" }).click();
-    await expect(page.getByText("给这件事写一个标题吧。")).toBeVisible();
+    await page.getByRole("button", { name: "收进纪念册" }).click();
+    await expect(page.getByText("写一句想记住的事吧。")).toBeVisible();
 
     // 补类别 / 标题 / 记录 / 照片。
-    await page.getByRole("radio", { name: /学习课堂/ }).check({ force: true });
-    await page.getByLabel("这件事的标题").fill(MILESTONE_TITLE);
+    await page.getByRole("button", { name: /补充细节、分类/ }).click();
+    await page.getByLabel("分类", { exact: true }).selectOption("classroom");
+    await page.getByLabel("一句话记下这件事").fill(MILESTONE_TITLE);
     await page.getByLabel("那天发生了什么").fill("举了三次才被叫到，坐下的时候脸都红了。");
     await page.locator(".footprint-photos__input").setInputFiles(PHOTO_FIXTURE);
     await expect(page.locator(".footprint-photos__item")).toHaveCount(1);
 
-    await page.getByRole("button", { name: "收进成长纪念册" }).click();
+    await page.getByRole("button", { name: "收进纪念册" }).click();
 
     await expect(milestoneEntries(page)).toBeVisible();
     await expect(milestoneEntries(page)).toContainText("📚 学习课堂");
     await expect(milestoneEntries(page)).toContainText("举了三次才被叫到");
-    await expect(milestoneEntries(page).locator(".milestones__entry-photo-image")).toBeVisible();
+    await expect(milestoneEntries(page).locator(".growth-book__entry-photo-image")).toBeVisible();
 
     // 照片真的能加载（不是破图）。
     expect(
-      await milestoneEntries(page).locator(".milestones__entry-photo-image").evaluate((image) => image.naturalWidth)
+      await milestoneEntries(page).locator(".growth-book__entry-photo-image").evaluate((image) => image.naturalWidth)
     ).toBeGreaterThan(0);
 
     // 手机上不横向溢出。
@@ -87,7 +88,7 @@ test.describe("她的成长", () => {
     await page.reload();
     await expect(page.getByRole("tab", { name: /她的成长/ })).toHaveAttribute("aria-selected", "true");
     await expect(milestoneEntries(page)).toBeVisible();
-    await expect(milestoneEntries(page).locator(".milestones__entry-photo-image")).toHaveCount(1);
+    await expect(milestoneEntries(page).locator(".growth-book__entry-photo-image")).toHaveCount(1);
 
     // 切到「我们一起」：这里没有她的成长记录（两条线分得清楚），也没有「我们一起」的记录。
     await page.getByRole("tab", { name: /我们一起/ }).click();
@@ -102,28 +103,28 @@ test.describe("她的成长", () => {
 
     // 编辑：原照片还在，标题改成新的。
     await milestoneEntries(page).getByRole("button", { name: "改一改" }).click();
-    await expect(page.getByRole("heading", { name: "修改这条成长记录" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "修改这条记录" })).toBeVisible();
     await expect(page.locator(".footprint-photos__item")).toHaveCount(1);
 
-    await page.getByLabel("这件事的标题").fill("第一次自己举手回答问题（后来常举手了）");
+    await page.getByLabel("一句话记下这件事").fill("第一次自己举手回答问题（后来常举手了）");
     await page.getByRole("button", { name: "保存修改" }).click();
 
-    const updatedEntry = page.locator(".milestones__entry", { hasText: "后来常举手了" });
+    const updatedEntry = page.locator(".growth-book__entry", { hasText: "后来常举手了" });
 
     await expect(updatedEntry).toBeVisible();
-    await expect(updatedEntry.locator(".milestones__entry-photo-image")).toHaveCount(1);
+    await expect(updatedEntry.locator(".growth-book__entry-photo-image")).toHaveCount(1);
 
     await page.reload();
-    await expect(page.locator(".milestones__entry", { hasText: "后来常举手了" })).toBeVisible();
+    await expect(page.locator(".growth-book__entry", { hasText: "后来常举手了" })).toBeVisible();
 
     // 删掉：回到空状态，reload 后仍然空。
-    await page.locator(".milestones__entry", { hasText: "后来常举手了" }).getByRole("button", { name: "删掉" }).click();
-    await expect(page.getByRole("heading", { name: "要把这条成长记录删掉吗？" })).toBeVisible();
+    await page.locator(".growth-book__entry", { hasText: "后来常举手了" }).getByRole("button", { name: "删掉" }).click();
+    await expect(page.getByRole("heading", { name: "要把这条记录删掉吗？" })).toBeVisible();
     await page.getByRole("button", { name: "删掉这条" }).click();
     await expect(page.getByRole("heading", { name: "这一页还是空的" })).toBeVisible();
 
     await page.reload();
     await expect(page.getByRole("heading", { name: "这一页还是空的" })).toBeVisible();
-    await expect(page.locator(".milestones__entry-photo-image")).toHaveCount(0);
+    await expect(page.locator(".growth-book__entry-photo-image")).toHaveCount(0);
   });
 });

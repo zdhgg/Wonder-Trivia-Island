@@ -457,7 +457,10 @@ router.patch("/:id", (req, res, next) => {
       return;
     }
 
-    const updatedRow = updateStoredMilestone(db, milestoneId, profileId, validationResult.value);
+    const updatedRow = milestonePhotos.updateRecordWithPhotos(
+      db, milestoneId, profileId, req.body,
+      () => updateStoredMilestone(db, milestoneId, profileId, validationResult.value)
+    );
 
     if (!updatedRow) {
       sendMilestoneNotFound(res);
@@ -468,6 +471,10 @@ router.patch("/:id", (req, res, next) => {
       milestone: serializeMilestoneRow(updatedRow, milestonePhotos.listPhotos(db, milestoneId))
     });
   } catch (error) {
+    if (error?.isPhotoValidationError) {
+      res.status(400).json({ message: error.message });
+      return;
+    }
     next(error);
   } finally {
     db.close();

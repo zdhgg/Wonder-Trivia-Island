@@ -40,9 +40,7 @@ test.describe("下次我们一起做什么", () => {
     const homeEntry = page.getByRole("button", { name: HOME_ENTRY_LABEL });
 
     await expect(homeEntry).toBeVisible();
-    await expect(page.locator(".growth-summary__entry", { hasText: "下次我们一起做什么" })).toContainText(
-      "想一起做点什么"
-    );
+    await expect(homeEntry).toContainText("一起做什么");
 
     await homeEntry.click();
     await expect(page).toHaveURL(/#\/growth-plans/);

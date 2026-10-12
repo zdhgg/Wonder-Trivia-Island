@@ -113,7 +113,7 @@ export function useGrowthBook(options = {}) {
 
       applyFootprints([...withoutCreated, createdFootprint]);
       formErrorMessages.value = [];
-      return true;
+      return createdFootprint;
     } catch (error) {
       errorMessage.value = error?.message || "保存这条记录失败。";
       return false;
@@ -142,12 +142,16 @@ export function useGrowthBook(options = {}) {
     errorMessage.value = "";
 
     try {
-      const updatedFootprint = ensureFootprint(await api.updateFootprint(footprintId, result.value));
+      const updatedFootprint = ensureFootprint(await api.updateFootprint(footprintId, {
+        ...result.value,
+        ...(draft.addedPhotos !== undefined ? { addedPhotos: draft.addedPhotos } : {}),
+        ...(draft.removedPhotoIds !== undefined ? { removedPhotoIds: draft.removedPhotoIds } : {})
+      }));
       const withoutUpdated = footprints.value.filter((item) => item.id !== updatedFootprint.id);
 
       applyFootprints([...withoutUpdated, updatedFootprint]);
       formErrorMessages.value = [];
-      return true;
+      return updatedFootprint;
     } catch (error) {
       errorMessage.value = error?.message || "修改这条记录失败。";
       return false;

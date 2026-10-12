@@ -2,7 +2,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { randomUUID } = require("node:crypto");
 const express = require("express");
-const { all, createDatabaseConnection, dbPath, get, run } = require("../db/database");
+const { all, createDatabaseConnection, dbPath, get, run, runInSavepoint } = require("../db/database");
 
 // 纪念册照片（Phase 2D-C1 / D1）。
 //
@@ -349,6 +349,51 @@ function createPhotoStore({ tableName, ownerColumn, urlPath }) {
     };
   }
 
+  // 文字和照片在同一事务里保存；成功后才删除旧文件，失败则清理新文件。
+  function updateRecordWithPhotos(db, ownerId, profileId, changes, updateRecord) {
+    const added = changes?.addedPhotos ?? [];
+    const removed = changes?.removedPhotoIds ?? [];
+    const reject = (message) => {
+      throw Object.assign(new Error(message), { isPhotoValidationError: true });
+    };
+    if (!Array.isArray(added) || !Array.isArray(removed)) reject("照片改动格式不正确。");
+    const existing = all(db, `SELECT ${selectFields} FROM ${tableName} WHERE ${ownerColumn} = ? AND profile_id = ?`, [ownerId, profileId]);
+    if (removed.some((id) => !Number.isSafeInteger(id) || !existing.some((row) => Number(row.id) === id))) {
+      reject("要移除的照片已不存在，请重新打开这条记录。");
+    }
+    const removedIds = [...new Set(removed)];
+    if (existing.length - removedIds.length + added.length > MAX_PHOTOS_PER_RECORD) {
+      reject(`一条记录最多放 ${MAX_PHOTOS_PER_RECORD} 张照片。`);
+    }
+    const parsed = added.map((dataUrl) => {
+      const result = parsePhotoDataUrl(dataUrl);
+      if (result.message) reject(result.message);
+      return result.value;
+    });
+    const createdFiles = [];
+    let updated;
+    try {
+      updated = runInSavepoint(db, "edit_growth_record_photos", () => {
+        const row = updateRecord();
+        for (const id of removedIds) {
+          run(db, `DELETE FROM ${tableName} WHERE id = ? AND ${ownerColumn} = ? AND profile_id = ?`, [id, ownerId, profileId]);
+        }
+        for (const photo of parsed) {
+          const inserted = insertPhoto(db, ownerId, profileId, photo);
+          createdFiles.push(inserted.file_name);
+        }
+        return row;
+      });
+    } catch (error) {
+      for (const fileName of createdFiles) removeStoredPhotoFile(fileName);
+      throw error;
+    }
+    for (const row of existing) {
+      if (removedIds.includes(Number(row.id))) removeStoredPhotoFile(row.file_name);
+    }
+    return updated;
+  }
+
   // 删除某条记录的全部照片（记录本身被删时调用）：先删文件，再删行。
   function removePhotosForOwner(db, ownerId) {
     const rows = all(
@@ -378,6 +423,7 @@ function createPhotoStore({ tableName, ownerColumn, urlPath }) {
   return {
     ensureTable,
     insertPhotoList,
+    updateRecordWithPhotos,
     listPhotos,
     listPhotosByOwnerIds,
     removePhotosForOwner,

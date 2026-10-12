@@ -3,11 +3,11 @@
 //
 // 它只做「选照片 → 压好 → 显示 → 能删掉」，不关心照片最终怎么存：
 //   - 记录还没有 id（正在新增 / 正在完成一件事）：照片先攒在本地，随保存请求一起提交；
-//   - 记录已经有 id（编辑旧记录）：选一张传一张、删一张立刻删。
+//   - 编辑旧记录：先在表单中调整，文字和照片一起保存。
 //
 // 所以页面上永远只有一套「放照片」的交互，不用记两种规则。
 import { ref } from "vue";
-import { MAX_PHOTO_EDGE } from "../../utils/growthPhotoUpload.js";
+
 
 const props = defineProps({
   // 已经存在服务端的照片（编辑旧记录时传入）。
@@ -67,7 +67,7 @@ async function handleFileChange(event) {
     return;
   }
 
-  // 组件只负责「选了哪些文件」，怎么存由页面决定（有 id 就上传，没 id 就先攒着）。
+  // 组件只报告选中的文件，保存时机由页面决定。
   emit("add-file", files);
 }
 
@@ -86,7 +86,7 @@ function removePending(index) {
       <span class="footprint-photos__label">{{ label }}</span>
       <span class="footprint-photos__hint">
         {{ totalCount() }} / {{ maxPhotos }}
-        <template v-if="maxPhotos > 0">· 一次出去玩的照片放几张就够</template>
+        <template v-if="maxPhotos > 0">· 最多 {{ maxPhotos }} 张</template>
       </span>
     </div>
 
@@ -98,7 +98,7 @@ function removePending(index) {
           class="footprint-photos__remove"
           type="button"
           :disabled="isBusy"
-          :aria-label="`删掉这张照片`"
+          :aria-label="`移除这张照片`"
           @click="removePhoto(photo)"
         >
           ×
@@ -129,7 +129,7 @@ function removePending(index) {
       {{ totalCount() > 0 ? "再放一张" : "📷 放几张照片" }}
     </button>
 
-    <p class="footprint-photos__note">照片会缩小到长边 {{ MAX_PHOTO_EDGE }} 再保存，不会占太多地方。</p>
+
     <p v-if="errorMessage" class="footprint-photos__error">{{ errorMessage }}</p>
 
     <input

@@ -570,3 +570,83 @@ test("photos never leak into growth progress, challenge progress or the study re
     db.close();
   }
 });
+
+
+for (const [routePath, recordKey, category, photoTable] of [
+  [FOOTPRINTS_PATH, "footprint", "together", "growth_footprint_photos"],
+  [MILESTONES_PATH, "milestone", "growth", "growth_milestone_photos"]
+]) {
+  test(`${recordKey}: PATCH saves text and a full photo replacement together`, async () => {
+    const cookieHeader = await createProfile();
+    const { payload: created } = await requestJson("POST", routePath, {
+      cookieHeader, body: { occurredOn: TODAY, category, title: "原记录", photos: Array(6).fill(TINY_PNG_DATA_URL) }
+    });
+    const record = created[recordKey];
+    const { response, payload } = await requestJson("PATCH", `${routePath}/${record.id}`, {
+      cookieHeader, body: { title: "更新后的记录", addedPhotos: [TINY_PNG_DATA_URL], removedPhotoIds: [record.photos[0].id] }
+    });
+    assert.equal(response.status, 200);
+    assert.equal(payload[recordKey].title, "更新后的记录");
+    assert.equal(payload[recordKey].photos.length, 6);
+    assert.deepEqual(payload[recordKey].photos.slice(0, 5), record.photos.slice(1));
+    assert.equal((await fetch(`${baseUrl}${record.photos[0].url}`, { headers: buildHeaders(cookieHeader) })).status, 404);
+    for (const photo of payload[recordKey].photos) {
+      assert.equal((await fetch(`${baseUrl}${photo.url}`, { headers: buildHeaders(cookieHeader) })).status, 200);
+    }
+    assert.equal(readStoredPhotoFiles().length, 6);
+  });
+
+  test(`${recordKey}: rejected photo edits leave text, photos and files intact`, async () => {
+    const cookieHeader = await createProfile();
+    const { payload: created } = await requestJson("POST", routePath, {
+      cookieHeader, body: { occurredOn: TODAY, category, title: "原记录", photos: [TINY_PNG_DATA_URL] }
+    });
+    const record = created[recordKey];
+    const filesBefore = readStoredPhotoFiles().sort();
+    for (const changes of [
+      { addedPhotos: ["invalid"], removedPhotoIds: [record.photos[0].id] },
+      { addedPhotos: Array(6).fill(TINY_PNG_DATA_URL) },
+      { addedPhotos: "invalid" },
+      { removedPhotoIds: [99999999] }
+    ]) {
+      const { response } = await requestJson("PATCH", `${routePath}/${record.id}`, {
+        cookieHeader, body: { title: "不应保存", ...changes }
+      });
+      assert.equal(response.status, 400);
+      const { payload } = await requestJson("GET", routePath, { cookieHeader });
+      assert.deepEqual(payload[`${recordKey}s`][0], record);
+      assert.deepEqual(readStoredPhotoFiles().sort(), filesBefore);
+    }
+    const foreignCookie = await createProfile();
+    const { response } = await requestJson("PATCH", `${routePath}/${record.id}`, {
+      cookieHeader: foreignCookie, body: { title: "不应保存", removedPhotoIds: [record.photos[0].id] }
+    });
+    assert.equal(response.status, 404);
+    assert.deepEqual(readStoredPhotoFiles().sort(), filesBefore);
+    assert.equal((await fetch(`${baseUrl}${record.photos[0].url}`, { headers: buildHeaders(cookieHeader) })).status, 200);
+  });
+
+  test(`${recordKey}: a mid-save database failure rolls back rows and cleans newly written files`, async () => {
+    const cookieHeader = await createProfile();
+    const { payload: created } = await requestJson("POST", routePath, {
+      cookieHeader, body: { occurredOn: TODAY, category, title: "原记录", photos: [TINY_PNG_DATA_URL] }
+    });
+    const record = created[recordKey];
+    const filesBefore = readStoredPhotoFiles().sort();
+    const db = createDatabaseConnection();
+    try {
+      run(db, `CREATE TRIGGER fail_photo_edit BEFORE INSERT ON ${photoTable} WHEN NEW.mime_type = 'image/jpeg' BEGIN SELECT RAISE(ABORT, 'test photo write failure'); END`);
+      const { response } = await requestJson("PATCH", `${routePath}/${record.id}`, {
+        cookieHeader, body: { title: "不应保存", removedPhotoIds: [record.photos[0].id], addedPhotos: [TINY_PNG_DATA_URL, TINY_JPEG_DATA_URL] }
+      });
+      assert.equal(response.status, 500);
+      const { payload } = await requestJson("GET", routePath, { cookieHeader });
+      assert.deepEqual(payload[`${recordKey}s`][0], record);
+      assert.deepEqual(readStoredPhotoFiles().sort(), filesBefore);
+      assert.equal((await fetch(`${baseUrl}${record.photos[0].url}`, { headers: buildHeaders(cookieHeader) })).status, 200);
+    } finally {
+      run(db, "DROP TRIGGER IF EXISTS fail_photo_edit");
+      db.close();
+    }
+  });
+}

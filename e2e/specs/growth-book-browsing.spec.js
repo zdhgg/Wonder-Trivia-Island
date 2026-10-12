@@ -28,9 +28,10 @@ async function seedHomeProfile(page) {
 async function seedOneRecordPerLine(page) {
   // 「我们一起」：带两张照片（用于验证大图翻页）。
   await page.getByRole("tab", { name: /我们一起/ }).click();
-  await page.getByRole("button", { name: "记一件新的事" }).click();
-  await page.getByLabel("这件事的标题").fill(FOOTPRINT_TITLE);
-  await page.getByLabel("那天发生了什么").fill("风很大，海浪打在脚上。");
+  await page.getByRole("button", { name: "记一笔" }).click();
+  await page.getByLabel("一句话记下这件事").fill(FOOTPRINT_TITLE);
+  await page.getByRole("button", { name: /补充细节、分类/ }).click();
+  await page.getByLabel("那天发生了什么（可选）").fill("风很大，海浪打在脚上。");
   await page.locator(".footprint-photos__input").setInputFiles([PHOTO_FIXTURE, PHOTO_FIXTURE]);
   await expect(page.locator(".footprint-photos__item")).toHaveCount(2);
   await page.getByRole("button", { name: "收进纪念册" }).click();
@@ -38,18 +39,20 @@ async function seedOneRecordPerLine(page) {
 
   // 「她的成长」：带一张照片。
   await page.getByRole("tab", { name: /她的成长/ }).click();
-  await page.getByRole("button", { name: /记下第一个瞬间|记一件她的事/ }).first().click();
-  await page.getByLabel("这件事的标题").fill(MILESTONE_TITLE);
-  await page.getByLabel("那天发生了什么").fill("举了三次才被叫到。");
+  await page.getByRole("button", { name: "记一笔" }).first().click();
+  await page.getByLabel("一句话记下这件事").fill(MILESTONE_TITLE);
+  await page.getByRole("button", { name: /补充细节、分类/ }).click();
+  await page.getByLabel("分类", { exact: true }).selectOption("classroom");
+  await page.getByLabel("那天发生了什么（可选）").fill("举了三次才被叫到。");
   await page.locator(".footprint-photos__input").setInputFiles(PHOTO_FIXTURE);
   await expect(page.locator(".footprint-photos__item")).toHaveCount(1);
 
-  const submitButton = page.getByRole("button", { name: "收进成长纪念册" });
+  const submitButton = page.getByRole("button", { name: "收进纪念册" });
 
   await submitButton.scrollIntoViewIfNeeded();
   await expect(submitButton).toBeEnabled();
   await submitButton.click();
-  await expect(page.locator(".milestones__entry", { hasText: MILESTONE_TITLE })).toBeVisible();
+  await expect(page.locator(".growth-book__entry", { hasText: MILESTONE_TITLE })).toBeVisible();
 }
 
 test.describe("纪念册翻看", () => {
@@ -63,7 +66,7 @@ test.describe("纪念册翻看", () => {
     // 切到「全部」：URL 去掉 tab 参数（默认页签），两条记录按日期混排在同一页。
     await page.getByRole("tab", { name: /全部/ }).click();
     await expect(page).not.toHaveURL(/tab=/);
-    await expect(page.getByText("一共留下了 2 个成长瞬间")).toBeVisible();
+    await expect(page.locator(".growth-book__count")).toHaveText("2 个瞬间");
 
     const footprintEntry = page.locator(".growth-book__entry", { hasText: FOOTPRINT_TITLE });
     const milestoneEntry = page.locator(".growth-book__entry", { hasText: MILESTONE_TITLE });
@@ -139,7 +142,7 @@ test.describe("纪念册翻看", () => {
     await expect(page.getByRole("tab", { name: /她的成长/ })).toHaveAttribute("aria-selected", "true");
 
     // 「她的成长」自己的列表里照片也能点开看大图。
-    await page.locator(".milestones__entry", { hasText: MILESTONE_TITLE }).locator(".milestones__entry-photo-button").click();
+    await page.locator(".growth-book__entry", { hasText: MILESTONE_TITLE }).locator(".growth-book__entry-photo-button").click();
     await expect(lightbox).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(lightbox).toHaveCount(0);

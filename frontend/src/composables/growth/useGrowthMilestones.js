@@ -1,4 +1,4 @@
-import { computed, reactive, ref } from "vue";
+import { computed, ref } from "vue";
 import {
   createMilestone as createMilestoneRequest,
   deleteMilestone as deleteMilestoneRequest,
@@ -104,7 +104,7 @@ export function useGrowthMilestones(options = {}) {
 
       applyMilestones([...withoutCreated, created]);
       formErrorMessages.value = [];
-      return true;
+      return created;
     } catch (error) {
       errorMessage.value = error?.message || "保存这条成长记录失败。";
       return false;
@@ -124,12 +124,16 @@ export function useGrowthMilestones(options = {}) {
     errorMessage.value = "";
 
     try {
-      const updated = ensureMilestone(await api.updateMilestone(milestoneId, result.value));
+      const updated = ensureMilestone(await api.updateMilestone(milestoneId, {
+        ...result.value,
+        ...(draft.addedPhotos !== undefined ? { addedPhotos: draft.addedPhotos } : {}),
+        ...(draft.removedPhotoIds !== undefined ? { removedPhotoIds: draft.removedPhotoIds } : {})
+      }));
       const withoutUpdated = milestones.value.filter((item) => item.id !== updated.id);
 
       applyMilestones([...withoutUpdated, updated]);
       formErrorMessages.value = [];
-      return true;
+      return updated;
     } catch (error) {
       errorMessage.value = error?.message || "修改这条成长记录失败。";
       return false;
@@ -172,21 +176,6 @@ export function useGrowthMilestones(options = {}) {
   }
 
   return {
-    // state 原样打包一份（reactive 会自动解包 ref），纪念册页面用 v-bind 交给
-    // 「她的成长」面板当 props：这样「全部」和「她的成长」看到的是同一份数据
-    // （一次请求、一处加载状态）。
-    // 注意这里只放「展示状态」——动作（load / createMilestone …）仍从 composable 上取；
-    // 也必须用 reactive 而不是普通对象，否则 v-bind 传下去的是 ref 对象本身。
-    state: reactive({
-      monthGroups,
-      isEmpty,
-      hasLoaded,
-      isLoading,
-      isSaving,
-      isDeleting,
-      errorMessage,
-      formErrorMessages
-    }),
     milestones,
     monthGroups,
     summary,

@@ -560,7 +560,15 @@ router.patch("/:id", (req, res, next) => {
 
     ensureGrowthFootprintsTable(db);
 
-    const updatedRow = updateStoredFootprint(db, footprintId, profileId, validationResult.value);
+    if (!getStoredFootprint(db, footprintId, profileId)) {
+      sendFootprintNotFound(res);
+      return;
+    }
+
+    const updatedRow = footprintPhotos.updateRecordWithPhotos(
+      db, footprintId, profileId, req.body,
+      () => updateStoredFootprint(db, footprintId, profileId, validationResult.value)
+    );
 
     if (!updatedRow) {
       sendFootprintNotFound(res);
@@ -571,6 +579,10 @@ router.patch("/:id", (req, res, next) => {
       footprint: serializeFootprintRow(updatedRow, footprintPhotos.listPhotos(db, footprintId))
     });
   } catch (error) {
+    if (error?.isPhotoValidationError) {
+      res.status(400).json({ message: error.message });
+      return;
+    }
     next(error);
   } finally {
     db.close();
