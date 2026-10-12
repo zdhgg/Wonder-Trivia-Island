@@ -11,6 +11,7 @@ import {
   buildHomeGrowthPlansEntry,
   buildHomeMilestoneEntry,
   buildHomeWelcomeSummary,
+  buildExploreItems,
   buildPracticeScope,
   buildTeacherTips,
   countWeakPointsForGrade,
@@ -414,6 +415,24 @@ describe("homeDashboard · 今日小任务与老师提醒", () => {
 
     expect(review.done).toBe(true);
     expect(review.progressText).toBe("3 / 3");
+  });
+
+  it("把到期错题和续学内容放到对应任务入口", () => {
+    const tasks = buildDailyTasks({
+      reviewDueCount: 4,
+      resume: { lessonTitle: "角的初步认识" }
+    });
+
+    expect(tasks.find((task) => task.id === "review").hint).toBe("今天有 4 道错题待温习");
+    expect(tasks.find((task) => task.id === "study").hint).toBe("上次学到“角的初步认识”");
+  });
+
+  it("把薄弱知识点放到专项强化入口", () => {
+    const items = buildExploreItems({
+      weakPointContext: { knowledgeTag: "表内乘法", note: "三年级 · 共 3 个知识点" }
+    });
+
+    expect(items.find((item) => item.id === "weak-point").hint).toBe("最近“表内乘法”需要再练练");
   });
 
   it("没有到期错题和薄弱点时不给提醒", () => {

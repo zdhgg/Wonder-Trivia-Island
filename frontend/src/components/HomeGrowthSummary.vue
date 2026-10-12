@@ -1,59 +1,20 @@
 <script setup>
 import { computed } from "vue";
+import IslandStageIllustration from "./island/IslandStageIllustration.vue";
 
-// 首页“我的成长”：把已经拿到的星星 / 航海收藏 / 成就摆到孩子面前，
-// 并给一个“最接近完成”的下一成就。完整收藏与成就列表在“我的探险收藏册”里。
 const props = defineProps({
-  growth: {
-    type: Object,
-    required: true
-  },
-  // 「成长纪念册 / 下次一起做什么」这两条入口的文案
-  // （homeDashboard.buildHomeGrowthBookEntry / buildHomeGrowthPlansEntry）。
-  // 单独一个 prop 而不是塞进 growth：它们和星星 / 收藏 / 成就那三个“本章指标”不同源。
-  growthBookEntry: {
-    type: Object,
-    default: () => ({})
-  },
-  growthPlansEntry: {
-    type: Object,
-    default: () => ({})
-  },
-  milestoneEntry: {
-    type: Object,
-    default: () => ({})
-  }
+  growth: { type: Object, required: true },
+  growthBookEntry: { type: Object, default: () => ({}) },
+  growthPlansEntry: { type: Object, default: () => ({}) },
+  milestoneEntry: { type: Object, default: () => ({}) }
 });
-
 const emit = defineEmits(["open-backpack", "open-entry", "open-island"]);
 
-// 三条成长入口用同一个渲染模板，只有文案、去往的地方和底色不同。
-// 纪念册那两条（我们一起 / 她的成长）同色系，因为它们翻开的是同一本纪念册。
+// Compact labels keep all three destinations visible; full descriptions stay on their own pages.
 const growthEntries = computed(() => [
-  {
-    id: "growth-book",
-    title: "我们的成长纪念册",
-    icon: props.growthBookEntry?.icon ?? "",
-    hint: props.growthBookEntry?.hint ?? "",
-    ariaLabel: props.growthBookEntry?.ariaLabel ?? "打开我们的成长纪念册",
-    tone: "book"
-  },
-  {
-    id: "growth-plans",
-    title: "下次我们一起做什么",
-    icon: props.growthPlansEntry?.icon ?? "",
-    hint: props.growthPlansEntry?.hint ?? "",
-    ariaLabel: props.growthPlansEntry?.ariaLabel ?? "打开下次我们一起做什么",
-    tone: "plan"
-  },
-  {
-    id: "growth-milestones",
-    title: "她的成长",
-    icon: props.milestoneEntry?.icon ?? "",
-    hint: props.milestoneEntry?.hint ?? "",
-    ariaLabel: props.milestoneEntry?.ariaLabel ?? "打开她的成长",
-    tone: "book"
-  }
+  { id: "growth-book", title: "成长纪念册", icon: props.growthBookEntry.icon || "📖", ariaLabel: props.growthBookEntry.ariaLabel || "打开我们的成长纪念册" },
+  { id: "growth-plans", title: "一起做什么", icon: props.growthPlansEntry.icon || "☀️", ariaLabel: props.growthPlansEntry.ariaLabel || "打开下次我们一起做什么" },
+  { id: "growth-milestones", title: "她的成长", icon: props.milestoneEntry.icon || "🌱", ariaLabel: props.milestoneEntry.ariaLabel || "打开她的成长" }
 ]);
 </script>
 
@@ -61,118 +22,64 @@ const growthEntries = computed(() => [
   <section class="growth-summary" aria-label="我的成长">
     <header class="growth-summary__head">
       <h2 class="growth-summary__title">我的成长</h2>
-      <button
-        class="growth-summary__more"
-        type="button"
-        aria-label="打开我的探险收藏册，查看印章、航海收藏和成就"
-        @click="emit('open-backpack')"
-      >
-        我的探险收藏册
+      <button class="growth-summary__more" type="button"
+        aria-label="打开我的探险收藏册，查看印章、航海收藏和成就" @click="emit('open-backpack')">
+        收藏册 <span aria-hidden="true">↗</span>
       </button>
     </header>
 
+    <button class="growth-summary__stamps" type="button"
+      :aria-label="`打开我的知识岛（${growth.stampText}）`" @click="emit('open-island')">
+      <span class="growth-summary__stamps-copy">
+        <strong class="growth-summary__stamps-island">{{ growth.knowledgeIslandTitle }}</strong>
+        <span class="growth-summary__stamps-text">{{ growth.knowledgeIslandText }}</span>
+        <span class="growth-summary__stamps-next">{{ growth.knowledgeIsland.nextText }}</span>
+      </span>
+      <!-- This thumbnail follows the real unlocked stage, never the decorative hero illustration. -->
+      <IslandStageIllustration class="growth-summary__island-art" :stage-id="growth.knowledgeIsland.currentStage.id" />
+      <span class="growth-summary__stamps-more" aria-hidden="true">›</span>
+    </button>
+
     <ul class="growth-summary__stats">
-      <li class="growth-summary__stat growth-summary__stat--star">
-        <span class="growth-summary__stat-icon" aria-hidden="true">⭐</span>
-        <strong class="growth-summary__stat-value">{{ growth.starText }}</strong>
+      <li class="growth-summary__stat">
+        <strong class="growth-summary__stat-value"><span aria-hidden="true">⭐</span> {{ growth.starText }}</strong>
         <span class="growth-summary__stat-label">本章星星</span>
       </li>
-      <li class="growth-summary__stat growth-summary__stat--reward">
-        <span class="growth-summary__stat-icon" aria-hidden="true">🎒</span>
-        <strong class="growth-summary__stat-value">{{ growth.rewardText }}</strong>
+      <li class="growth-summary__stat">
+        <strong class="growth-summary__stat-value"><span aria-hidden="true">🎒</span> {{ growth.rewardText }}</strong>
         <span class="growth-summary__stat-label">航海收藏</span>
       </li>
-      <li class="growth-summary__stat growth-summary__stat--achievement">
-        <span class="growth-summary__stat-icon" aria-hidden="true">🏅</span>
-        <strong class="growth-summary__stat-value">{{ growth.achievementText }}</strong>
+      <li class="growth-summary__stat">
+        <strong class="growth-summary__stat-value"><span aria-hidden="true">🏅</span> {{ growth.achievementText }}</strong>
         <span class="growth-summary__stat-label">成就</span>
       </li>
     </ul>
 
-    <!-- 长期成长摘要：整行就是热区，点开知识岛自己的独立页面。
-         只做轻量摘要：岛名 + 已经攒了多少枚印章 + 下一次变化，不把整座岛搬到首页。
-         右上角的「我的探险收藏册」按钮仍然开着收藏册，两条路各去各的页面。 -->
-    <button
-      class="growth-summary__stamps"
-      type="button"
-      :aria-label="`打开我的知识岛（${growth.stampText}）`"
-      @click="emit('open-island')"
-    >
-      <span class="growth-summary__stamps-glyph" aria-hidden="true">{{ growth.knowledgeIsland.currentStage.glyph }}</span>
-      <span class="growth-summary__stamps-copy">
-        <span class="growth-summary__stamps-island">{{ growth.knowledgeIslandTitle }}</span>
-        <span class="growth-summary__stamps-text">{{ growth.knowledgeIslandText }}</span>
-        <span class="growth-summary__stamps-next">{{ growth.knowledgeIsland.nextText }}</span>
-      </span>
-      <span class="growth-summary__stamps-more" aria-hidden="true">›</span>
-    </button>
-
-    <!-- 成长纪念册 / 下次一起做什么：和知识岛同一层的轻量入口，各自走独立页面。
-         这里只说“一起经历的事”和“想一起做的事”，不显示任何条数 / 进度——
-         首页本轮不请求足迹与清单接口，免得清单变成待办面板。 -->
-    <button
-      v-for="entry in growthEntries"
-      :key="entry.id"
-      :class="['growth-summary__entry', `growth-summary__entry--${entry.tone}`]"
-      type="button"
-      :aria-label="entry.ariaLabel"
-      @click="emit('open-entry', entry.id)"
-    >
-      <span class="growth-summary__entry-glyph" aria-hidden="true">{{ entry.icon }}</span>
-      <span class="growth-summary__entry-copy">
-        <strong class="growth-summary__entry-title">{{ entry.title }}</strong>
-        <span class="growth-summary__entry-hint">{{ entry.hint }}</span>
-      </span>
-      <span class="growth-summary__entry-more" aria-hidden="true">›</span>
-    </button>
-
-    <!-- 下一成就压成一行：名称 + 进度文字 + “还差多少”。
-         进度数字已经在 progressText / goalText 里，不再重复画第二条进度条。 -->
-    <div v-if="growth.nextAchievement" class="growth-summary__next">
-      <span class="growth-summary__next-label">下一成就</span>
-      <span class="growth-summary__next-glyph" aria-hidden="true">{{ growth.nextAchievement.glyph }}</span>
-      <strong class="growth-summary__next-name">{{ growth.nextAchievement.name }}</strong>
-      <span v-if="growth.nextAchievement.progressText" class="growth-summary__next-progress">
-        {{ growth.nextAchievement.progressText }}
-      </span>
-      <span class="growth-summary__next-goal">{{ growth.nextAchievement.goalText }}</span>
+    <div class="growth-summary__entries">
+      <button v-for="entry in growthEntries" :key="entry.id" class="growth-summary__entry"
+        type="button" :aria-label="entry.ariaLabel" @click="emit('open-entry', entry.id)">
+        <span aria-hidden="true">{{ entry.icon }}</span>
+        <span>{{ entry.title }}</span>
+        <span class="growth-summary__entry-arrow" aria-hidden="true">›</span>
+      </button>
     </div>
-
-    <p v-else-if="growth.allAchievementsDone" class="growth-summary__done">
-      🏅 所有成就都已经达成啦，太厉害了！
-    </p>
   </section>
 </template>
 
 <style scoped>
 .growth-summary {
   display: grid;
-  /* 三列网格只服务于“三条成长入口并成一行”；其余子元素都跨满整行。 */
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  gap: 12px;
   align-content: start;
-  padding: 16px 18px;
-  border: 1.5px solid rgba(36, 50, 74, 0.08);
-  border-radius: 24px;
-  background:
-    radial-gradient(circle at top right, rgba(255, 231, 156, 0.3), transparent 42%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.94) 0%, rgba(255, 252, 244, 0.88) 100%);
-  box-shadow:
-    0 10px 22px -28px rgba(36, 50, 74, 0.3),
-    inset 0 1px 0 rgba(255, 255, 255, 0.9);
-}
-
-.growth-summary__head,
-.growth-summary__stats,
-.growth-summary__stamps,
-.growth-summary__next,
-.growth-summary__done {
-  grid-column: 1 / -1;
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid #e0e9e5;
+  border-radius: 22px;
+  background: rgba(255,255,255,.9);
 }
 
 .growth-summary__head {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
@@ -180,337 +87,195 @@ const growthEntries = computed(() => [
 
 .growth-summary__title {
   margin: 0;
+  font-family: "ZCOOL KuaiLe", "Baloo 2", sans-serif;
+  font-size: 1.15rem;
+  line-height: 1.4;
   color: var(--color-ink);
-  font-family: "ZCOOL KuaiLe", "Baloo 2", "Trebuchet MS", sans-serif;
-  font-size: 1.25rem;
-  line-height: 1.2;
+}
+
+.growth-summary button {
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 150ms ease;
+}
+
+.growth-summary button:focus-visible {
+  outline: 3px solid #6aad9b;
+  outline-offset: 3px;
 }
 
 .growth-summary__more {
-  appearance: none;
   min-height: 32px;
-  padding: 4px 12px;
-  border: 1px solid rgba(36, 50, 74, 0.12);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.86);
-  color: var(--color-ink-soft);
-  font-family: inherit;
-  font-size: 0.78rem;
-  font-weight: 800;
-  cursor: pointer;
-  transition:
-    transform 160ms ease,
-    border-color 160ms ease,
-    color 160ms ease;
+  padding: 4px 2px 4px 10px;
+  border: 0;
+  border-radius: 6px;
+  color: #59746b;
+  background: transparent;
+  font-size: .78rem;
+  font-weight: 600;
 }
 
 .growth-summary__more:hover {
-  transform: translateY(-1px);
-  border-color: rgba(255, 174, 66, 0.5);
-  color: var(--color-ink);
+  color: #215647;
+  background: #eff7f2;
 }
 
-.growth-summary__more:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px rgba(255, 174, 66, 0.24);
+.growth-summary__more > span {
+  padding-left: 6px;
 }
 
-.growth-summary__stats {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-/* 指标改成“图标 + 数值”同一行、标签在下一行，纵向从 82px 收到 50px 左右。 */
-.growth-summary__stat {
-  display: grid;
-  grid-template-columns: auto auto;
-  grid-template-areas:
-    "icon value"
-    "label label";
-  align-items: center;
-  justify-content: center;
-  gap: 1px 5px;
-  padding: 7px 6px;
-  border: 1px solid rgba(36, 50, 74, 0.06);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.78);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.86);
-  text-align: center;
-}
-
-.growth-summary__stat-icon {
-  grid-area: icon;
-  font-size: 0.98rem;
-  line-height: 1;
-}
-
-.growth-summary__stat-value {
-  grid-area: value;
-  color: var(--color-ink);
-  font-size: 1.04rem;
-  font-weight: 900;
-  line-height: 1.1;
-}
-
-.growth-summary__stat--star .growth-summary__stat-value {
-  color: #b77211;
-}
-
-.growth-summary__stat-label {
-  grid-area: label;
-  color: var(--color-ink-soft);
-  font-size: 0.72rem;
-  font-weight: 700;
-  line-height: 1.2;
-}
-
-/* 长期成长的一条轻量信息：不做第四个指标卡，只写“知识岛现在到哪一步了”，整行可点进收藏册。 */
 .growth-summary__stamps {
   display: flex;
   align-items: center;
   gap: 8px;
   width: 100%;
-  margin: 0;
-  padding: 8px 12px;
-  border: 1.5px solid transparent;
-  border-radius: 14px;
-  background: rgba(184, 242, 223, 0.28);
-  color: var(--color-ink-soft);
-  font-family: inherit;
-  font-size: 0.8rem;
-  font-weight: 800;
+  min-height: 96px;
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 15px;
+  background: #edf6ef;
   text-align: left;
-  cursor: pointer;
-  transition:
-    background-color 160ms ease,
-    border-color 160ms ease,
-    color 160ms ease;
 }
 
 .growth-summary__stamps:hover {
-  border-color: rgba(124, 216, 184, 0.62);
-  background: rgba(184, 242, 223, 0.52);
-  color: var(--color-ink);
-}
-
-.growth-summary__stamps:focus-visible {
-  outline: none;
-  border-color: rgba(124, 216, 184, 0.9);
-  box-shadow: 0 0 0 3px rgba(124, 216, 184, 0.3);
-}
-
-.growth-summary__stamps-glyph {
-  flex-shrink: 0;
-  font-size: 1.2rem;
-  line-height: 1;
+  background: #e2f0e6;
 }
 
 .growth-summary__stamps-copy {
   display: grid;
-  gap: 1px;
+  gap: 4px;
   flex: 1;
   min-width: 0;
 }
 
 .growth-summary__stamps-island {
-  color: var(--color-ink);
-  font-size: 0.86rem;
-  font-weight: 900;
+  color: #31584b;
+  font-size: 1rem;
+  font-weight: 800;
 }
 
 .growth-summary__stamps-text {
-  min-width: 0;
-  color: var(--color-ink-soft);
-  font-size: 0.78rem;
-  font-weight: 800;
+  color: #60796f;
+  font-size: .74rem;
+  font-weight: 500;
+  line-height: 1.5;
 }
 
 .growth-summary__stamps-next {
-  min-width: 0;
-  color: #1f6b51;
-  font-size: 0.78rem;
-  font-weight: 900;
+  color: #3a7b5c;
+  font-size: .73rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.growth-summary__island-art {
+  width: 96px;
+  flex: 0 0 96px;
 }
 
 .growth-summary__stamps-more {
-  flex-shrink: 0;
-  font-size: 1rem;
-  font-weight: 900;
+  color: #698d78;
+  font-size: 1.3rem;
 }
 
-/* 成长的几个入口：和知识岛摘要一样是整行可点的轻量入口，
-   但换一套纸张色，和「印章 / 收藏 / 成就」这些有分母的指标区分开。
-   三条入口在宽屏并成一行（卡片的三列网格），窄屏仍落回单列。 */
-.growth-summary__entry {
-  appearance: none;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
+.growth-summary__stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin: 0;
-  padding: 7px 9px;
-  border: 1.5px solid rgba(255, 214, 160, 0.72);
-  border-radius: 14px;
-  background: rgba(255, 244, 226, 0.72);
-  color: var(--color-ink-soft);
-  font-family: inherit;
-  font-size: 0.78rem;
-  font-weight: 800;
-  text-align: left;
-  cursor: pointer;
-  transition:
-    background-color 160ms ease,
-    border-color 160ms ease,
-    color 160ms ease;
+  padding: 0;
+  list-style: none;
 }
 
-/* 纪念册那两条同色系：翻开的是同一本纪念册；
-   「下次一起做什么」是另一类事（还没发生），换成偏天空的底色。 */
-.growth-summary__entry--plan {
-  border-color: rgba(173, 235, 255, 0.9);
-  background: rgba(236, 249, 255, 0.8);
-}
-
-.growth-summary__entry:hover {
-  border-color: rgba(255, 174, 66, 0.62);
-  background: rgba(255, 238, 205, 0.92);
-  color: var(--color-ink);
-}
-
-.growth-summary__entry--plan:hover {
-  border-color: rgba(122, 200, 230, 0.8);
-  background: rgba(222, 244, 255, 0.96);
-}
-
-.growth-summary__entry:focus-visible {
-  outline: none;
-  border-color: rgba(255, 174, 66, 0.9);
-  box-shadow: 0 0 0 3px rgba(255, 214, 128, 0.4);
-}
-
-.growth-summary__entry-glyph {
-  flex-shrink: 0;
-  font-size: 1.05rem;
-  line-height: 1;
-}
-
-.growth-summary__entry-copy {
+.growth-summary__stat {
   display: grid;
   gap: 1px;
-  flex: 1;
   min-width: 0;
+  text-align: center;
 }
 
-.growth-summary__entry-title {
-  color: var(--color-ink);
-  font-size: 0.8rem;
-  font-weight: 900;
-  line-height: 1.25;
+.growth-summary__stat + .growth-summary__stat {
+  border-left: 1px solid #edf0ee;
 }
 
-.growth-summary__entry-hint {
-  min-width: 0;
-  color: var(--color-ink-soft);
-  font-size: 0.7rem;
-  font-weight: 800;
-  line-height: 1.32;
-}
-
-.growth-summary__entry-more {
-  flex-shrink: 0;
-  font-size: 0.9rem;
-  font-weight: 900;
-}
-
-/* 下一成就：一行说完“还差什么”，不再画进度条（134px → 50px 左右）。 */
-.growth-summary__next {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 8px;
-  padding: 8px 12px;
-  border: 1px solid rgba(255, 174, 66, 0.28);
-  border-radius: 16px;
-  background: rgba(255, 248, 226, 0.72);
-}
-
-.growth-summary__next-label {
-  flex-shrink: 0;
-  color: rgba(176, 84, 22, 0.98);
-  font-size: 0.7rem;
-  font-weight: 900;
-  letter-spacing: 0.04em;
-}
-
-.growth-summary__next-glyph {
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-  width: 28px;
-  height: 28px;
-  border-radius: 11px;
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.96) 0%, rgba(255, 231, 156, 0.9) 100%);
-  color: var(--color-ink);
-  font-size: 0.98rem;
-  font-weight: 900;
-  box-shadow: 0 10px 18px -16px rgba(36, 50, 74, 0.4);
-}
-
-.growth-summary__next-name {
-  color: var(--color-ink);
-  font-size: 0.88rem;
-  font-weight: 900;
-  line-height: 1.3;
-}
-
-.growth-summary__next-progress {
-  color: var(--color-ink-soft);
-  font-size: 0.76rem;
+.growth-summary__stat-value {
+  color: #425b52;
+  font-size: .95rem;
   font-weight: 700;
 }
 
-.growth-summary__next-goal {
-  color: var(--color-ink);
-  font-size: 0.78rem;
-  font-weight: 800;
+.growth-summary__stat-value > span {
+  font-size: .85rem;
 }
 
-.growth-summary__done {
-  margin: 0;
-  padding: 12px 14px;
-  border-radius: 18px;
-  background: rgba(184, 242, 223, 0.44);
-  color: var(--color-ink);
-  font-size: 0.9rem;
-  font-weight: 800;
+.growth-summary__stat-label {
+  color: var(--color-ink-soft);
+  font-size: .7rem;
+  font-weight: 500;
 }
 
-@media (max-width: 480px) {
-  .growth-summary__stats {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
+.growth-summary__entries {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  border-top: 1px solid #edf0ee;
+  padding-top: 8px;
+}
 
-  .growth-summary__stat-value {
-    font-size: 1rem;
-  }
+.growth-summary__entry {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 36px;
+  padding: 4px 2px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #526c63;
+  font-size: .76rem;
+  font-weight: 600;
+}
 
-  /* 手机上一行三格会把入口文案挤成很多行，仍落回单列。 */
+.growth-summary__entry:hover {
+  color: #214f41;
+  background: #eff7f2;
+}
+
+.growth-summary__entry-arrow {
+  color: #8da297;
+}
+
+@media (max-width: 1100px) and (min-width: 921px), (max-width: 420px) {
+  .growth-summary__island-art {
+    width: 68px;
+    flex-basis: 68px;
+  }
   .growth-summary__entry {
-    grid-column: 1 / -1;
+    font-size: .72rem;
+    gap: 4px;
+  }
+  .growth-summary__entry-arrow {
+    display: none;
+  }
+}
+
+@media (max-width: 600px) {
+  .growth-summary {
+    padding: 16px;
+  }
+}
+
+@media (max-width: 360px) {
+  .growth-summary__island-art {
+    width: 50px;
+    flex-basis: 50px;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .growth-summary__more,
-  .growth-summary__more:hover,
-  .growth-summary__stamps,
-  .growth-summary__entry {
+  .growth-summary button {
     transition: none;
-    transform: none;
   }
 }
 </style>

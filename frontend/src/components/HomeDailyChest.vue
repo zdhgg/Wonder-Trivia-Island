@@ -40,9 +40,9 @@ const chestGlyph = computed(() => {
     <div class="daily-chest__main">
       <span class="daily-chest__glyph" aria-hidden="true">{{ chestGlyph }}</span>
       <h2 class="daily-chest__title">今日宝箱</h2>
-      <span class="daily-chest__status">{{ chest.statusLabel }}</span>
+      <span v-if="chest.isUnlocked || chest.isClaimed" class="daily-chest__status">{{ chest.statusLabel }}</span>
       <span class="daily-chest__progress">{{ chest.progressText }}</span>
-      <span class="daily-chest__hint">{{ chest.hintText }}</span>
+      <span v-if="!chest.isUnlocked && !chest.isClaimed" class="daily-chest__hint">完成小任务，打开宝箱</span>
     </div>
 
     <div class="daily-chest__actions">
@@ -85,9 +85,9 @@ const chestGlyph = computed(() => {
   align-items: center;
   gap: 4px 10px;
   padding: 8px 12px;
-  border: 1.5px solid rgba(255, 196, 120, 0.46);
-  border-radius: 14px;
-  background: rgba(255, 250, 238, 0.8);
+  border: 1px solid #f1e5c9;
+  border-radius: 12px;
+  background: #fdf8ed;
 }
 
 .daily-chest--ready {
@@ -117,7 +117,7 @@ const chestGlyph = computed(() => {
   height: 26px;
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.9);
-  font-size: 0.98rem;
+  font-size: 0.88rem;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 

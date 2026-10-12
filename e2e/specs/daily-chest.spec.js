@@ -221,7 +221,7 @@ test.describe("今日任务 → 今日宝箱 → 长期成长", () => {
     const chest = page.getByRole("region", { name: "今日宝箱" });
 
     await expect(chest).toContainText("2 / 3");
-    await expect(chest).toContainText("宝箱未解锁");
+    await expect(chest).toContainText("完成小任务，打开宝箱");
     await expect(chest.getByRole("button", { name: "领取今日宝箱" })).toHaveCount(0);
 
     // 没有真的发出过领取请求，服务端账本仍是空的。

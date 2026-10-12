@@ -11,8 +11,7 @@ const { test, expect } = require("@playwright/test");
 //   6. 1024×800 保持双列；390 单列且领取按钮可见
 //
 // 横向溢出：整页在 390 / 720 / 1024 / 1440 都必须 scrollWidth <= innerWidth，
-// 这里不再给任何组件豁免（装饰气泡的出血已在 .page-shell 上裁掉，
-// 21 颗星在窄屏自然换行而不是被卡片裁掉）。
+// 这里不再给任何组件豁免；星星使用完整数字摘要，插画不能遮挡主按钮。
 
 const CHALLENGE_KEY = "wonder-trivia-island.challenge.progress";
 const TASKS_KEY = "wonder-trivia-island.home.daily-tasks";
@@ -338,7 +337,7 @@ test.describe("首页奖励闭环", () => {
     expect(taskX).toBeLessThan(growthX);
   });
 
-  test("390 窄屏：单列、宝箱领取按钮可见、星星完整换行、整页无横向溢出", async ({ page }) => {
+  test("390 窄屏：单列、宝箱可领取、星数清晰、插画和主按钮不遮挡", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/");
     await seedStorage(page, { [CHALLENGE_KEY]: buildProgress({ clearedStageCount: 5, earnedRewardCount: 5 }), [TASKS_KEY]: buildTasks(3) });
@@ -354,23 +353,17 @@ test.describe("首页奖励闭环", () => {
     expect(layout.pageOverflowPx).toBeLessThanOrEqual(0);
     expect(layout.canScrollHorizontally).toBe(false);
 
-    // 21 颗星一颗都不少：只允许自然换行，不允许被卡片裁掉
-    const stars = await page.evaluate(() => {
-      const starNodes = [...document.querySelectorAll(".adventure-card__star")];
-      const cardRight = document.querySelector(".adventure-card").getBoundingClientRect().right;
-
-      return {
-        count: starNodes.length,
-        lines: new Set(starNodes.map((star) => Math.round(star.getBoundingClientRect().top))).size,
-        clipped: starNodes.filter((star) => star.getBoundingClientRect().right > cardRight + 0.5).length,
-        text: document.querySelector(".adventure-card__stars-text").innerText.trim()
-      };
-    });
-
-    expect(stars.count).toBe(21);
-    expect(stars.clipped).toBe(0);
-    expect(stars.lines).toBeGreaterThanOrEqual(2);
-    expect(stars.text).toContain("21");
+    // 数字摘要保留真实星数；手机端插画位于文案之后，不覆盖主要操作。
+    const stars = page.locator(".adventure-card__stars-text");
+    await expect(stars).toContainText("15 / 21");
+    await expect(stars).toHaveAttribute("aria-label", "本章节已获得 15 / 21 星");
+    const illustration = page.locator(".adventure-card__illustration");
+    await expect(illustration).toBeVisible();
+    await expect.poll(() => illustration.evaluate((img) => img.complete && img.naturalWidth > 0)).toBe(true);
+    const illustrationBox = await illustration.boundingBox();
+    const primaryButtonBox = await page.locator(".adventure-card__cta").boundingBox();
+    expect(primaryButtonBox.y + primaryButtonBox.height).toBeLessThan(illustrationBox.y);
+    expect(primaryButtonBox.y + primaryButtonBox.height).toBeLessThanOrEqual(844);
 
     // 宝箱状态条的直接领取按钮完整位于视口宽度内。
     await expect(page.getByRole("button", { name: /宝箱可以打开啦/ })).toHaveCount(0);

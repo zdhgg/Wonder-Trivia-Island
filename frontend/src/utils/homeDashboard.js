@@ -426,7 +426,7 @@ export function buildHomeWelcomeSummary(advice = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// 老师的小提醒：0~2 条，只推系统真的有把握的内容。
+// 老师的小提醒：保留聚合结果供旧调用兼容；首页现在把建议直接放到对应入口。
 // ---------------------------------------------------------------------------
 
 export function buildTeacherTips({
@@ -474,10 +474,12 @@ export function buildTeacherTips({
 // 今日小任务：目标固定，进度只来自本地日进度（单一口径，不做双来源 max）。
 // ---------------------------------------------------------------------------
 
-export function buildDailyTasks({ tasks = {} } = {}) {
+export function buildDailyTasks({ tasks = {}, reviewDueCount = 0, resume = null } = {}) {
   const reviewedCount = Array.isArray(tasks?.reviewedQuestionIds) ? tasks.reviewedQuestionIds.length : 0;
   const clearedCount = toNonNegativeInteger(tasks?.stagesCleared);
   const lessonCount = Array.isArray(tasks?.completedLessonIds) ? tasks.completedLessonIds.length : 0;
+  const dueCount = toNonNegativeInteger(reviewDueCount);
+  const resumeTitle = normalizeText(resume?.lessonTitle, 20);
 
   const items = [
     {
@@ -487,7 +489,8 @@ export function buildDailyTasks({ tasks = {} } = {}) {
       value: Math.min(clearedCount, 1),
       target: 1,
       done: clearedCount >= 1,
-      accent: "volcano"
+      accent: "volcano",
+      hint: ""
     },
     {
       id: "review",
@@ -496,7 +499,8 @@ export function buildDailyTasks({ tasks = {} } = {}) {
       value: Math.min(reviewedCount, 3),
       target: 3,
       done: reviewedCount >= 3,
-      accent: "review"
+      accent: "review",
+      hint: dueCount > 0 ? `今天有 ${dueCount} 道错题待温习` : ""
     },
     {
       id: "study",
@@ -505,7 +509,8 @@ export function buildDailyTasks({ tasks = {} } = {}) {
       value: Math.min(lessonCount, 1),
       target: 1,
       done: lessonCount >= 1,
-      accent: "study"
+      accent: "study",
+      hint: resumeTitle ? `上次学到“${resumeTitle}”` : ""
     }
   ];
 
@@ -597,6 +602,10 @@ export function buildChapterGrowthSource({
 // ---------------------------------------------------------------------------
 
 export function buildExploreItems({ knowledgeSummary = "", weakPointContext = null, wrongBookSummary = "" } = {}) {
+  const weakPointRecommendation = weakPointContext?.knowledgeTag
+    ? `最近“${normalizeText(weakPointContext.knowledgeTag, 20)}”需要再练练`
+    : "";
+
   return [
     {
       id: "knowledge-study",
@@ -609,7 +618,7 @@ export function buildExploreItems({ knowledgeSummary = "", weakPointContext = nu
       id: "weak-point",
       icon: "🎯",
       title: "专项强化",
-      hint: weakPointContext?.note || "只练一个薄弱点",
+      hint: weakPointRecommendation || weakPointContext?.note || "只练一个薄弱点",
       target: "weak-point"
     },
     {
@@ -705,7 +714,7 @@ export function buildHomeDashboard({
   };
   const adventure = buildHomeAdventure(adventureSource);
   // 今日宝箱和今日小任务共用同一份任务判定结果，避免两处口径漂移。
-  const dailyTaskItems = buildDailyTasks({ tasks: dailyTasks });
+  const dailyTaskItems = buildDailyTasks({ tasks: dailyTasks, reviewDueCount, resume });
   const normalizedDateKey = normalizeText(dateKey, 20);
   const growth = buildHomeGrowth({
     ...growthSource,

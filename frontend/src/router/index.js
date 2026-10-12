@@ -7,7 +7,10 @@ const router = createRouter({
   history: createWebHashHistory(),
   routes: APP_ROUTES,
   // 地图页从年级总览进入单年级时是同一路由换参数，必须回到顶部，否则会停在上一级的滚动位置
-  scrollBehavior(_to, _from, savedPosition) {
+  scrollBehavior(to, _from, savedPosition) {
+    if (to.name === APP_ROUTE_NAME.HOME && to.hash === "#today-tasks") {
+      return { el: "#today-tasks", top: 24 };
+    }
     if (savedPosition) {
       return savedPosition;
     }
