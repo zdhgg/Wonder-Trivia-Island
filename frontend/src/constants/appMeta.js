@@ -1,14 +1,30 @@
 export const APP_META = Object.freeze({
   productName: "奇妙知识岛",
-  version: "1.6.0",
-  releaseTag: "v1.6.0",
-  releaseLabel: "1.6 知识岛成长与每日冒险版",
-  releasedAt: "2026-10-01",
+  version: "1.7.0",
+  releaseTag: "v1.7.0",
+  releaseLabel: "1.7 岛屿实景音景与纪念册编辑版",
+  releasedAt: "2026-10-12",
   repositoryUrl: "https://github.com/zdhgg/Wonder-Trivia-Island",
-  releaseUrl: "https://github.com/zdhgg/Wonder-Trivia-Island/releases/tag/v1.6.0",
+  releaseUrl: "https://github.com/zdhgg/Wonder-Trivia-Island/releases/tag/v1.7.0",
   architectureSummary: "Vue 3 + Vite 8 · Node.js 24 + Express 5 · SQLite",
   dataModeLabel: "单学习档案 · 本机优先",
   changelog: Object.freeze([
+    Object.freeze({
+      version: "1.7.0",
+      tag: "v1.7.0",
+      date: "2026-10-12",
+      channel: "正式版",
+      title: "岛屿实景音景与纪念册编辑",
+      summary: "知识岛换上真实插画与八处热点轻互动，背景音乐和海鸥换成真实录音，纪念册改为原地编辑、文字与照片一次保存，每日宝箱直接在岛上领取，自由练习先选范围再开练，错题温习新增年级透镜与状态计数。",
+      highlights: Object.freeze([
+        "知识岛换上真实插画：灯塔、棕榈、帐篷、天文台等十三幅画面拼出小岛，贝壳、岩石、海鸥、太阳、云朵和漂流瓶都有了自己的回应，点海面还会荡开一圈涟漪。",
+        "背景音乐换成真实录音：Steps on Sand 无缝循环，海鸥是三段 CC0 真实鸣叫，阅读来信与领奖时自动压低音量，环境声跟着音效通道走，素材来源全部记录在案。",
+        "每日宝箱直接在知识岛上领取，回首页时自动落到今日任务。",
+        "成长纪念册改为原地编辑：一句话、细节、日期和照片在同一张卡片里改好一次保存，补记旧月份会自动展开并定位，后端用事务保证文字与照片同进同退。",
+        "自由练习新增范围选择：按年级、按学科先选好范围再开始，随便练点了直接进。",
+        "错题温习新增年级透镜与状态计数：年级只收窄列表、不动复习安排，状态徽章实时显示到期、排队、回温中与已回稳的题量。"
+      ])
+    }),
     Object.freeze({
       version: "1.6.0",
       tag: "v1.6.0",
