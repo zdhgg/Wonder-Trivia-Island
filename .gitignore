@@ -19,3 +19,8 @@ scripts/__pycache__/
 *.py[cod]
 *.log
 .zcode/
+# 本地工具与原始素材目录：成品资产已入库（见 frontend/src/assets/*/SOURCES.md），
+# 原始素材只做本地溯源，不进版本库
+.workbuddy/
+图片素材/
+音频素材/
