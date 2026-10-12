@@ -52,6 +52,23 @@ test.describe("答题后的错题闭环", () => {
 
     // 刚答错的那道题被收了进来，并且进入「今天到期」队列（默认筛选）
     await expect(page.getByRole("heading", { name: question.content })).toBeVisible();
+    await expect(page.locator(".wrong-card__chip").filter({ hasText: question.grade })).toBeVisible();
+
+    // 按年级筛选：默认「全部年级」，选项里带题数；切到这道题所在的年级仍可见，切回全部恢复
+    const gradeSelect = page.getByLabel("按年级筛选错题");
+    await expect(gradeSelect).toHaveValue("");
+    await expect(gradeSelect.locator("option")).toHaveCount(2);
+    await expect(gradeSelect.locator("option").nth(1)).toHaveText(`${question.grade}（1 题）`);
+
+    await gradeSelect.selectOption(question.grade);
+    await expect(page.getByRole("heading", { name: question.content })).toBeVisible();
+    await gradeSelect.selectOption("");
+    await expect(gradeSelect).toHaveValue("");
+
+    // 状态筛选组合出空态：已回稳为 0 时展示空态文案
+    await page.getByRole("button", { name: /已回稳/ }).click();
+    await expect(page.getByRole("heading", { name: "当前筛选下没有错题" })).toBeVisible();
+    await page.getByRole("button", { name: /今天到期/ }).click();
 
     const startReviewButton = page.getByRole("button", { name: /^开始温习/ });
     await expect(startReviewButton).toBeEnabled();

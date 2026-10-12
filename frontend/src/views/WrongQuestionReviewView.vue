@@ -24,13 +24,23 @@ const emit = defineEmits(["start-review", "review-question", "practice-knowledge
 
 const activeStatus = ref("due");
 const activeKnowledgeTag = ref("");
+const activeGrade = ref("");
 
-const statusOptions = [
-  { value: "due", label: "今天到期" },
-  { value: "scheduled", label: "已排队" },
-  { value: "mastered", label: "已回稳" },
-  { value: "all", label: "全部" }
-];
+const GRADE_ORDER = ["一年级", "二年级", "三年级", "四年级", "五年级", "六年级"];
+
+function gradeRank(grade) {
+  const index = GRADE_ORDER.indexOf(grade);
+
+  return index === -1 ? GRADE_ORDER.length : index;
+}
+
+const statusOptions = computed(() => [
+  { value: "due", label: "今天到期", count: props.wrongQuestions.filter((item) => item.isReviewDue).length },
+  { value: "scheduled", label: "已排队", count: props.wrongQuestions.filter((item) => item.isReviewScheduled).length },
+  { value: "reviewing", label: "回温中", count: props.wrongQuestions.filter((item) => item.reviewStatus === "reviewing").length },
+  { value: "mastered", label: "已回稳", count: props.wrongQuestions.filter((item) => item.reviewStatus === "mastered").length },
+  { value: "all", label: "全部", count: props.wrongQuestions.length }
+]);
 
 const knowledgeTagOptions = computed(() => {
   const labelSet = new Set();
@@ -46,6 +56,22 @@ const knowledgeTagOptions = computed(() => {
   return Array.from(labelSet);
 });
 
+const gradeOptions = computed(() => {
+  const counts = new Map();
+
+  for (const item of props.wrongQuestions) {
+    const grade = String(item?.grade || "").trim();
+
+    if (grade) {
+      counts.set(grade, (counts.get(grade) || 0) + 1);
+    }
+  }
+
+  return Array.from(counts.entries())
+    .sort((a, b) => gradeRank(a[0]) - gradeRank(b[0]))
+    .map(([grade, count]) => ({ value: grade, label: `${grade}（${count} 题）` }));
+});
+
 const filteredQuestions = computed(() =>
   props.wrongQuestions.filter((item) => {
     const matchesStatus =
@@ -55,12 +81,11 @@ const filteredQuestions = computed(() =>
           ? item.isReviewDue
           : activeStatus.value === "scheduled"
             ? item.isReviewScheduled
-        : activeStatus.value === "mastered"
-          ? item.reviewStatus === "mastered"
-          : item.reviewStatus !== "mastered";
+            : item.reviewStatus === activeStatus.value;
     const matchesKnowledgeTag = activeKnowledgeTag.value ? item.knowledgeTag === activeKnowledgeTag.value : true;
+    const matchesGrade = activeGrade.value ? item.grade === activeGrade.value : true;
 
-    return matchesStatus && matchesKnowledgeTag;
+    return matchesStatus && matchesKnowledgeTag && matchesGrade;
   })
 );
 
@@ -78,6 +103,13 @@ watch(
   { immediate: true }
 );
 
+// 错题记录会被服务端合并等流程改写，选中的年级可能不再存在，此时回落到「全部年级」。
+watch(gradeOptions, (options) => {
+  if (activeGrade.value && !options.some((option) => option.value === activeGrade.value)) {
+    activeGrade.value = "";
+  }
+});
+
 function emitBatchReview() {
   if (!reviewQuestionIds.value.length) {
     return;
@@ -90,18 +122,9 @@ function emitBatchReview() {
 <template>
   <section class="wrong-hub">
     <header class="wrong-hero">
-      <div class="wrong-hero__copy">
-        <p class="wrong-hero__eyebrow">Review Queue</p>
-        <h2 class="wrong-hero__title">{{ props.overview.title }}</h2>
-        <p class="wrong-hero__text">{{ props.overview.description }}</p>
-      </div>
-
-      <div class="wrong-hero__stats" aria-label="错题概览">
-        <article v-for="item in props.overview.stats" :key="item.label" class="wrong-stat">
-          <span class="wrong-stat__label">{{ item.label }}</span>
-          <strong class="wrong-stat__value">{{ item.value }}</strong>
-        </article>
-      </div>
+      <p class="wrong-hero__eyebrow">Review Queue</p>
+      <h2 class="wrong-hero__title">{{ props.overview.title }}</h2>
+      <p class="wrong-hero__text">{{ props.overview.description }}</p>
     </header>
 
     <section class="wrong-toolbar" aria-label="错题筛选">
@@ -114,31 +137,33 @@ function emitBatchReview() {
           @click="activeStatus = item.value"
         >
           {{ item.label }}
+          <span class="wrong-filter__count">{{ item.count }}</span>
         </button>
       </div>
 
-      <div v-if="knowledgeTagOptions.length" class="wrong-toolbar__group wrong-toolbar__group--tags">
-        <button
-          :class="['wrong-filter', { 'wrong-filter--active': !activeKnowledgeTag }]"
-          type="button"
-          @click="activeKnowledgeTag = ''"
-        >
-          全部知识点
-        </button>
-        <button
-          v-for="item in knowledgeTagOptions"
-          :key="item"
-          :class="['wrong-filter', { 'wrong-filter--active': activeKnowledgeTag === item }]"
-          type="button"
-          @click="activeKnowledgeTag = item"
-        >
-          {{ item }}
+      <div v-if="wrongQuestions.length" class="wrong-toolbar__row">
+        <div class="wrong-toolbar__selects">
+          <label class="wrong-toolbar__select">
+            <span class="wrong-toolbar__select-label">按年级</span>
+            <select v-model="activeGrade" class="wrong-toolbar__select-control" aria-label="按年级筛选错题">
+              <option value="">全部年级</option>
+              <option v-for="item in gradeOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
+            </select>
+          </label>
+
+          <label v-if="knowledgeTagOptions.length" class="wrong-toolbar__select">
+            <span class="wrong-toolbar__select-label">按知识点</span>
+            <select v-model="activeKnowledgeTag" class="wrong-toolbar__select-control" aria-label="按知识点筛选错题">
+              <option value="">全部知识点</option>
+              <option v-for="item in knowledgeTagOptions" :key="item" :value="item">{{ item }}</option>
+            </select>
+          </label>
+        </div>
+
+        <button class="btn-cartoon btn-cartoon--yellow" type="button" :disabled="!reviewQuestionIds.length" @click="emitBatchReview">
+          {{ reviewQuestionIds.length ? `开始温习 ${reviewQuestionIds.length} 题` : "暂无可温习题目" }}
         </button>
       </div>
-
-      <button class="btn-cartoon btn-cartoon--yellow wrong-toolbar__action" type="button" :disabled="!reviewQuestionIds.length" @click="emitBatchReview">
-        {{ reviewQuestionIds.length ? `开始温习 ${reviewQuestionIds.length} 题` : "暂无可温习题目" }}
-      </button>
     </section>
 
     <section v-if="filteredQuestions.length" class="wrong-list" aria-label="错题记录">
@@ -147,7 +172,6 @@ function emitBatchReview() {
           <div class="wrong-card__chips">
             <span class="wrong-card__chip">{{ item.subject }}</span>
             <span v-if="item.grade" class="wrong-card__chip">{{ item.grade }}</span>
-            <span v-if="item.semester && item.semester !== '通用'" class="wrong-card__chip">{{ item.semester }}</span>
             <span class="wrong-card__chip wrong-card__chip--knowledge">{{ item.knowledgeTag }}</span>
           </div>
           <span :class="['wrong-card__badge', `wrong-card__badge--${item.reviewTone}`]">
@@ -161,25 +185,9 @@ function emitBatchReview() {
             上次作答：{{ item.lastSelectedLabel }} · 正确答案：{{ item.correctAnswerLabel }}
           </p>
           <p class="wrong-card__text">{{ item.explanation }}</p>
-        </div>
-
-        <div class="wrong-card__stats" aria-label="错题状态">
-          <div class="wrong-card__stat">
-            <span class="wrong-card__stat-label">累计错题</span>
-            <strong class="wrong-card__stat-value">{{ item.wrongCount }}</strong>
-          </div>
-          <div class="wrong-card__stat">
-            <span class="wrong-card__stat-label">回温连对</span>
-            <strong class="wrong-card__stat-value">{{ item.reviewCorrectStreak }}</strong>
-          </div>
-          <div class="wrong-card__stat">
-            <span class="wrong-card__stat-label">掌握度</span>
-            <strong class="wrong-card__stat-value">{{ item.masteryPercent }}%</strong>
-          </div>
-          <div class="wrong-card__stat">
-            <span class="wrong-card__stat-label">下次温习</span>
-            <strong class="wrong-card__stat-value">{{ item.reviewScheduleLabel }}</strong>
-          </div>
+          <p class="wrong-card__footnote">
+            错 {{ item.wrongCount }} 次 · 连对 {{ item.reviewCorrectStreak }} · 掌握 {{ item.masteryPercent }}% · 下次温习：{{ item.reviewScheduleLabel }}
+          </p>
         </div>
 
         <div class="wrong-card__actions">
@@ -196,7 +204,7 @@ function emitBatchReview() {
     <section v-else class="wrong-empty">
       <p class="wrong-empty__eyebrow">Review Ready</p>
       <h3 class="wrong-empty__title">当前筛选下没有错题</h3>
-      <p class="wrong-empty__text">可以切换状态或知识点筛选，也可以先回去做一轮练习，新的错题会自动收进来。</p>
+      <p class="wrong-empty__text">可以切换状态、年级或知识点筛选，也可以先回去做一轮练习，新的错题会自动收进来。</p>
     </section>
   </section>
 </template>
@@ -209,8 +217,7 @@ function emitBatchReview() {
 
 .wrong-hero {
   display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
-  gap: 18px;
+  gap: 10px;
   padding: 26px;
   border: 1px solid rgba(36, 50, 74, 0.12);
   border-radius: 32px;
@@ -221,7 +228,6 @@ function emitBatchReview() {
   backdrop-filter: blur(12px);
 }
 
-.wrong-hero__copy,
 .wrong-empty {
   display: grid;
   gap: 10px;
@@ -251,31 +257,6 @@ function emitBatchReview() {
   line-height: 1.7;
 }
 
-.wrong-hero__stats {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.wrong-stat {
-  display: grid;
-  gap: 10px;
-  padding: 16px 18px;
-  border: 1px solid rgba(36, 50, 74, 0.1);
-  border-radius: 22px;
-  background: rgba(255, 255, 255, 0.76);
-}
-
-.wrong-stat__label {
-  color: var(--color-ink-soft);
-  font-size: 0.82rem;
-}
-
-.wrong-stat__value {
-  font-size: 1.2rem;
-  color: var(--color-ink);
-}
-
 .wrong-toolbar {
   display: grid;
   gap: 12px;
@@ -286,16 +267,18 @@ function emitBatchReview() {
 }
 
 .wrong-toolbar__group,
-.wrong-toolbar__group--tags,
+.wrong-toolbar__selects,
+.wrong-toolbar__row,
 .wrong-card__chips,
 .wrong-card__actions {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
 }
 
-.wrong-toolbar__action {
-  justify-self: start;
+.wrong-toolbar__row {
+  justify-content: space-between;
 }
 
 .wrong-filter,
@@ -313,11 +296,17 @@ function emitBatchReview() {
 }
 
 .wrong-filter {
+  gap: 6px;
   transition:
     border-color 160ms ease,
     background-color 160ms ease,
     color 160ms ease,
     transform 160ms ease;
+}
+
+.wrong-filter__count {
+  font-size: 0.82rem;
+  opacity: 0.72;
 }
 
 .wrong-filter:hover,
@@ -326,6 +315,29 @@ function emitBatchReview() {
   border-color: rgba(124, 216, 184, 0.44);
   background: rgba(184, 242, 223, 0.62);
   color: var(--color-ink);
+}
+
+.wrong-toolbar__select {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wrong-toolbar__select-label {
+  color: var(--color-ink-soft);
+  font-size: 0.86rem;
+}
+
+.wrong-toolbar__select-control {
+  max-width: 240px;
+  min-height: 36px;
+  padding: 4px 12px;
+  border: 1px solid rgba(36, 50, 74, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--color-ink);
+  font: inherit;
+  cursor: pointer;
 }
 
 .wrong-list {
@@ -345,8 +357,7 @@ function emitBatchReview() {
   box-shadow: 0 24px 42px -38px rgba(36, 50, 74, 0.32);
 }
 
-.wrong-card__head,
-.wrong-card__stats {
+.wrong-card__head {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -401,27 +412,10 @@ function emitBatchReview() {
   line-height: 1.7;
 }
 
-.wrong-card__stats {
-  align-items: stretch;
-}
-
-.wrong-card__stat {
-  flex: 1;
-  display: grid;
-  gap: 6px;
-  padding: 14px 12px;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.74);
-}
-
-.wrong-card__stat-label {
+.wrong-card__footnote {
+  margin: 0;
   color: var(--color-ink-soft);
-  font-size: 0.8rem;
-}
-
-.wrong-card__stat-value {
-  font-size: 1rem;
-  color: var(--color-ink);
+  font-size: 0.86rem;
 }
 
 .wrong-card__link {
@@ -445,12 +439,6 @@ function emitBatchReview() {
   background: rgba(255, 255, 255, 0.82);
 }
 
-@media (max-width: 980px) {
-  .wrong-hero {
-    grid-template-columns: 1fr;
-  }
-}
-
 @media (max-width: 720px) {
   .wrong-hero,
   .wrong-card,
@@ -459,13 +447,9 @@ function emitBatchReview() {
     border-radius: 24px;
   }
 
-  .wrong-hero__stats,
-  .wrong-card__stats {
-    grid-template-columns: 1fr;
-  }
-
-  .wrong-card__stats {
-    display: grid;
+  .wrong-toolbar__row {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 </style>
